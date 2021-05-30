@@ -6,9 +6,6 @@ Template Repository to define:
 * Contribution Guide
 * Software License
 
-
-
-
 ## Python
 
 ### Package Naming
@@ -18,19 +15,8 @@ Template Repository to define:
 
 Set Classifiers as appropriate from https://pypi.org/classifiers/
 
-Our Intended audience is usually a subset of:
-- Intended Audience :: Science/Research
-- Intended Audience :: System Administrators
-
-but can include:
-- Intended Audience :: Developers
-- Intended Audience :: Education
-- Intended Audience :: Information Technology
-- Intended Audience :: Telecommunications Industry
-
 Openstack Projects tend to specify
 - License :: OSI Approved :: Apache Software License
-
 
 or one of:
 - License :: OSI Approved :: MIT License
@@ -45,6 +31,8 @@ description-file = README.md
 author = University of Chicago
 author-email = dev@lists.chameleoncloud.org
 home-page = https://www.chameleoncloud.org
+license_files = LICENSE
+python_requires = '>=3.6.2'
 classifier =
     Development Status :: 4 - Beta
     Environment :: OpenStack
