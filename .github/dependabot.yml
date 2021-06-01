@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    # Set to 0 to disable updates
+    open-pull-requests-limit: 2
+    schedule:
+      interval: "monthly"
+  # Maintain dependencies for Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    # Set to 0 to disable updates
+    open-pull-requests-limit: 2
+    schedule:
+      interval: "monthly"
+  # Maintain dependencies for Python, supports pip, pipenv, pip-compile, and poetry
+  - package-ecosystem: "pip"
+    directory: "/"
+    # Set to 0 to disable updates
+    open-pull-requests-limit: 2
+    schedule:
+      interval: "monthly"
+#     allow:
+#       # Allow only direct updates for
+#       # Django and any packages starting "django"
+#       - dependency-name: "django*"
+#       dependency-type: "direct"
+#       # Allow only production updates for Sphinx
+#       - dependency-name: "sphinx"
+#       dependency-type: "production"
