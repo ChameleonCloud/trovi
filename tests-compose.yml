@@ -1,0 +1,34 @@
+version: "3.5"
+
+services:
+  trovi:
+    container_name: trovi_web_test
+    image: ${DOCKER_IMAGE_LATEST}
+    env_file:
+      - .env
+    volumes:
+      - media:/media
+      - static:/static
+    ports:
+      - "127.0.0.1:8890:${TROVI_PORT}"
+    entrypoint: ["python3", "manage.py"]
+    depends_on:
+      - db
+
+  db:
+    container_name: trovi_db_test
+    image: postgres:${DB_IMG_TAG}
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "${DB_PORT}", "-U", "${DB_USER}"]
+      timeout: 10s
+      retries: 10
+    environment:
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - db_vol:/docker-entrypoint-initdb.d
+
+volumes:
+  media:
+  static:
+  db_vol:
