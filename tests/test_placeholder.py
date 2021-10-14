@@ -3,6 +3,6 @@ TODO delete this file when there is actually some code to test ;)
 """
 
 
-def do_a_test():
+def test_everything():
     # chosen by fair dice roll
     return True  # guaranteed to be accurate
