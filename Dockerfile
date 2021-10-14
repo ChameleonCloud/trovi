@@ -14,8 +14,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false
 # Use pip to install poetry. We don't use virtualenvs in the build context.
 # Therefore, the vendored install provides no additional isolation.
 RUN \
-  pip install --upgrade pip && \
-  pip install "poetry~=1.1" && \
+  pip install --no-cache-dir "poetry~=1.1" && \
   poetry install --no-dev --no-root && \
   mkdir /var/log/django
 
