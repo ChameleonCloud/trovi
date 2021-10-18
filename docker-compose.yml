@@ -13,7 +13,7 @@ services:
       - .env
     volumes:
       - .:/project
-      - media:/media
+      - ./media:/media
       - static:/static
     ports:
       - "127.0.0.1:8890:${TROVI_PORT}"
@@ -34,3 +34,6 @@ services:
       POSTGRES_PASSWORD: "${DB_PASSWORD}"
     volumes:
       - ./db:/docker-entrypoint-initdb.d
+
+volumes:
+  static:
