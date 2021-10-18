@@ -2,7 +2,7 @@
 name = "trovi"
 version = "0.0.1"
 description = "A collection of shared artifacts"
-authors = ["Adam Cooper <adamcooper@uchicago.edu>"]
+authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
