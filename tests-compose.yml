@@ -17,14 +17,17 @@ services:
 
   db:
     container_name: trovi_db_test
-    image: postgres:${DB_IMG_TAG}
+    image: mariadb:${DB_IMG_TAG}
     restart: on-failure
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "${DB_PORT}", "-U", "${DB_USER}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 10s
       retries: 10
     environment:
-      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - db_vol:/docker-entrypoint-initdb.d
 
