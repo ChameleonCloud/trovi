@@ -2,6 +2,7 @@ import secrets
 
 from django.core import validators
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from fields import URNField
 
@@ -55,6 +56,28 @@ class ArtifactVersion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     contents_urn = URNField(max_length=255)
     access_count = models.IntegerField(default=0)
+
+
+class ArtifactEvent(models.Model):
+    """Represents an event occurring on an artifact"""
+
+    class EventType(models.TextChoices):
+        LAUNCH = _("launch")
+        CITE = _("cite")
+        FORK = _("fork")
+
+    # The artifact version this event is for
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, models.CASCADE, related_name="artifact_event"
+    )
+
+    # The type of event
+    event_type = models.CharField(max_length=6, choices=EventType.choices)
+    # The user who initiated the event
+    event_origin = URNField(max_length=255, null=True)
+
+    # The time at which the event occurred
+    timestamp = models.DateTimeField(auto_now_add=True)
 
 
 class ArtifactTag(models.Model):
