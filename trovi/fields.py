@@ -1,9 +1,11 @@
 import re
+
 from django.core import validators
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
+
 from typing import List
 
 
