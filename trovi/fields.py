@@ -6,7 +6,7 @@ from django.db import models
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
 
-from typing import List
+from typing import List, Any
 
 
 class URNField(models.CharField):
@@ -32,3 +32,7 @@ class URNField(models.CharField):
         return super(URNField, self).validators + [
             RegexValidator(URNField.pattern, message=_("Enter a valid URN."))
         ]
+
+    def to_python(self, value: Any) -> str:
+        # This enforces that all URNs are converted to lowercase pre-write and post-read
+        return super(URNField, self).to_python(value).lower()
