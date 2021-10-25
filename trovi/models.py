@@ -95,18 +95,14 @@ class ArtifactEvent(models.Model):
 class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
-    artifact = models.ForeignKey(
-        Artifact, models.CASCADE, related_name="tags"
-    )
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="tags")
     tag = models.CharField(max_length=32, unique=True)
 
 
 class ArtifactAuthor(models.Model):
     """Represents an author of an artifact"""
 
-    artifact = models.ForeignKey(
-        Artifact, models.CASCADE, related_name="author"
-    )
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="author")
     full_name = models.CharField(max_length=200)
     affiliation = models.CharField(max_length=200, blank=True, null=True)
     email = models.EmailField(max_length=254)
@@ -115,7 +111,5 @@ class ArtifactAuthor(models.Model):
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
-    artifact = models.ForeignKey(
-        Artifact, models.CASCADE, related_name="project"
-    )
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="project")
     urn = URNField(max_length=255, unique=True)
