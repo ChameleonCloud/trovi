@@ -14,8 +14,6 @@ class Artifact(models.Model):
     These could be research projects, Zenodo depositions, etc.
     """
 
-    # Identifiers
-    id = models.IntegerField(primary_key=True)
     uuid = models.UUIDField(primary_key=True)
 
     # Descriptive information
@@ -50,8 +48,6 @@ class Artifact(models.Model):
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
-    # Identifiers
-    id = models.IntegerField(primary_key=True)
     slug = models.SlugField(primary_key=True, max_length=12)
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="versions")
