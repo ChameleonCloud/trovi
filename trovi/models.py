@@ -5,7 +5,6 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from fields import URNField
-from settings import ARTIFACT_SHARING_MAX_REPRO_REQUESTS
 
 
 class Artifact(models.Model):
