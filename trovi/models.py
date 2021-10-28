@@ -34,7 +34,6 @@ class Artifact(models.Model):
         default=0,
         validators=[
             validators.MinValueValidator(0),
-            validators.MaxValueValidator(ARTIFACT_SHARING_MAX_REPRO_REQUESTS),
         ],
     )
     repro_access_hours = models.IntegerField(null=True)
@@ -98,7 +97,7 @@ class ArtifactTag(models.Model):
 class ArtifactAuthor(models.Model):
     """Represents an author of an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="author")
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="authors")
     full_name = models.CharField(max_length=200)
     affiliation = models.CharField(max_length=200, blank=True, null=True)
     email = models.EmailField(max_length=254)
@@ -107,5 +106,19 @@ class ArtifactAuthor(models.Model):
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="project")
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="linked_projects"
+    )
     urn = URNField(max_length=255, unique=True)
+
+
+class ArtifactLink(models.Model):
+    """Represents a piece of data linked to an artifact"""
+
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, models.CASCADE, related_name="links"
+    )
+    urn = URNField(max_length=255)
+    label = models.TextField(max_length=40)
+    verified_at = models.DateTimeField(auto_now=True)
+    verified = models.BooleanField(default=False)
