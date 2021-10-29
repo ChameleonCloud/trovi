@@ -98,12 +98,16 @@ OUTAGE_NOTIFICATION_EMAIL = os.environ.get("OUTAGE_NOTIFICATION_EMAIL", "")
 # Application definition
 
 INSTALLED_APPS = [
+    # Core
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Trovi
+    "trovi.apps.TroviConfig",
+    "trovi.api.apps.ApiConfig",
 ]
 
 MIDDLEWARE = [
