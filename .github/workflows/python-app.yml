@@ -16,9 +16,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - uses: ankane/setup-mariadb@v1
+    - name: Create .env file
+      run: |
+        cp .env.sample .env
+    - uses: getong/mariadb-action@v1.1
       with:
-        mariadb-version: 10.6
+        mariadb version: 10.6
+        container port: ${{ env.DB_PORT }}
+        mysql database: ${{ env.DB_NAME }}
+        mysql user: ${{ env.DB_USER }}
+        mysql password: ${{ env.DB_PASSWORD }}
+        mysql root password: ${{ env.DB_ROOT_PASSWORD }}
     - name: Set up Python 3.9
       uses: actions/setup-python@v2
       with:
