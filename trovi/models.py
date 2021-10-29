@@ -1,5 +1,6 @@
 import secrets
 
+import uuid as uuid
 from django.core import validators
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -13,7 +14,7 @@ class Artifact(models.Model):
     These could be research projects, Zenodo depositions, etc.
     """
 
-    uuid = models.UUIDField(primary_key=True)
+    uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Descriptive information
     title = models.CharField(max_length=70)
@@ -38,6 +39,15 @@ class Artifact(models.Model):
     repro_access_hours = models.IntegerField(null=True)
 
     # Sharing metadata
+    class Visibility(models.TextChoices):
+        PUBLIC = _("public")
+        PRIVATE = _("private")
+
+    visibility = models.CharField(
+        max_length=max(len(v) for v, _ in Visibility.choices),
+        choices=Visibility.choices,
+        default=Visibility.PRIVATE,
+    )
     sharing_key = models.CharField(
         max_length=32, null=True, default=lambda: secrets.token_urlsafe(nbytes=32)
     )
