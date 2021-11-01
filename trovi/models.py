@@ -1,11 +1,11 @@
 import secrets
-
 import uuid as uuid
+
 from django.core import validators
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from fields import URNField
+from trovi.fields import URNField
 from util.types import JSON, APIFormat, APISerializable
 
 
