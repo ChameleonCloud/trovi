@@ -73,6 +73,11 @@ ARTIFACT_SHARING_JUPYTERHUB_URL = os.getenv(
 ZENODO_URL = os.getenv("ZENODO_URL", "https://zenodo.org")
 ZENODO_DEFAULT_ACCESS_TOKEN = os.getenv("ZENODO_DEFAULT_ACCESS_TOKEN")
 
+# Artifact policy
+# Max reproduction requests should ideally never be lowered, only raised.
+# Lowering the value will require complex custom migration logic
+ARTIFACT_SHARING_MAX_REPRO_REQUESTS = 10
+
 #####
 #
 # Email Configuration
