@@ -6,7 +6,7 @@ authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-Django = "^3.2.8"
+Django = "^3.2.9"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
