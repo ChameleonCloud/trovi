@@ -19,3 +19,7 @@ class JsonServerErrorResponse(TroviErrorResponse):
 
 class JsonNotFoundResponse(TroviErrorResponse):
     status_code = http.HTTPStatus.NOT_FOUND
+
+
+class JsonBadRequestResponse(TroviErrorResponse):
+    status_code = http.HTTPStatus.BAD_REQUEST
