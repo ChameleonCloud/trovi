@@ -11,6 +11,7 @@ Django = "^3.2.8"
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
 flake8 = "^4.0.1"
+Faker = "^9.7.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
