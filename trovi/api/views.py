@@ -49,7 +49,7 @@ class ListArtifacts(views.View):
                 begin = Artifact.objects.get(uuid=after)
             except ObjectDoesNotExist:
                 return JsonBadRequestResponse(
-                    f"ListArtifacts: Unkown artifact in 'after' parameter. ({after})"
+                    f"ListArtifacts: Unknown artifact in 'after' parameter. ({after})"
                 )
         else:
             begin = None
