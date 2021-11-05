@@ -92,9 +92,11 @@ class ListArtifacts(views.View):
             end = query.count()
 
         artifacts = [artifact.to_json() for artifact in query[:end]]
+        next_after = artifacts[0]["id"] if len(artifacts) > 0 else None
+
         result = {
             "artifacts": artifacts,
-            "next": {"after": artifacts[0]["id"], "limit": end},
+            "next": {"after": next_after, "limit": end},
         }
         return JsonResponse(result)
 

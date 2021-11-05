@@ -14,20 +14,29 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    services:
+      db:
+        image: mariadb:${{ env.DB_IMG_TAG }}
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ env.DB_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ env.DB_NAME }}
+          MYSQL_USER: ${{ env.DB_USER }}
+          MYSQL_PASSWORD: ${{ DB_PASSWORD }}
+        ports:
+          - ${{ env.DB_PORT }}
+        options: --health-cmd="mysqladmin ping -h localhost" --health-interval 10s --health-timeout 5s --health-retries 5
+
     steps:
     - uses: actions/checkout@v2
     - name: Create .env file
       # Remove comments and empty lines; $GITHUB_ENV is strict
       run: |
         sed -E '/^(#|$)/d' .env.sample > $GITHUB_ENV
-    - uses: getong/mariadb-action@v1.1
-      with:
-        mariadb version: 10.6
-        container port: ${{ env.DB_PORT }}
-        mysql database: ${{ env.DB_NAME }}
-        mysql user: ${{ env.DB_USER }}
-        mysql password: ${{ env.DB_PASSWORD }}
-        mysql root password: ${{ env.DB_ROOT_PASSWORD }}
+    - name: Ping MariaDB
+      env:
+        PORT: ${{ job.services.db.ports['3306'] }}
+      run: |
+        mysqladmin ping -h"127.0.0.1" -P"$PORT" --silent -w 10
     - name: Set up Python 3.9
       uses: actions/setup-python@v2
       with:

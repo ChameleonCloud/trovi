@@ -244,7 +244,7 @@ def generate_fake_artifact() -> list[APIModel]:
     artifact_events = [
         ArtifactEvent(
             artifact_version=random.choice(artifact_versions),
-            event_type=random.choice(ArtifactEvent.EventType.choices),
+            event_type=random.choice(ArtifactEvent.EventType.values),
             event_origin=None
             if fake.boolean(chance_of_getting_true=90)
             else fake_user_urn(),
@@ -376,7 +376,10 @@ class TestListArtifacts(APITestCase):
         self.assertIsInstance(as_json["artifacts"], list)
         for artifact in as_json["artifacts"]:
             self.assertIsInstance(artifact, dict)
-        self.assertIsInstance(as_json["next"]["after"], str)  # TODO is UUID?
+        if len(as_json["artifacts"]) > 0:
+            self.assertIsInstance(as_json["next"]["after"], str)  # TODO is UUID?
+        else:
+            self.assertIsNone(as_json["next"]["after"])
         self.assertIsInstance(as_json["next"]["limit"], int)
 
     def test_list_length(self):
@@ -392,17 +395,14 @@ class TestListArtifacts(APITestCase):
 
 
 class TestListArtifactsEmpty(TestListArtifacts):
-    # TODO implement
     @classmethod
     def setUpClass(cls):
-        super(TestListArtifactsEmpty, cls).setUpClass()
-
-    def test_placeholder(self):
-        self.assertEqual(0, 0)
+        TestCase.setUpClass()
 
 
 class TestGetArtifact(APITestCase):
     def test_get_artifact(self):
+        # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
         self.assertAPIResponseEqual(json.dumps(as_json), artifact_don_quixote)

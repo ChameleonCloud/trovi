@@ -40,7 +40,7 @@ class APIModel(models.Model):
         """
         if all_fields:
             fields = {
-                field.name: self._meta.get_field(field)
+                field.name: self._meta.get_field(field.name)
                 for field in self._meta.fields + self._meta.many_to_many
             }
         else:
@@ -125,7 +125,8 @@ class Artifact(APIModel):
         default=Visibility.PRIVATE,
     )
     sharing_key = models.CharField(
-        max_length=32, null=True, default=lambda: secrets.token_urlsafe(nbytes=32)
+        max_length=settings.SHARING_KEY_LENGTH * 2,
+        default=lambda: secrets.token_urlsafe(nbytes=settings.SHARING_KEY_LENGTH),
     )
 
     @property
@@ -217,7 +218,7 @@ class ArtifactEvent(APIModel):
 
     # The type of event
     event_type = models.CharField(
-        max_length=max(len(key) for key, _ in EventType.choices),
+        max_length=max(len(choice) for choice in EventType.values),
         choices=EventType.choices,
     )
     # The user who initiated the event

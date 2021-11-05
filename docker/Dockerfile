@@ -2,13 +2,12 @@ ARG PY_IMG_TAG=3.9.7
 
 FROM python:${PY_IMG_TAG}
 
-COPY . /project
 WORKDIR /project
 
 VOLUME ["/media"]
 VOLUME ["/static"]
 
-COPY poetry.lock pyproject.toml /setup/
+COPY poetry.lock pyproject.toml /project/
 ENV POETRY_VIRTUALENVS_CREATE=false
 
 # Use pip to install poetry. We don't use virtualenvs in the build context.
