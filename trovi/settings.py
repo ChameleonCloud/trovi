@@ -144,12 +144,24 @@ WSGI_APPLICATION = "trovi.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+if os.environ.get("DB_NAME"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": os.environ.get("DB_NAME"),
+            "HOST": os.environ.get("DB_HOST"),
+            "PORT": os.environ.get("DB_PORT"),
+            "USER": os.environ.get("DB_USER"),
+            "PASSWORD": os.environ.get("DB_PASSWORD"),
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -280,8 +292,9 @@ URN_MAX_CHARS = 254
 GITHUB_USERNAME_MAX_CHARS = 40
 GITHUB_REPO_NAME_MAX_CHARS = 40
 GIT_BRANCH_NAME_MAX_CHARS = 28
-SLUG_MAX_CHARS = 12
+SLUG_MAX_CHARS = 16
 EMAIL_ADDRESS_MAX_CHARS = 254
+SHARING_KEY_LENGTH = 33
 
 ARTIFACT_TITLE_MAX_CHARS = 70
 ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70
