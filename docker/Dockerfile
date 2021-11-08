@@ -1,6 +1,6 @@
 ARG PY_IMG_TAG=3.9.7
 
-FROM python:${PY_IMG_TAG}
+FROM python:${PY_IMG_TAG} as base
 
 WORKDIR /project
 
@@ -18,3 +18,7 @@ RUN \
   mkdir /var/log/django
 
 EXPOSE 80 443
+
+FROM base as release
+
+COPY . /project
