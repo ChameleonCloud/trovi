@@ -1,7 +1,7 @@
 from django.db import models
 from rest_framework import serializers
 
-import settings
+from trovi import settings
 from trovi.models import (
     Artifact,
     ArtifactTag,
