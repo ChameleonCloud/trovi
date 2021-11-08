@@ -9,6 +9,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     """
     Handles sorting for ListArtifacts
     """
+
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
     ) -> models.QuerySet:
@@ -30,4 +31,3 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
             query = queryset.order_by("uuid")
 
         return query
-
