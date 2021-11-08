@@ -1,7 +1,6 @@
+import base64
 import secrets
 import uuid as uuid
-from datetime import datetime
-from typing import Optional
 
 from django.core import validators
 from django.db import models
@@ -10,77 +9,9 @@ from django.utils.translation import gettext_lazy as _
 
 from trovi import settings
 from trovi.fields import URNField
-from util.types import JSON, APIObject, APISerializable
 
 
-class APIModel(models.Model):
-    """
-    Base model class which implements helpers for translating it between API objects
-    and Django database Models
-    """
-
-    class Meta:
-        abstract = True
-
-    @property
-    def api_items(self) -> APIObject:
-        """
-        Dict which maps the layout of an API response to the appropriate models.
-        This method should be implemented for any models
-        which are represented as JSON objects (as opposed to an ID) in API responses.
-        """
-        return {}
-
-    def to_json(self, all_fields: bool = False) -> JSON:
-        """
-        Serializes a model to a valid JSON representation.
-
-        ``all_fields`` indicates that all fields should be included in the output
-        rather than just those indicated by api_items
-        """
-        if all_fields:
-            fields = {
-                field.name: self._meta.get_field(field.name)
-                for field in self._meta.fields + self._meta.many_to_many
-            }
-        else:
-            fields = self.api_items
-        return {
-            name: self._serialize_api_item(item, all_fields)
-            for name, item in fields.items()
-        }
-
-    def _serialize_api_item(
-        self, item: APISerializable, all_fields: bool
-    ) -> Optional[JSON]:
-        """
-        Takes a value that is intended to be returned in an API response,
-        and serializes it to a valid JSON value.
-        """
-        if isinstance(item, models.Field):
-            return self.serializable_value(item.name)
-        elif isinstance(item, models.Manager):
-            return [
-                model.to_json(all_fields=all_fields)
-                if isinstance(model, APIModel)
-                else self.serializable_value(item.name)
-                for model in item.all()
-            ]
-        elif isinstance(item, dict):
-            return {k: self._serialize_api_item(v, all_fields) for k, v in item.items()}
-        elif isinstance(item, list):
-            return [self._serialize_api_item(e, all_fields) for e in item]
-        elif isinstance(item, (str, int, float)) or item is None:
-            return item
-        elif isinstance(item, (datetime, uuid.UUID)):
-            return str(item)
-        else:
-            raise ValueError(
-                f"Object unserializable for JSON API: {item} ({type(item)}"
-            )
-
-
-class Artifact(APIModel):
+class Artifact(models.Model):
     """
     Represents artifacts
     These could be research projects, Zenodo depositions, etc.
@@ -125,32 +56,16 @@ class Artifact(APIModel):
         default=Visibility.PRIVATE,
     )
     sharing_key = models.CharField(
-        max_length=settings.SHARING_KEY_LENGTH * 2,
+        # Since sharing keys are base64 encoded, we use the base64 length formula here
+        max_length=(((4 * settings.SHARING_KEY_LENGTH) // 3) + 3) & ~3,
         default=lambda: secrets.token_urlsafe(nbytes=settings.SHARING_KEY_LENGTH),
+        validators=[
+            lambda k: len(base64.decodebytes(k)) == settings.SHARING_KEY_LENGTH
+        ],
     )
 
-    @property
-    def api_items(self) -> APIObject:
-        return {
-            "id": self.uuid,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "title": self.title,
-            "short_description": self.short_description,
-            "long_description": self.long_description,
-            "tags": self.tags,
-            "authors": self.authors,
-            "visibility": self.visibility,
-            "linked_projects": self.linked_projects,
-            "reproducibility": {
-                "enable_requests": self.is_reproducible,
-                "access_hours": self.repro_access_hours,
-            },
-            "versions": self.versions,
-        }
 
-
-class ArtifactVersion(APIModel):
+class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="versions")
@@ -188,22 +103,8 @@ class ArtifactVersion(APIModel):
             instance.slug = time_stamp
             instance.save()
 
-    @property
-    def api_items(self) -> APIObject:
-        return {
-            "slug": self.slug,
-            "created_at": self.created_at,
-            "contents": {
-                "urn": self.contents_urn,
-            },
-            "metrics": {
-                "access_count": self.access_count,
-            },
-            "links": self.links,
-        }
 
-
-class ArtifactEvent(APIModel):
+class ArtifactEvent(models.Model):
     """Represents an event occurring on an artifact"""
 
     class EventType(models.TextChoices):
@@ -228,20 +129,14 @@ class ArtifactEvent(APIModel):
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
 
 
-class ArtifactTag(APIModel):
+class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
     artifacts = models.ManyToManyField(Artifact, related_name="tags")
     tag = models.CharField(max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True)
 
-    def to_json(self, all_fields: bool = False) -> JSON:
-        if all_fields:
-            return super(ArtifactTag, self).to_json(all_fields)
-        else:
-            return str(self.tag)
 
-
-class ArtifactAuthor(APIModel):
+class ArtifactAuthor(models.Model):
     """Represents an author of an artifact"""
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="authors")
@@ -251,29 +146,15 @@ class ArtifactAuthor(APIModel):
     )
     email = models.EmailField(max_length=settings.EMAIL_ADDRESS_MAX_CHARS)
 
-    @property
-    def api_items(self) -> APIObject:
-        return {
-            "name": self.full_name,
-            "affiliation": self.affiliation,
-            "email": self.email,
-        }
 
-
-class ArtifactProject(APIModel):
+class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
     artifact = models.ManyToManyField(Artifact, related_name="linked_projects")
     urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
 
-    def to_json(self, all_fields: bool = False) -> JSON:
-        if all_fields:
-            return super(ArtifactProject, self).to_json(all_fields)
-        else:
-            return str(self.urn)
 
-
-class ArtifactLink(APIModel):
+class ArtifactLink(models.Model):
     """Represents a piece of data linked to an artifact"""
 
     artifact_version = models.ForeignKey(
@@ -283,14 +164,6 @@ class ArtifactLink(APIModel):
     label = models.TextField(max_length=settings.ARTIFACT_LINK_LABEL_MAX_CHARS)
     verified_at = models.DateTimeField(null=True)
     verified = models.BooleanField(default=False)
-
-    @property
-    def api_items(self) -> APIObject:
-        return {
-            "label": self.label,
-            "verified": self.verified,
-            "urn": self.urn,
-        }
 
 
 # Signals

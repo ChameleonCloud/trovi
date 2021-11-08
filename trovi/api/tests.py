@@ -5,10 +5,14 @@ from typing import Optional, Union, Iterable
 
 import faker.config
 import pytz
-from django.db import transaction, IntegrityError
+from django.db import transaction, IntegrityError, models
+from django.http import JsonResponse
 from django.test import TestCase, Client
 from django.urls import reverse
+from rest_framework import serializers
+from rest_framework.renderers import JSONRenderer
 
+from trovi.api.serializers import ArtifactSerializer
 from trovi import settings
 from trovi.models import (
     Artifact,
@@ -18,7 +22,6 @@ from trovi.models import (
     ArtifactProject,
     ArtifactEvent,
     ArtifactLink,
-    APIModel,
 )
 
 
@@ -209,7 +212,7 @@ don_quixote = [
 ]
 
 
-def generate_fake_artifact() -> list[APIModel]:
+def generate_fake_artifact() -> list[models.Model]:
     """Generates a fake artifact with a random series of attributes"""
     artifact = Artifact(
         uuid=fake.uuid4(),
@@ -284,7 +287,7 @@ def generate_fake_artifact() -> list[APIModel]:
     )
 
 
-def generate_many_to_many(artifacts: Iterable[Artifact]) -> list[ArtifactTag]:
+def generate_many_to_many(artifacts: Iterable[Artifact]):
     """
     Generates random many-to-many attributes and applies them to artifacts.
     This function should only be called after the test artifacts
@@ -317,10 +320,11 @@ def generate_many_to_many(artifacts: Iterable[Artifact]) -> list[ArtifactTag]:
             *random.choices(projects, weights=weights_projects, k=k_projects)
         )
 
-    return tags
-
 
 class APITestCase(TestCase):
+    renderer = JSONRenderer()
+    maxDiff = None
+
     @staticmethod
     def list_artifact_path():
         return reverse("ListArtifacts")
@@ -332,26 +336,27 @@ class APITestCase(TestCase):
     @classmethod
     def setUpClass(cls):
         super(APITestCase, cls).setUpClass()
-        models = don_quixote + sum(
+        all_models = don_quixote + sum(
             [generate_fake_artifact() for _ in range(100)], start=[]
         )
         try:
             with transaction.atomic():
-                for model in models:
+                for model in all_models:
                     model.save()
             with transaction.atomic():
                 generate_many_to_many(Artifact.objects.all())
         except IntegrityError as e:
             assert False, str(e)
 
-    def assertAPIModelContentEqual(self, actual: APIModel, expected: APIModel):
+    def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
-            json.dumps(actual.to_json(all_fields=True)),
-            json.dumps(expected.to_json(all_fields=True)),
+            json.dumps(serializers.ModelSerializer(actual).data),
+            json.dumps(serializers.ModelSerializer(expected).data),
         )
 
-    def assertAPIResponseEqual(self, actual: str, expected: APIModel):
-        self.assertJSONEqual(actual, json.dumps(expected.to_json()))
+    def assertAPIResponseEqual(self, actual: str, expected: serializers.Serializer):
+        rendered = self.renderer.render(JsonResponse(expected.data).content)
+        self.assertJSONEqual(actual, json.loads(rendered))
 
 
 class TestListArtifacts(APITestCase):
@@ -376,22 +381,28 @@ class TestListArtifacts(APITestCase):
         self.assertIsInstance(as_json["artifacts"], list)
         for artifact in as_json["artifacts"]:
             self.assertIsInstance(artifact, dict)
-        if len(as_json["artifacts"]) > 0:
-            self.assertIsInstance(as_json["next"]["after"], str)  # TODO is UUID?
-        else:
-            self.assertIsNone(as_json["next"]["after"])
+        # After parameter should be null in un-paginated responses,
+        # but limit is always equal to the amount of returned artifacts
+        self.assertIsNone(as_json["next"]["after"])
         self.assertIsInstance(as_json["next"]["limit"], int)
 
     def test_list_length(self):
         response = self.client.get(self.list_artifact_path())
+        as_json = json.loads(response.content)
 
         self.assertEqual(
-            Artifact.objects.count(), len(json.loads(response.content)["artifacts"])
+            Artifact.objects.count(), len(as_json["artifacts"])
         )
+        self.assertEqual(Artifact.objects.count(), as_json["next"]["limit"])
 
     def test_url_parameters(self):
         # TODO
         pass
+        response = self.client.get(
+            self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
+        )
+
+        print(json.loads(response.content))
 
 
 class TestListArtifactsEmpty(TestListArtifacts):
@@ -405,4 +416,7 @@ class TestGetArtifact(APITestCase):
         # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
-        self.assertAPIResponseEqual(json.dumps(as_json), artifact_don_quixote)
+
+        self.assertAPIResponseEqual(
+            json.dumps(as_json), ArtifactSerializer(artifact_don_quixote)
+        )

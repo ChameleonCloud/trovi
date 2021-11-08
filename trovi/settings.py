@@ -105,6 +105,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Plugins
+    "rest_framework",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
@@ -139,6 +141,23 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "trovi.wsgi.application"
+
+
+DATETIME_FORMAT = "%Y-%m-%dT%H:%M%Z"
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ],
+    "DATETIME_FORMAT": DATETIME_FORMAT,
+    "ORDERING_PARAM": "sort_by"
+}
 
 
 # Database
