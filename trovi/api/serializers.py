@@ -102,8 +102,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             ).data,
         }
 
+
 class ListArtifactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artifact
-
-
