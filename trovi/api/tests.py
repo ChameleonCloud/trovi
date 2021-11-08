@@ -390,9 +390,7 @@ class TestListArtifacts(APITestCase):
         response = self.client.get(self.list_artifact_path())
         as_json = json.loads(response.content)
 
-        self.assertEqual(
-            Artifact.objects.count(), len(as_json["artifacts"])
-        )
+        self.assertEqual(Artifact.objects.count(), len(as_json["artifacts"]))
         self.assertEqual(Artifact.objects.count(), as_json["next"]["limit"])
 
     def test_url_parameters(self):

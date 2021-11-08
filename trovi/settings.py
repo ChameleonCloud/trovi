@@ -156,7 +156,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
     "DATETIME_FORMAT": DATETIME_FORMAT,
-    "ORDERING_PARAM": "sort_by"
+    "ORDERING_PARAM": "sort_by",
 }
 
 
