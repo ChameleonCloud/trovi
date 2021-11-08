@@ -29,7 +29,7 @@ class Artifact(models.Model):
     )
 
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     # Author who owns this Artifact
@@ -69,7 +69,7 @@ class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="versions")
-    created_at = models.DateTimeField(auto_now_add=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
     contents_urn = URNField(max_length=settings.URN_MAX_CHARS)
 
     slug = models.SlugField(max_length=settings.SLUG_MAX_CHARS, editable=False)
@@ -94,9 +94,7 @@ class ArtifactVersion(models.Model):
         if created:
             time_stamp = instance.created_at.strftime("%Y-%m-%d")
             versions_today = ArtifactVersion.objects.filter(
-                artifact__created_at__year=instance.created_at.year,
-                artifact__created_at__month=instance.created_at.month,
-                artifact__created_at__day=instance.created_at.day,
+                artifact__created_at__date=instance.created_at.date(),
             ).count()
             if versions_today:
                 time_stamp += f".{versions_today}"
