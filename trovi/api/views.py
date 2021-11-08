@@ -32,7 +32,7 @@ class ListArtifacts(generics.ListAPIView):
     serializer_class = ArtifactSerializer
     pagination_class = ListArtifactsPagination
     filter_backends = [ListArtifactsOrderingFilter]
-    
+
     @transaction.atomic
     def get(self, request: Request, *args, **kwargs) -> Response:
         return super(ListArtifacts, self).get(request, *args, **kwargs)
