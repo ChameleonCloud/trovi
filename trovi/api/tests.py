@@ -116,9 +116,9 @@ def fake_link_urn() -> str:
         "urn:"
         + random.choice(
             [
-                lambda: f"disk_image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
+                lambda: f"disk-image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
                 # TODO unsure of how fabric data should be formatted
-                # lambda: f"disk_image:fabric:{fake.slug()}:{fake.uuid4()}",
+                # lambda: f"disk-image:fabric:{fake.slug()}:{fake.uuid4()}",
                 lambda: f"dataset:globus:{fake.uuid4()}:{fake.uri_path()}",
                 lambda: f"dataset:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}:"
                 f"{fake.uri_path()}",
@@ -197,7 +197,7 @@ link_don_quixote_dataset = ArtifactLink(
 )
 link_don_quixote_image = ArtifactLink(
     artifact_version=version_don_quixote_2,
-    urn="urn:disk_image:chameleon:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
+    urn="urn:disk-image:chameleon:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
     label="Image of DuchessOS",
 )
 don_quixote = [
