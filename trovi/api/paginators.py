@@ -14,14 +14,18 @@ class ListArtifactsPagination(LimitOffsetPagination):
     offset_query_param = "after"
     default_limit = None
     max_limit = None
+    limit = None
     offset = 0
 
     def get_limit(self, request: Request):
         limit = super(ListArtifactsPagination, self).get_limit(request)
-        if limit is None:
-            # This should only be acceptable if it is wrapped by an atomic transaction,
-            # such as ListArtifacts.get
-            return Artifact.objects.count()
+        if limit is not None:
+            self.limit = limit
+        if self.limit is None:
+            raise ValueError(
+                "ListArtifact limit should not be accessed before it is set"
+            )
+        return self.limit
 
     def get_offset(self, request: Request) -> int:
         return self.offset
@@ -37,6 +41,8 @@ class ListArtifactsPagination(LimitOffsetPagination):
                 self.offset = (*queryset,).index(queryset.get(uuid=after))
             except Artifact.DoesNotExist:
                 raise NotFound(f"Artifact with uuid {after} not found in query.")
+        if self.limit is None:
+            self.limit = queryset.count()
         return super(ListArtifactsPagination, self).paginate_queryset(
             queryset, request, view
         )
