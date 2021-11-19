@@ -416,7 +416,7 @@ class TestListArtifacts(APITestCase):
     def test_url_parameters(self):
         # TODO
         pass
-        response = self.client.get(
+        self.client.get(
             self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
         )
 
