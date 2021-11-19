@@ -4,6 +4,8 @@ from rest_framework import filters, views
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
+from trovi.models import Artifact
+
 
 class ListArtifactsOrderingFilter(filters.OrderingFilter):
     """
@@ -29,5 +31,10 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
         else:
             # By default, artifacts are sorted by UUID
             query = queryset.order_by("uuid")
+
+        # Filter for visibility
+        # TODO do not filter user's own artifacts (requires auth)
+        # TODO create index against visibility + ownership
+        query = query.filter(visibility=Artifact.Visibility.PUBLIC)
 
         return query
