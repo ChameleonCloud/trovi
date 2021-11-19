@@ -9,6 +9,7 @@ from django.db import transaction, IntegrityError, models
 from django.http import JsonResponse
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.renderers import JSONRenderer
 
@@ -264,7 +265,9 @@ def generate_fake_artifact() -> list[models.Model]:
             "verified": verified,
             "verified_at": None
             if not verified
-            else fake.date_time_between(datetime.date.min, datetime.date.max, pytz.UTC),
+            else fake.date_time_between(
+                datetime.date.min, datetime.date.max, timezone.utc
+            ),
         }
 
     artifact_links = [
