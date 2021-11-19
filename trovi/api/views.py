@@ -1,12 +1,11 @@
 from django.db import transaction
 from rest_framework import generics
-from rest_framework.exceptions import ValidationError
-from rest_framework.generics import get_object_or_404
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from trovi.api.filters import ListArtifactsOrderingFilter
 from trovi.api.paginators import ListArtifactsPagination
+from trovi.api.permissions import SharedWithPermission
 from trovi.api.serializers import ArtifactSerializer
 from trovi.models import Artifact
 
@@ -32,6 +31,7 @@ class ListArtifacts(generics.ListAPIView):
     serializer_class = ArtifactSerializer
     pagination_class = ListArtifactsPagination
     filter_backends = [ListArtifactsOrderingFilter]
+    permission_classes = [SharedWithPermission]
 
     @transaction.atomic
     def get(self, request: Request, *args, **kwargs) -> Response:
@@ -44,18 +44,10 @@ class GetArtifact(generics.RetrieveAPIView):
 
     Retrieve an artifact given its ID.
 
-    TODO auth, sharing_key
+    TODO auth
     """
 
     serializer_class = ArtifactSerializer
     queryset = Artifact.objects.all()
-
-    def get_object(self) -> Artifact:
-        """
-        Gets an artifact model by its UUID (primary key)
-        and returns its JSON representation
-        """
-        artifact_uuid = self.kwargs.get("artifact_uuid")
-        if not artifact_uuid:
-            raise ValidationError("GetArtifact request requires UUID.")
-        return get_object_or_404(self.get_queryset(), uuid=artifact_uuid)
+    permission_classes = [SharedWithPermission]
+    lookup_field = "uuid"

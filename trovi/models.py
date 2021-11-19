@@ -32,8 +32,8 @@ class Artifact(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Author who owns this Artifact
-    owner_urn = URNField(max_length=settings.URN_MAX_CHARS)
+    # Author who owns this Artifact TODO once auth is implemented, remove default
+    owner_urn = URNField(max_length=settings.URN_MAX_CHARS, default="urn:foo:bar")
 
     # Experiment reproduction metadata
     is_reproducible = models.BooleanField(default=False)

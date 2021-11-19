@@ -152,6 +152,7 @@ artifact_don_quixote = Artifact(
     short_description="Are they, or aren't they, actually giants?",
     long_description="foo",
     owner_urn="urn:chameleon:donquixote",
+    visibility=Artifact.Visibility.PUBLIC,
 )
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
@@ -224,6 +225,7 @@ def generate_fake_artifact() -> list[models.Model]:
             max_nb_chars=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS
         ),
         owner_urn=fake_user_urn(),
+        visibility=random.choice(Artifact.Visibility.values),
     )
     artifact_versions = [
         ArtifactVersion(
@@ -335,6 +337,7 @@ class APITestCase(TestCase):
 
     @classmethod
     def setUpClass(cls):
+        print("Generating test data...")
         super(APITestCase, cls).setUpClass()
         all_models = don_quixote + sum(
             [generate_fake_artifact() for _ in range(100)], start=[]
@@ -347,6 +350,7 @@ class APITestCase(TestCase):
                 generate_many_to_many(Artifact.objects.all())
         except IntegrityError as e:
             assert False, str(e)
+        print("Finished.")
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
@@ -390,8 +394,22 @@ class TestListArtifacts(APITestCase):
         response = self.client.get(self.list_artifact_path())
         as_json = json.loads(response.content)
 
-        self.assertEqual(Artifact.objects.count(), len(as_json["artifacts"]))
-        self.assertEqual(Artifact.objects.count(), as_json["next"]["limit"])
+        visible_objects_count = Artifact.objects.filter(
+            visibility=Artifact.Visibility.PUBLIC
+        ).count()
+        self.assertEqual(visible_objects_count, len(as_json["artifacts"]))
+        self.assertEqual(visible_objects_count, as_json["next"]["limit"])
+
+    def test_visibility(self):
+        private_artifacts = {
+            str(a.uuid)
+            for a in Artifact.objects.filter(visibility=Artifact.Visibility.PRIVATE)
+        }
+        response = self.client.get(self.list_artifact_path())
+        as_json = json.loads(response.content)
+
+        for artifact in as_json["artifacts"]:
+            self.assertNotIn(artifact["uuid"], private_artifacts)
 
     def test_url_parameters(self):
         # TODO
@@ -412,6 +430,8 @@ class TestListArtifactsEmpty(TestListArtifacts):
 class TestGetArtifact(APITestCase):
     def test_get_artifact(self):
         # TODO verify random data
+        # TODO verify artifact privacy/sharing
+        # TODO test non-existent artifact
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
 
