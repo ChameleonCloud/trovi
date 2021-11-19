@@ -164,8 +164,6 @@ REST_FRAMEWORK = {
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
 if os.environ.get("DB_ENGINE"):
-    print("BEBEBEBEBEBEEBEBE")
-    print(os.environ.get("DB_ENGINE"))
     DATABASES = {
         "default": {
             "ENGINE": os.environ.get("DB_ENGINE"),

@@ -4,7 +4,6 @@ import random
 from typing import Optional, Union, Iterable
 
 import faker.config
-import pytz
 from django.db import transaction, IntegrityError, models
 from django.http import JsonResponse
 from django.test import TestCase, Client
@@ -13,8 +12,8 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.renderers import JSONRenderer
 
-from trovi.api.serializers import ArtifactSerializer
 from trovi import settings
+from trovi.api.serializers import ArtifactSerializer
 from trovi.models import (
     Artifact,
     ArtifactVersion,
