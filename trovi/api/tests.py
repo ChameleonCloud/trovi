@@ -420,8 +420,6 @@ class TestListArtifacts(APITestCase):
             self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
         )
 
-        print(json.loads(response.content))
-
 
 class TestListArtifactsEmpty(TestListArtifacts):
     @classmethod
@@ -432,11 +430,25 @@ class TestListArtifactsEmpty(TestListArtifacts):
 class TestGetArtifact(APITestCase):
     def test_get_artifact(self):
         # TODO verify random data
-        # TODO verify artifact privacy/sharing
-        # TODO test non-existent artifact
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
 
         self.assertAPIResponseEqual(
             json.dumps(as_json), ArtifactSerializer(artifact_don_quixote)
         )
+
+    def test_get_private_artifact(self):
+        # TODO
+        pass
+
+    def test_get_private_artifact_for_user(self):
+        # TODO
+        pass
+
+    def test_get_missing_artifact(self):
+        # TODO
+        pass
+
+    def test_sharing_key(self):
+        # TODO
+        pass
