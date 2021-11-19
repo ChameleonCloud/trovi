@@ -411,7 +411,7 @@ class TestListArtifacts(APITestCase):
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["uuid"], private_artifacts)
+            self.assertNotIn(artifact["id"], private_artifacts)
 
     def test_url_parameters(self):
         # TODO
