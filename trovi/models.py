@@ -3,12 +3,22 @@ import secrets
 import uuid as uuid
 
 from django.core import validators
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 
-from trovi import settings
+from django.conf import settings
 from trovi.fields import URNField
+
+
+def generate_sharing_key() -> str:
+    return secrets.token_urlsafe(nbytes=settings.SHARING_KEY_LENGTH)
+
+
+def validate_sharing_key(k: bytes):
+    if not len(base64.decodebytes(k)) == settings.SHARING_KEY_LENGTH:
+        raise ValidationError(f"Invalid sharing key: {k}")
 
 
 class Artifact(models.Model):
@@ -58,10 +68,8 @@ class Artifact(models.Model):
     sharing_key = models.CharField(
         # Since sharing keys are base64 encoded, we use the base64 length formula here
         max_length=(((4 * settings.SHARING_KEY_LENGTH) // 3) + 3) & ~3,
-        default=lambda: secrets.token_urlsafe(nbytes=settings.SHARING_KEY_LENGTH),
-        validators=[
-            lambda k: len(base64.decodebytes(k)) == settings.SHARING_KEY_LENGTH
-        ],
+        default=generate_sharing_key,
+        validators=[validate_sharing_key],
     )
 
 

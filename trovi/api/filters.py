@@ -30,7 +30,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
                 )
         else:
             # By default, artifacts are sorted by UUID
-            query = queryset.order_by("uuid")
+            query = queryset.order_by("updated_at")
 
         # Filter for visibility
         # TODO do not filter user's own artifacts (requires auth)
