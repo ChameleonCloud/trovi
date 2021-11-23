@@ -98,12 +98,18 @@ OUTAGE_NOTIFICATION_EMAIL = os.environ.get("OUTAGE_NOTIFICATION_EMAIL", "")
 # Application definition
 
 INSTALLED_APPS = [
+    # Core
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Plugins
+    "rest_framework",
+    # Trovi
+    "trovi.apps.TroviConfig",
+    "trovi.api.apps.ApiConfig",
 ]
 
 MIDDLEWARE = [
@@ -137,15 +143,44 @@ TEMPLATES = [
 WSGI_APPLICATION = "trovi.wsgi.application"
 
 
+DATETIME_FORMAT = "%Y-%m-%dT%H:%M%Z"
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+        "rest_framework.renderers.BrowsableAPIRenderer",
+    ],
+    "DATETIME_FORMAT": DATETIME_FORMAT,
+    "ORDERING_PARAM": "sort_by",
+}
+
+
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+if os.environ.get("DB_ENGINE"):
+    DATABASES = {
+        "default": {
+            "ENGINE": os.environ.get("DB_ENGINE"),
+            "NAME": os.environ.get("DB_NAME"),
+            "HOST": os.environ.get("DB_HOST"),
+            "PORT": os.environ.get("DB_PORT"),
+            "USER": os.environ.get("DB_USER"),
+            "PASSWORD": os.environ.get("DB_PASSWORD"),
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -270,3 +305,23 @@ LOGGING = {
         "util": {"handlers": ["console"], "level": "INFO"},
     },
 }
+
+# Constraints
+URN_MAX_CHARS = 254
+GITHUB_USERNAME_MAX_CHARS = 40
+GITHUB_REPO_NAME_MAX_CHARS = 40
+GIT_BRANCH_NAME_MAX_CHARS = 28
+SLUG_MAX_CHARS = 16
+EMAIL_ADDRESS_MAX_CHARS = 254
+SHARING_KEY_LENGTH = 33
+
+ARTIFACT_TITLE_MAX_CHARS = 70
+ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70
+ARTIFACT_LONG_DESCRIPTION_MAX_CHARS = 5000
+
+ARTIFACT_TAG_MAX_CHARS = 32
+
+ARTIFACT_AUTHOR_NAME_MAX_CHARS = 200
+ARTIFACT_AUTHOR_AFFILIATION_MAX_CHARS = 200
+
+ARTIFACT_LINK_LABEL_MAX_CHARS = 40

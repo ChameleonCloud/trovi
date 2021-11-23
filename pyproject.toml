@@ -7,9 +7,15 @@ authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 [tool.poetry.dependencies]
 python = "^3.9"
 Django = "^3.2.8"
+djangorestframework = "^3.12.4"
+Markdown = "^3.3.4"
+django-filter = "^21.1"
+mysqlclient = "^2.0.3"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
+flake8 = "^4.0.1"
+Faker = "^9.7.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

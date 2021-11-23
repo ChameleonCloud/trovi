@@ -3,10 +3,11 @@ version: "3.5"
 services:
   trovi:
     container_name: trovi_web_test
-    image: ${DOCKER_IMAGE_LATEST}
+    image: ${DOCKER_DEV_IMAGE_LATEST}
     env_file:
       - .env
     volumes:
+      - .:/project
       - media:/media
       - static:/static
     ports:
@@ -28,6 +29,8 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - 33306:${DB_PORT}
     volumes:
       - db_vol:/docker-entrypoint-initdb.d
 
