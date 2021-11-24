@@ -1,7 +1,6 @@
 import datetime
 import json
 import random
-from pprint import pprint
 from typing import Optional, Union, Iterable
 
 import faker.config
@@ -615,9 +614,6 @@ class TestUpdateArtifact(APITestCase):
         new_donq_as_json = json.loads(response.content)
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=new_donq_as_json)
         new_donq = DummyArtifact(**new_donq_as_json)
-
-        pprint(old_donq_as_json, sort_dicts=False)
-        pprint(new_donq_as_json, sort_dicts=False)
 
         # Test that the intended fields changed
         diff_msg = f"{old_donq_as_json=} {new_donq_as_json=}"

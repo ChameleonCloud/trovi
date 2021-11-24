@@ -46,7 +46,7 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
         # Ensure that 1 and only 1 of the given tag exists
         if self.Meta.model.objects.filter(tag__iexact=tag).count() != 1:
             raise ValidationError(f"Unknown tag: {tag}")
-        return tag.lower()
+        return tag
 
 
 class ArtifactAuthorSerializer(serializers.ModelSerializer):
@@ -286,7 +286,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
         project_serializer = ArtifactProjectSerializer()
 
         with transaction.atomic():
-            print(f"TAGS!! {tags}")
             if tags:
                 # Since ArtifactTags are only supposed to be created internally, we look
                 # for existing ones that match those in the request, and add the new
