@@ -1,4 +1,5 @@
-from typing import Union, Protocol, Type, Dict
+from collections import namedtuple
+from typing import Union, Protocol, Type, Dict, Any
 
 from django.db import models
 
@@ -23,3 +24,6 @@ class APISerializable(Protocol):
 
 
 APIObject = Dict[str, Union[APISerializable, JSON]]
+
+# Dumb type used to modify request bodies
+DummyRequest = namedtuple("DummyRequest", ["data"])

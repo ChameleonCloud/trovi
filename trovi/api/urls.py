@@ -1,8 +1,18 @@
-from django.urls import path
+from rest_framework import routers
 
-from trovi.api import views
+from trovi.api.views import ArtifactViewSet
 
-urlpatterns = [
-    path("", views.ListArtifacts.as_view(), name="ListArtifacts"),
-    path("<uuid:uuid>", views.GetArtifact.as_view(), name="GetArtifact"),
-]
+router = routers.SimpleRouter()
+
+router.register("", ArtifactViewSet)
+
+urlpatterns = router.get_urls()
+
+# Because of how Django URL configuration works, we can't have multiple views at the
+# same path. So, in order to facilitate reverse lookups, we use these variables to
+# avoid the confusing naming pattern required for the ViewSet to include multiple
+# views at the same path.
+ListArtifact = "artifact-list"
+GetArtifact = "artifact-detail"
+CreateArtifact = "artifact-list"
+UpdateArtifact = "artifact-detail"

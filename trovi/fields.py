@@ -31,8 +31,7 @@ class URNField(models.CharField):
         return super(URNField, self).validators + [RegexValidator(URNField.pattern)]
 
     def to_python(self, value: Any) -> Optional[str]:
-        # This enforces that all URNs are converted to lowercase pre-write and post-read
         if value is None:
             return value
         else:
-            return super(URNField, self).to_python(value).lower()
+            return super(URNField, self).to_python(value)

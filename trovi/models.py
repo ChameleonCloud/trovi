@@ -2,13 +2,13 @@ import base64
 import secrets
 import uuid as uuid
 
+from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 
-from django.conf import settings
 from trovi.fields import URNField
 
 
@@ -32,10 +32,10 @@ class Artifact(models.Model):
     # Descriptive information
     title = models.CharField(max_length=settings.ARTIFACT_TITLE_MAX_CHARS)
     short_description = models.CharField(
-        max_length=settings.ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS, blank=True, null=True
+        max_length=settings.ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS
     )
     long_description = models.TextField(
-        max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS
+        max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS, null=True
     )
 
     # Timestamps
@@ -76,7 +76,9 @@ class Artifact(models.Model):
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="versions")
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="versions", null=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     contents_urn = URNField(max_length=settings.URN_MAX_CHARS)
 
@@ -120,7 +122,7 @@ class ArtifactEvent(models.Model):
 
     # The artifact version this event is for
     artifact_version = models.ForeignKey(
-        ArtifactVersion, models.CASCADE, related_name="events"
+        ArtifactVersion, models.CASCADE, related_name="events", null=True
     )
 
     # The type of event
@@ -138,14 +140,16 @@ class ArtifactEvent(models.Model):
 class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
-    artifacts = models.ManyToManyField(Artifact, related_name="tags")
+    artifacts = models.ManyToManyField(Artifact, related_name="tags", blank=True)
     tag = models.CharField(max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True)
 
 
 class ArtifactAuthor(models.Model):
     """Represents an author of an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="authors")
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="authors", null=True
+    )
     full_name = models.CharField(max_length=settings.ARTIFACT_AUTHOR_NAME_MAX_CHARS)
     affiliation = models.CharField(
         max_length=settings.ARTIFACT_AUTHOR_AFFILIATION_MAX_CHARS, blank=True, null=True
@@ -156,7 +160,9 @@ class ArtifactAuthor(models.Model):
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
-    artifact = models.ManyToManyField(Artifact, related_name="linked_projects")
+    artifacts = models.ManyToManyField(
+        Artifact, related_name="linked_projects", blank=True
+    )
     urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
 
 
@@ -164,7 +170,7 @@ class ArtifactLink(models.Model):
     """Represents a piece of data linked to an artifact"""
 
     artifact_version = models.ForeignKey(
-        ArtifactVersion, models.CASCADE, related_name="links"
+        ArtifactVersion, models.CASCADE, related_name="links", null=True
     )
     urn = URNField(max_length=settings.URN_MAX_CHARS)
     label = models.TextField(max_length=settings.ARTIFACT_LINK_LABEL_MAX_CHARS)
