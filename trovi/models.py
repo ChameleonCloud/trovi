@@ -5,7 +5,8 @@ import uuid as uuid
 from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+from django.db.models.functions import Upper
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 
@@ -39,8 +40,8 @@ class Artifact(models.Model):
     )
 
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
 
     # Author who owns this Artifact TODO once auth is implemented, remove default
     owner_urn = URNField(max_length=settings.URN_MAX_CHARS, default="urn:foo:bar")
@@ -64,6 +65,7 @@ class Artifact(models.Model):
         max_length=max(len(v) for v, _ in Visibility.choices),
         choices=Visibility.choices,
         default=Visibility.PRIVATE,
+        db_index=True,
     )
     sharing_key = models.CharField(
         # Since sharing keys are base64 encoded, we use the base64 length formula here
@@ -103,13 +105,18 @@ class ArtifactVersion(models.Model):
         """
         if created:
             time_stamp = instance.created_at.strftime("%Y-%m-%d")
-            versions_today = ArtifactVersion.objects.filter(
-                artifact__created_at__date=instance.created_at.date(),
-            ).count()
-            if versions_today:
-                time_stamp += f".{versions_today}"
-            instance.slug = time_stamp
-            instance.save()
+            with transaction.atomic():
+                versions_today = (
+                    ArtifactVersion.objects.filter(
+                        artifact__created_at__date=instance.created_at.date(),
+                    )
+                    .select_for_update()
+                    .count()
+                )
+                if versions_today:
+                    time_stamp += f".{versions_today}"
+                instance.slug = time_stamp
+                instance.save()
 
 
 class ArtifactEvent(models.Model):
@@ -129,6 +136,7 @@ class ArtifactEvent(models.Model):
     event_type = models.CharField(
         max_length=max(len(choice) for choice in EventType.values),
         choices=EventType.choices,
+        db_index=True,
     )
     # The user who initiated the event
     event_origin = URNField(max_length=settings.URN_MAX_CHARS, null=True)
@@ -140,8 +148,13 @@ class ArtifactEvent(models.Model):
 class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
+    class Meta:
+        indexes = [models.Index(Upper("tag"), name="tag__iexact")]
+
     artifacts = models.ManyToManyField(Artifact, related_name="tags", blank=True)
-    tag = models.CharField(max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True)
+    tag = models.CharField(
+        max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True, db_index=True
+    )
 
 
 class ArtifactAuthor(models.Model):
@@ -159,6 +172,9 @@ class ArtifactAuthor(models.Model):
 
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
+
+    class Meta:
+        indexes = [models.Index(Upper("urn"), name="urn__iexact")]
 
     artifacts = models.ManyToManyField(
         Artifact, related_name="linked_projects", blank=True
