@@ -1,5 +1,5 @@
 from collections import namedtuple
-from typing import Union, Protocol, Type, Dict, Any
+from typing import Union, Protocol, Type, Dict
 
 from django.db import models
 
