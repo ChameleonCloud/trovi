@@ -1,8 +1,5 @@
 import jsonschema
 
-from trovi.fields import URNField
-from trovi.models import ArtifactAuthor
-
 SchemaValidator = jsonschema.Draft202012Validator
 
 CreateArtifactSchema = SchemaValidator(
@@ -83,38 +80,13 @@ CreateArtifactSchema = SchemaValidator(
 
 # Describes a general JSON Pointer
 jsonPointer = {"type": "string", "pattern": "^(/[^/~]*(~[01][^/~]*)*)*$"}
-# Describes a JSON Pointer in terms of valid mutable paths in an Artifact
-mutableJsonPointer = {
-    "oneOf": [
-        {"type": "string", "pattern": r"^/title$"},
-        {"type": "string", "pattern": r"^/short_description$"},
-        {"type": "string", "pattern": r"^/long_description$"},
-        {"type": "string", "pattern": r"^/tags(/[0-9]+)?$"},
-        {
-            "type": "string",
-            "pattern": rf"^/authors"
-            rf"(/[0-9]+"
-            rf"(/{'|'.join(map(str, ArtifactAuthor._meta.get_fields()))})?)?$",
-        },
-        {"type": "string", "pattern": r"^/visibility$"},
-        {
-            "type": "string",
-            "pattern": rf"^/linked_projects"
-            rf"(/[0-9]+(/{str(URNField.pattern.pattern)})?)?$",
-        },
-        {
-            "type": "string",
-            "pattern": r"^/reproducibility(/(enable_requests|access_hours))?$",
-        },
-    ]
-}
 
 # JSON Patch Operations
 patchAdd = {
     "type": "object",
     "properties": {
         "op": {"enum": ["add"]},
-        "path": mutableJsonPointer,
+        "path": jsonPointer,
     },
     "required": ["op", "path", "value"],
     "additionalProperties": False,
@@ -125,7 +97,7 @@ patchRemove = {
         "op": {"enum": ["remove"]},
         "path": {
             "oneOf": [
-                mutableJsonPointer,
+                jsonPointer,
                 {"type": "string", "pattern": "^/sharing_key$"},
             ]
         },
@@ -137,7 +109,7 @@ patchReplace = {
     "type": "object",
     "properties": {
         "op": {"enum": ["replace"]},
-        "path": mutableJsonPointer,
+        "path": jsonPointer,
     },
     "required": ["op", "path", "value"],
     "additionalValues": False,
@@ -146,8 +118,8 @@ patchMove = {
     "type": "object",
     "properties": {
         "op": {"enum": ["move"]},
-        "from": mutableJsonPointer,
-        "path": mutableJsonPointer,
+        "from": jsonPointer,
+        "path": jsonPointer,
     },
     "required": ["op", "from", "path"],
     "additionalProperties": False,
@@ -157,16 +129,12 @@ patchCopy = {
     "properties": {
         "op": {"enum": ["copy"]},
         "from": jsonPointer,
-        "path": mutableJsonPointer,
+        "path": jsonPointer,
     },
     "required": ["op", "from", "path"],
     "additionalProperties": False,
 }
 
-# Valid update fields are handled at the Schema level.
-# This seemed like the easiest, strictest, and most non-redundant way to do it.
-# The one thing this leaves to be desired is error messages,
-# but that can be worked out in the future.
 UpdateArtifactSchema = SchemaValidator(
     {
         "type": "array",

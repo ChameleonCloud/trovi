@@ -133,7 +133,6 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtifactVersion
         fields = "__all__"
-        depth = 10
 
     links = ArtifactLinkSerializer(many=True, required=False)
 
@@ -176,19 +175,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Artifact
         fields = "__all__"
-        depth = 10
-        mutable_fields = {
-            "title",
-            "short_description",
-            "long_description",
-            "tags",
-            "authors",
-            "visibility",
-            "linked_projects",
-            "is_reproducible",
-            "repro_access_hours",
-            "sharing_key",
-        }
 
     # Related fields used for validating on writes
     tags = ArtifactTagSerializer(many=True, required=False)

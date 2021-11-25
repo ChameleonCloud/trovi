@@ -1,6 +1,5 @@
 from functools import cache
 
-import jsonpatch
 from django.db import transaction
 from rest_framework import viewsets, mixins
 from rest_framework.exceptions import MethodNotAllowed
@@ -11,6 +10,7 @@ from trovi.api import schema
 from trovi.api.filters import ListArtifactsOrderingFilter
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.parsers import JSONSchemaParser
+from trovi.api.patches import ArtifactPatch
 from trovi.api.permissions import SharedWithPermission
 from trovi.api.serializers import ArtifactSerializer
 from trovi.models import Artifact
@@ -123,7 +123,7 @@ class ArtifactViewSet(
         # as a regular update.
         artifact = self.get_serializer(self.get_object()).data
         raw = request.data
-        self.patch = jsonpatch.JsonPatch(raw)
+        self.patch = ArtifactPatch(raw)
         diff = self.patch.apply(artifact)
         # Here, we get around request objects being mostly immutable (for good reason).
         # This could be dangerous if rest_framework makes changes to its mixins.
