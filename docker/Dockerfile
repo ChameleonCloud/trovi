@@ -19,11 +19,12 @@ RUN \
 
 EXPOSE 80 443
 
+FROM base as dev
+
+# dev only
+RUN poetry install
+
 FROM base as release
 
 COPY . /project
 
-FROM release as dev
-
-# dev only
-RUN poetry install

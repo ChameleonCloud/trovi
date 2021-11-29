@@ -2,13 +2,14 @@ import base64
 import secrets
 import uuid as uuid
 
+from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+from django.db.models.functions import Upper
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 
-from django.conf import settings
 from trovi.fields import URNField
 
 
@@ -32,15 +33,15 @@ class Artifact(models.Model):
     # Descriptive information
     title = models.CharField(max_length=settings.ARTIFACT_TITLE_MAX_CHARS)
     short_description = models.CharField(
-        max_length=settings.ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS, blank=True, null=True
+        max_length=settings.ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS
     )
     long_description = models.TextField(
-        max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS
+        max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS, null=True
     )
 
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
 
     # Author who owns this Artifact TODO once auth is implemented, remove default
     owner_urn = URNField(max_length=settings.URN_MAX_CHARS, default="urn:foo:bar")
@@ -64,6 +65,7 @@ class Artifact(models.Model):
         max_length=max(len(v) for v, _ in Visibility.choices),
         choices=Visibility.choices,
         default=Visibility.PRIVATE,
+        db_index=True,
     )
     sharing_key = models.CharField(
         # Since sharing keys are base64 encoded, we use the base64 length formula here
@@ -76,7 +78,9 @@ class Artifact(models.Model):
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="versions")
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="versions", null=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     contents_urn = URNField(max_length=settings.URN_MAX_CHARS)
 
@@ -101,13 +105,18 @@ class ArtifactVersion(models.Model):
         """
         if created:
             time_stamp = instance.created_at.strftime("%Y-%m-%d")
-            versions_today = ArtifactVersion.objects.filter(
-                artifact__created_at__date=instance.created_at.date(),
-            ).count()
-            if versions_today:
-                time_stamp += f".{versions_today}"
-            instance.slug = time_stamp
-            instance.save()
+            with transaction.atomic():
+                versions_today = (
+                    ArtifactVersion.objects.filter(
+                        artifact__created_at__date=instance.created_at.date(),
+                    )
+                    .select_for_update()
+                    .count()
+                )
+                if versions_today:
+                    time_stamp += f".{versions_today}"
+                instance.slug = time_stamp
+                instance.save()
 
 
 class ArtifactEvent(models.Model):
@@ -120,13 +129,14 @@ class ArtifactEvent(models.Model):
 
     # The artifact version this event is for
     artifact_version = models.ForeignKey(
-        ArtifactVersion, models.CASCADE, related_name="events"
+        ArtifactVersion, models.CASCADE, related_name="events", null=True
     )
 
     # The type of event
     event_type = models.CharField(
         max_length=max(len(choice) for choice in EventType.values),
         choices=EventType.choices,
+        db_index=True,
     )
     # The user who initiated the event
     event_origin = URNField(max_length=settings.URN_MAX_CHARS, null=True)
@@ -138,14 +148,21 @@ class ArtifactEvent(models.Model):
 class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
-    artifacts = models.ManyToManyField(Artifact, related_name="tags")
-    tag = models.CharField(max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True)
+    class Meta:
+        indexes = [models.Index(Upper("tag"), name="tag__iexact")]
+
+    artifacts = models.ManyToManyField(Artifact, related_name="tags", blank=True)
+    tag = models.CharField(
+        max_length=settings.ARTIFACT_TAG_MAX_CHARS, unique=True, db_index=True
+    )
 
 
 class ArtifactAuthor(models.Model):
     """Represents an author of an artifact"""
 
-    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="authors")
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="authors", null=True
+    )
     full_name = models.CharField(max_length=settings.ARTIFACT_AUTHOR_NAME_MAX_CHARS)
     affiliation = models.CharField(
         max_length=settings.ARTIFACT_AUTHOR_AFFILIATION_MAX_CHARS, blank=True, null=True
@@ -156,7 +173,12 @@ class ArtifactAuthor(models.Model):
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
-    artifact = models.ManyToManyField(Artifact, related_name="linked_projects")
+    class Meta:
+        indexes = [models.Index(Upper("urn"), name="urn__iexact")]
+
+    artifacts = models.ManyToManyField(
+        Artifact, related_name="linked_projects", blank=True
+    )
     urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
 
 
@@ -164,7 +186,7 @@ class ArtifactLink(models.Model):
     """Represents a piece of data linked to an artifact"""
 
     artifact_version = models.ForeignKey(
-        ArtifactVersion, models.CASCADE, related_name="links"
+        ArtifactVersion, models.CASCADE, related_name="links", null=True
     )
     urn = URNField(max_length=settings.URN_MAX_CHARS)
     label = models.TextField(max_length=settings.ARTIFACT_LINK_LABEL_MAX_CHARS)

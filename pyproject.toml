@@ -11,6 +11,9 @@ djangorestframework = "^3.12.4"
 Markdown = "^3.3.4"
 django-filter = "^21.1"
 mysqlclient = "^2.0.3"
+jsonschema = "^4.2.1"
+jsonpatch = "^1.32"
+cmarkgfm = "^0.6.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
