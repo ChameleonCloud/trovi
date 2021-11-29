@@ -1,4 +1,4 @@
-import commonmark
+import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
@@ -347,7 +347,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         try:
             # Not sure what the implications of format is here,
             # but rst is the only format that doesn't get automatically dumped to log
-            commonmark.commonmark(long_description, format="rst")
+            commonmark.github_flavored_markdown_to_html(long_description)
         except ValueError as e:
             raise ValidationError(f"Invalid CommonMark syntax: {str(e)}")
         return long_description
