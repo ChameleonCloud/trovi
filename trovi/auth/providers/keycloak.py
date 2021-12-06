@@ -63,9 +63,11 @@ class KeycloakIdentityProvider(IdentityProviderClient):
                 return JWT.from_dict(token)
             except JOSEError as e:
                 LOG.debug(f"Keycloak signing key failed: {e}")
-        raise AuthenticationFailed(f"Keycloak failed to decode subject token.")
+        raise AuthenticationFailed("Keycloak failed to decode subject token.")
 
-    def introspect_token(self, subject_token: JWT) -> Optional[OAuth2TokenIntrospection]:
+    def introspect_token(
+        self, subject_token: JWT
+    ) -> Optional[OAuth2TokenIntrospection]:
         try:
             introspection_url = self.openid.get_url("token_introspection_endpoint")
         except KeyError:
@@ -83,7 +85,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
                 },
             )
         except HTTPError:
-            raise AuthenticationFailed(f"Failed to introspect subject token.")
+            raise AuthenticationFailed("Failed to introspect subject token.")
 
         response["token"] = subject_token
         return OAuth2TokenIntrospection.from_dict(response)

@@ -10,7 +10,6 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 import logging
 import os
 import secrets
-from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

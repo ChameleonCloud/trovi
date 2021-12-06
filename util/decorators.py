@@ -1,5 +1,6 @@
+import operator
 import time
-from functools import lru_cache, wraps
+from functools import lru_cache, wraps, partial
 from threading import Lock
 from time import monotonic_ns
 from typing import Callable, Type, Any
@@ -71,7 +72,7 @@ def retry(
     if hasattr(cond, "__call__"):
         is_desired_value = cond
     else:
-        is_desired_value = lambda x: x == cond
+        is_desired_value = partial(operator.eq, cond)
 
     def decorator(f: Callable):
         def retry_f(*args, **kwargs):
