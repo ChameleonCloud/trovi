@@ -9,6 +9,8 @@ https://docs.djangoproject.com/en/3.2/ref/settings/
 """
 import logging
 import os
+import secrets
+from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -26,6 +28,7 @@ SECRET_KEY = os.environ.get(
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_ENV", "DEBUG") == "DEBUG"
+logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
 
 # Security settings
 SECURE_HSTS_SECONDS = 155520011
@@ -38,9 +41,13 @@ SECURE_SSL_REDIRECT = False
 # Tells Django that connections with X-Forwarded-Proto: https are secure
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+TROVI_FQDN = os.environ.get("TROVI_FQDN")
+
 ALLOWED_HOSTS = [
-    # We don't need to add localhost here, since DEBUG mode automatically allows it
-    # TODO future Trovi domain name, reverse-proxy
+    "localhost",
+    "127.0.0.1",
+    TROVI_FQDN,
+    # TODO reverse-proxy
 ]
 
 # OpenStack Properties
@@ -88,12 +95,21 @@ EMAIL_HOST = os.environ.get("SMTP_HOST", "localhost")
 EMAIL_PORT = os.environ.get("SMTP_PORT", 25)
 EMAIL_HOST_USER = os.environ.get("SMTP_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-# TODO replace chameleoncloud.org with trovi URL
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@chameleoncloud.org")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", f"no-reply@{TROVI_FQDN}")
 
 # User News Outage Notification
 OUTAGE_NOTIFICATION_EMAIL = os.environ.get("OUTAGE_NOTIFICATION_EMAIL", "")
 
+# Authentication
+CHAMELEON_KEYCLOAK_SERVER_URL = os.environ.get("CHAMELEON_KEYCLOAK_SERVER_URL")
+CHAMELEON_KEYCLOAK_REALM_NAME = os.environ.get("CHAMELEON_KEYCLOAK_REALM_NAME")
+CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_ID = os.environ.get(
+    "CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_ID"
+)
+CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET = os.environ.get(
+    "CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET"
+)
+CHAMELEON_KEYCLOAK_DEFAULT_SIGNING_ALGORITHM = "RS256"
 
 # Application definition
 
@@ -107,9 +123,11 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Plugins
     "rest_framework",
+    "rest_framework_simplejwt",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
+    "trovi.auth.apps.AuthConfig",
 ]
 
 MIDDLEWARE = [
@@ -157,6 +175,9 @@ REST_FRAMEWORK = {
     ],
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        # TODO
+    ],
 }
 
 
@@ -314,6 +335,27 @@ GIT_BRANCH_NAME_MAX_CHARS = 28
 SLUG_MAX_CHARS = 16
 EMAIL_ADDRESS_MAX_CHARS = 254
 SHARING_KEY_LENGTH = 33
+
+AUTH_TROVI_TOKEN_LIFESPAN_SECONDS = 300  # 5 minutes
+AUTH_JWT_MAX_FIELD_LENGTH = 255
+AUTH_TROVI_TOKEN_SIGNING_KEY = os.environ.get("TROVI_TOKEN_SIGNING_KEY")
+if not AUTH_TROVI_TOKEN_SIGNING_KEY:
+    # Generate Trovi Token signing key
+    # JWT Signing keys are ephemeral, tied on Trovi's runtime.
+    # This serves the purpose of both rotating keys over time,
+    # and ensuring that all keys from before a particular revision
+    # are automatically revoked
+    AUTH_TROVI_TOKEN_SIGNING_KEY = secrets.token_urlsafe(nbytes=256)
+    os.environ["TROVI_TOKEN_SIGNING_KEY"] = AUTH_TROVI_TOKEN_SIGNING_KEY
+    print(f"{AUTH_TROVI_TOKEN_SIGNING_KEY=}")
+AUTH_TROVI_TOKEN_SIGNING_ALGORITHM = "HS256"
+AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS = 5
+AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_SECONDS = 2
+# TODO allow this to be pluggable by third party IdPs
+AUTH_APPROVED_AUTHORIZED_PARTIES = set(
+    os.environ.get("AUTH_APPROVED_AUTHORIZED_PARTIES").split(",")
+)
+AUTH_TOKEN_CONVERSION_CACHE_SIZE = 256
 
 ARTIFACT_TITLE_MAX_CHARS = 70
 ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70
