@@ -63,12 +63,6 @@ class TestTokenGrant(AuthTestCase):
             test_client_id = os.environ.get(f"{provider_name}_TEST_CLIENT_ID")
             test_client_secret = os.environ.get(f"{provider_name}_TEST_CLIENT_SECRET")
 
-            print(
-                f"{test_username=} {test_password=} {test_client_id=} {test_client_secret=}"
-            )
-            print(f"{settings.AUTH_TROVI_TOKEN_SIGNING_KEY=}")
-            print(f"{settings.AUTH_APPROVED_AUTHORIZED_PARTIES=}")
-
             valid_token = provider.get_test_user_token(
                 test_username, test_password, test_client_id, test_client_secret
             )
