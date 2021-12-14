@@ -3,7 +3,7 @@ This package provides the interface for implementing Cloud Identity Provider plu
 as well as implementations for the officially supported Identity Providers
 """
 
-from functools import cache, lru_cache
+from functools import cache
 
 from django.conf import settings
 from rest_framework_simplejwt.exceptions import InvalidToken
