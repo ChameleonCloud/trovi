@@ -28,7 +28,7 @@ class JWT:
 
     class ScopeMeta(EnumMeta):
         def __contains__(cls, item: str) -> bool:
-            return item in (s.value for s in cls.__members__.values())
+            return any(s.value == item for s in cls.__members__.values())
 
     class Scopes(Enum, metaclass=ScopeMeta):
         ARTIFACTS_READ = "artifacts:read"

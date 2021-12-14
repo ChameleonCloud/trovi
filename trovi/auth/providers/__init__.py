@@ -33,7 +33,6 @@ def validate_subject_token(jws: str) -> JWT:
     return validated_token
 
 
-@lru_cache(maxsize=settings.AUTH_TOKEN_CONVERSION_CACHE_SIZE)
 def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     """
     Figures out which Identity Provider authorized a subject token

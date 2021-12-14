@@ -24,8 +24,6 @@ class JSONSchemaParser(JSONParser):
         parsed = super(JSONSchemaParser, self).parse(
             stream, media_type=media_type, parser_context=parser_context
         )
-        # This is good to throw, because it should only happen if we've made
-        # a terrible programming error
         schema = parser_context.get("schema")
 
         if schema:

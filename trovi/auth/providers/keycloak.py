@@ -5,6 +5,7 @@ from typing import Optional
 from django.conf import settings
 from jose import jwk, JOSEError
 from jose.backends.base import Key
+from jose.constants import ALGORITHMS
 from keycloak.realm import KeycloakRealm
 from requests import HTTPError
 from rest_framework.exceptions import AuthenticationFailed
@@ -55,15 +56,15 @@ class KeycloakIdentityProvider(IdentityProviderClient):
                 token = self.openid.decode_token(
                     (jws := subject_token.to_jws()),
                     key := key.public_key(),
-                    algorithms=[alg := key.to_dict().get("alg", "RS256")],
+                    algorithms=ALGORITHMS.RSA_DS,
                 )
                 token["key"] = key
-                token["alg"] = alg
+                token["alg"] = JWT.Algorithm.RS256
                 token["jws"] = jws
                 return JWT.from_dict(token)
             except JOSEError as e:
-                LOG.debug(f"Keycloak signing key failed: {e}")
-        raise AuthenticationFailed("Keycloak failed to decode subject token.")
+                LOG.debug(f"{self.get_name()} signing key failed: {e}")
+        raise AuthenticationFailed(f"{self.get_name()} failed to decode subject token.")
 
     def introspect_token(
         self, subject_token: JWT
@@ -71,8 +72,8 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         try:
             introspection_url = self.openid.get_url("token_introspection_endpoint")
         except KeyError:
-            # If Keycloak doesn't support introspection, return None
-            LOG.warning(f"{self.get_name()} does not support inrospection.")
+            # If IdP doesn't support introspection, return None
+            LOG.warning(f"{self.get_name()} does not support introspection.")
             return None
 
         try:
