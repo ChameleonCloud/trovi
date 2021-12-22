@@ -18,6 +18,7 @@ class StreamingFileUploadHandler(FileUploadHandler):
     Handles streaming uploads to remote storage. Uploaded chunks are
     immediately forwarded without additional buffering.
     """
+
     storage_backend: StorageBackend = None
     supported_filetypes = {".tar", ".tar.gz"}
 

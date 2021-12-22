@@ -61,7 +61,7 @@ class SwiftBackend(StorageBackend):
     @property
     def object_url(self) -> str:
         if not self.content_id:
-            raise ValueError(f"Cannot make calls for unknown object.")
+            raise ValueError("Cannot make calls for unknown object.")
         return f"{self.container_url}/{self.content_id}"
 
     @property
