@@ -1,14 +1,9 @@
-from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework_simplejwt import views
-from rest_framework_simplejwt.exceptions import AuthenticationFailed
 
 from trovi.api.parsers import JSONSchemaParser
 from trovi.auth import schema
-from trovi.auth.providers import get_subject_token_provider
 from trovi.auth.serializers import TokenGrantRequestSerializer
-from trovi.auth.tokens import JWT
 
 
 class TokenGrant(views.TokenViewBase):
