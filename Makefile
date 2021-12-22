@@ -24,7 +24,7 @@ build: .env
 
 build-dev: .env
 	docker build --build-arg PY_IMG_TAG=$(PY_IMG_TAG) \
-				 -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/dev.Dockerfile --target dev .
+				 -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target dev .
 	docker tag $(DOCKER_DEV_IMAGE) $(DOCKER_DEV_IMAGE_LATEST)
 
 .PHONY: publish

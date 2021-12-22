@@ -1,0 +1,6 @@
+[submodule "examples/small"]
+	path = examples/small
+	url = git@github.com:ChameleonCloud/notebooks-scc.git
+[submodule "examples/large"]
+	path = examples/large
+	url = git@github.com:ChameleonCloud/docs.git

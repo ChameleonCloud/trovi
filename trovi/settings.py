@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
+SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "django-insecure-a-+g)^dtso--4cnaw*dlnst3fq+x$znmp=u$*39y2-h6q8=ejm",
 )
@@ -49,35 +49,29 @@ ALLOWED_HOSTS = [
     # TODO reverse-proxy
 ]
 
-# OpenStack Properties
-OPENSTACK_UC_REGION = os.environ.get("OPENSTACK_UC_REGION", "CHI@UC")
-OPENSTACK_TACC_REGION = os.environ.get("OPENSTACK_TACC_REGION", "CHI@TACC")
-OPENSTACK_SERVICE_USERNAME = os.environ.get("OPENSTACK_SERVICE_USERNAME", "")
-OPENSTACK_SERVICE_PASSWORD = os.environ.get("OPENSTACK_SERVICE_PASSWORD", "")
-OPENSTACK_SERVICE_PROJECT_ID = os.environ.get("OPENSTACK_SERVICE_PROJECT_ID", "")
-OPENSTACK_SERVICE_PROJECT_NAME = os.environ.get(
-    "OPENSTACK_SERVICE_PROJECT_NAME", "services"
-)
-OPENSTACK_AUTH_REGIONS = {
-    OPENSTACK_UC_REGION: os.environ.get(
-        "OPENSTACK_UC_AUTH_URL", "https://chi.uc.chameleoncloud.org:5000/v3"
-    ),
-    OPENSTACK_TACC_REGION: os.environ.get(
-        "OPENSTACK_TACC_AUTH_URL", "https://chi.tacc.chameleoncloud.org:5000/v3"
-    ),
-}
-
 # Artifact storage
-ARTIFACT_SHARING_SWIFT_ENDPOINT = os.getenv("ARTIFACT_SHARING_SWIFT_ENDPOINT")
-ARTIFACT_SHARING_SWIFT_TEMP_URL = os.getenv("ARTIFACT_SHARING_SWIFT_TEMP_URL")
-ARTIFACT_SHARING_SWIFT_CONTAINER = os.getenv(
-    "ARTIFACT_SHARING_SWIFT_CONTAINER", "trovi"
+CHAMELEON_KEYSTONE_ENDPOINT = os.getenv("CHAMELEON_KEYSTONE_ENDPOINT")
+CHAMELEON_SWIFT_TEMP_URL_KEY = os.getenv("CHAMELEON_SWIFT_TEMP_URL_KEY")
+os.environ["CHAMELEON_SWIFT_TEMP_URL_KEY"] = CHAMELEON_SWIFT_TEMP_URL_KEY
+CHAMELEON_SWIFT_CONTAINER = os.getenv("CHAMELEON_SWIFT_CONTAINER", "trovi-dev")
+CHAMELEON_JUPYTERHUB_URL = os.getenv(
+    "CHAMELEON_JUPYTERHUB_URL", "https://jupyter.chameleoncloud.org"
 )
-ARTIFACT_SHARING_JUPYTERHUB_URL = os.getenv(
-    "ARTIFACT_SHARING_JUPYTERHUB_URL", "https://jupyter.chameleoncloud.org"
+CHAMELEON_SWIFT_USERNAME = os.getenv("CHAMELEON_SWIFT_USERNAME")
+CHAMELEON_SWIFT_PASSWORD = os.getenv("CHAMELEON_SWIFT_PASSWORD")
+CHAMELEON_SWIFT_PROJECT_NAME = os.getenv("CHAMELEON_SWIFT_PROJECT_NAME")
+CHAMELEON_SWIFT_PROJECT_DOMAIN_NAME = os.getenv("CHAMELEON_SWIFT_PROJECT_DOMAIN_NAME")
+CHAMELEON_SWIFT_USER_DOMAIN_NAME = os.getenv(
+    "CHAMELEON_SWIFT_USER_DOMAIN_NAME", "default"
 )
+CHAMELEON_SWIFT_REGION_NAME = os.getenv("CHAMELEON_SWIFT_REGION_NAME", "CHI@UC")
+
 ZENODO_URL = os.getenv("ZENODO_URL", "https://zenodo.org")
 ZENODO_DEFAULT_ACCESS_TOKEN = os.getenv("ZENODO_DEFAULT_ACCESS_TOKEN")
+
+AUTH_TROVI_TOKEN_LIFESPAN_SECONDS = 300
+
+ARTIFACT_STORAGE_FILENAME_MAX_LENGTH = 256
 
 # Artifact policy
 # Max reproduction requests should ideally never be lowered, only raised.
@@ -90,14 +84,14 @@ ARTIFACT_SHARING_MAX_REPRO_REQUESTS = 10
 #
 #####
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = os.environ.get("SMTP_HOST", "localhost")
-EMAIL_PORT = os.environ.get("SMTP_PORT", 25)
-EMAIL_HOST_USER = os.environ.get("SMTP_USER", "")
-EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", f"no-reply@{TROVI_FQDN}")
+EMAIL_HOST = os.getenv("SMTP_HOST", "localhost")
+EMAIL_PORT = os.getenv("SMTP_PORT", 25)
+EMAIL_HOST_USER = os.getenv("SMTP_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", f"no-reply@{TROVI_FQDN}")
 
 # User News Outage Notification
-OUTAGE_NOTIFICATION_EMAIL = os.environ.get("OUTAGE_NOTIFICATION_EMAIL", "")
+OUTAGE_NOTIFICATION_EMAIL = os.getenv("OUTAGE_NOTIFICATION_EMAIL", "")
 
 # Authentication
 CHAMELEON_KEYCLOAK_SERVER_URL = os.environ.get("CHAMELEON_KEYCLOAK_SERVER_URL")
@@ -163,11 +157,7 @@ WSGI_APPLICATION = "trovi.wsgi.application"
 DATETIME_FORMAT = "%Y-%m-%dT%H:%M%Z"
 
 REST_FRAMEWORK = {
-    # Use Django's standard `django.contrib.auth` permissions,
-    # or allow read-only access for unauthenticated users.
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly"
-    ],
+    "DEFAULT_PERMISSION_CLASSES": [],
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
@@ -183,15 +173,15 @@ REST_FRAMEWORK = {
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
 
-if os.environ.get("DB_ENGINE"):
+if os.getenv("DB_ENGINE"):
     DATABASES = {
         "default": {
-            "ENGINE": os.environ.get("DB_ENGINE"),
-            "NAME": os.environ.get("DB_NAME"),
-            "HOST": os.environ.get("DB_HOST"),
-            "PORT": os.environ.get("DB_PORT"),
-            "USER": os.environ.get("DB_USER"),
-            "PASSWORD": os.environ.get("DB_PASSWORD"),
+            "ENGINE": os.getenv("DB_ENGINE"),
+            "NAME": os.getenv("DB_NAME"),
+            "HOST": os.getenv("DB_HOST"),
+            "PORT": os.getenv("DB_PORT"),
+            "USER": os.getenv("DB_USER"),
+            "PASSWORD": os.getenv("DB_PASSWORD"),
         }
     }
 else:
@@ -221,6 +211,10 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+FILE_UPLOAD_HANDLERS = [
+    "trovi.storage.handlers.StreamingFileUploadHandler",
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/3.2/topics/i18n/
@@ -251,12 +245,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Logger config
 #
 #####
-LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO")
-LOG_VERBOSITY = os.environ.get("DJANGO_LOG_VERBOSITY", "SHORT")
-SQL_LEVEL = os.environ.get("DJANGO_SQL_LEVEL", "INFO")
-SQL_VERBOSITY = os.environ.get("DJANGO_SQL_VERBOSITY", "SHORT")
-CONSOLE_WIDTH = os.environ.get("DJANGO_LOG_WIDTH", 100)
-CONSOLE_INDENT = os.environ.get("DJANGO_LOG_INDENT", 2)
+LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO")
+LOG_VERBOSITY = os.getenv("DJANGO_LOG_VERBOSITY", "SHORT")
+SQL_LEVEL = os.getenv("DJANGO_SQL_LEVEL", "INFO")
+SQL_VERBOSITY = os.getenv("DJANGO_SQL_VERBOSITY", "SHORT")
+CONSOLE_WIDTH = os.getenv("DJANGO_LOG_WIDTH", 100)
+CONSOLE_INDENT = os.getenv("DJANGO_LOG_INDENT", 2)
 
 # Ensure Python `warnings` are ingested by logging infra
 logging.captureWarnings(True)
@@ -326,6 +320,9 @@ LOGGING = {
     },
 }
 
+# Testing
+TEST_RUNNER = "util.test.SampleDataTestRunner"
+
 # Constraints
 URN_MAX_CHARS = 254
 GITHUB_USERNAME_MAX_CHARS = 40
@@ -363,3 +360,5 @@ ARTIFACT_AUTHOR_NAME_MAX_CHARS = 200
 ARTIFACT_AUTHOR_AFFILIATION_MAX_CHARS = 200
 
 ARTIFACT_LINK_LABEL_MAX_CHARS = 40
+
+STORAGE_BACKEND_AUTH_RETRY_ATTEMPTS = 5

@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models.functions import Upper
+from django.db.models.functions import Lower
 from django.db.models.signals import post_save
 from django.utils.translation import gettext_lazy as _
 
@@ -78,6 +78,11 @@ class Artifact(models.Model):
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
 
+    class Meta:
+        indexes = [
+            models.Index(Lower("contents_urn"), name="version__contents_urn__iexact")
+        ]
+
     artifact = models.ForeignKey(
         Artifact, models.CASCADE, related_name="versions", null=True
     )
@@ -109,6 +114,7 @@ class ArtifactVersion(models.Model):
                 versions_today = (
                     ArtifactVersion.objects.filter(
                         artifact__created_at__date=instance.created_at.date(),
+                        artifact_id=instance.artifact_id,
                     )
                     .select_for_update()
                     .count()
@@ -149,7 +155,7 @@ class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
 
     class Meta:
-        indexes = [models.Index(Upper("tag"), name="tag__iexact")]
+        indexes = [models.Index(Lower("tag"), name="tag__iexact")]
 
     artifacts = models.ManyToManyField(Artifact, related_name="tags", blank=True)
     tag = models.CharField(
@@ -174,7 +180,7 @@ class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 
     class Meta:
-        indexes = [models.Index(Upper("urn"), name="urn__iexact")]
+        indexes = [models.Index(Lower("urn"), name="artifact_project__urn__iexact")]
 
     artifacts = models.ManyToManyField(
         Artifact, related_name="linked_projects", blank=True
