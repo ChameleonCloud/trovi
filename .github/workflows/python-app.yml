@@ -43,5 +43,10 @@ jobs:
       run: |
         poetry run python manage.py migrate
     - name: Django tests
+      env:
+        CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET: ${{ secrets.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET }}
+        CHAMELEON_KEYCLOAK_TEST_USER_USERNAME: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_USER_USERNAME }}
+        CHAMELEON_KEYCLOAK_TEST_USER_PASSWORD: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_USER_PASSWORD }}
+        CHAMELEON_KEYCLOAK_TEST_CLIENT_SECRET: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_CLIENT_SECRET }}
       run: |
         poetry run python manage.py test

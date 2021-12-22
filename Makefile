@@ -19,12 +19,12 @@ PY_IMG_TAG ?= 3.9.7
 .PHONY: build
 build: .env
 	docker build --build-arg PY_IMG_TAG=$(PY_IMG_TAG) \
-				 -t $(DOCKER_IMAGE) -f $(DOCKER_DIR)/Dockerfile .
+				 -t $(DOCKER_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target release .
 	docker tag $(DOCKER_IMAGE) $(DOCKER_IMAGE_LATEST)
 
 build-dev: .env
 	docker build --build-arg PY_IMG_TAG=$(PY_IMG_TAG) \
-				 -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/dev.Dockerfile .
+				 -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/dev.Dockerfile --target dev .
 	docker tag $(DOCKER_DEV_IMAGE) $(DOCKER_DEV_IMAGE_LATEST)
 
 .PHONY: publish
@@ -49,14 +49,3 @@ migrations: start
 
 requirements-frozen.txt: build
 	docker run --rm $(DOCKER_IMAGE) pip freeze > $@
-
-COMPOSE_TEST_CMD :=  docker-compose -f tests-compose.yml
-
-.PHONY: deploy-tests
-deploy-tests:
-	$(COMPOSE_TEST_CMD) run --rm trovi migrate
-	$(COMPOSE_TEST_CMD) run --rm trovi collectstatic --no-input
-
-.PHONY: deploy-tests-clean
-deploy-tests-clean:
-	$(COMPOSE_TEST_CMD) down -v

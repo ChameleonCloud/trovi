@@ -149,13 +149,13 @@ class ArtifactViewSet(
 
     def get_parser_context(self, http_request: Request) -> dict:
         context = super(ArtifactViewSet, self).get_parser_context(http_request)
-        # Since action has not been defined at this point, we can only provide reference
-        # to available schema, and allow the parser to figure it out what schema
-        # it needs on its own.
-        context["schema"] = {
-            "create": schema.CreateArtifactSchema,
-            "partial_update": schema.UpdateArtifactSchema,
-        }
+
+        # Since action has not been defined at this point, we determine the appropriate
+        # schema via the request method
+        if (method := self.request.method.upper()) == "POST":
+            context["schema"] = schema.CreateArtifactSchema
+        elif method in ("PATCH", "UPDATE"):
+            context["schema"] = schema.UpdateArtifactSchema
 
         return context
 

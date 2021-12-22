@@ -8,11 +8,11 @@ from django.conf import settings
 from django.db import transaction, IntegrityError, models
 from django.http import JsonResponse
 from django.test import TransactionTestCase
-from django.urls import reverse
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
+from rest_framework.reverse import reverse
 
 from trovi.api.serializers import ArtifactSerializer
 from trovi.api.urls import ListArtifact, GetArtifact, CreateArtifact, UpdateArtifact
