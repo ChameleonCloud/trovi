@@ -60,12 +60,11 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_test_user_token(
+    def get_user_token(
         self, username: str, password: str, client_id: str, client_secret: str, **kwargs
     ) -> Any:
         """
-        Obtain a user token for testing. The test user should be configured in the
-        environment.
+        Obtain a user token.
 
         The client ID/secret should be a client that can provide tokens to a user that
         are used to authenticate to Trovi. The client should not be Trovi itself.

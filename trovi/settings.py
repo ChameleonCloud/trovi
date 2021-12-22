@@ -337,15 +337,13 @@ SHARING_KEY_LENGTH = 33
 
 AUTH_TROVI_TOKEN_LIFESPAN_SECONDS = 300  # 5 minutes
 AUTH_JWT_MAX_FIELD_LENGTH = 255
-AUTH_TROVI_TOKEN_SIGNING_KEY = os.environ.get("TROVI_TOKEN_SIGNING_KEY")
-if not AUTH_TROVI_TOKEN_SIGNING_KEY:
-    # Generate Trovi Token signing key
-    # JWT Signing keys are ephemeral, tied on Trovi's runtime.
-    # This serves the purpose of both rotating keys over time,
-    # and ensuring that all keys from before a particular revision
-    # are automatically revoked
-    AUTH_TROVI_TOKEN_SIGNING_KEY = secrets.token_urlsafe(nbytes=256)
-    os.environ["TROVI_TOKEN_SIGNING_KEY"] = AUTH_TROVI_TOKEN_SIGNING_KEY
+# In prod, JWT signing keys should be ephemeral, tied on Trovi's runtime.
+# This serves the purpose of both rotating keys over time,
+# and ensuring that all keys from before a particular revision
+# are automatically revoked
+AUTH_TROVI_TOKEN_SIGNING_KEY = os.environ.get(
+    "TROVI_TOKEN_SIGNING_KEY", secrets.token_urlsafe(nbytes=256)
+)
 AUTH_TROVI_TOKEN_SIGNING_ALGORITHM = "HS256"
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS = 5
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_SECONDS = 2

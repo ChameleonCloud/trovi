@@ -25,34 +25,3 @@ class TokenGrant(views.TokenViewBase):
         context["schema"] = schema.TokenGrantSchema
 
         return context
-
-
-class TokenInspect(views.TokenVerifyView):
-    """
-    Performs OAuth2.0 Token Introspection on a subject token
-    """
-
-    lookup_url_kwarg = "token"
-
-    def post(self, request: Request, *args, **kwargs) -> Response:
-        jws = self.kwargs.get(self.lookup_url_kwarg)
-        if not jws:
-            raise ValidationError("Missing 'token' parameter")
-        jwt = JWT.from_jws(jws, validate=False)
-        provider = get_subject_token_provider(jwt)
-        introspection = provider.introspect_token(jwt)
-        if not introspection:
-            raise AuthenticationFailed(
-                f"Token introspection not available for "
-                f"Identity Provider {provider.get_name()}"
-            )
-        return Response(
-            {
-                "token": introspection.token,
-                "exp": introspection.exp,
-                "scope": introspection.scope,
-                "username": introspection.username,
-                "client_id": introspection.client_id,
-                "active": introspection.active,
-            }
-        )

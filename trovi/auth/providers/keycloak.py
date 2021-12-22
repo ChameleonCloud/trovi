@@ -37,11 +37,17 @@ class KeycloakIdentityProvider(IdentityProviderClient):
     def get_client_token(self, **kwargs) -> dict:
         return self.openid.client_credentials(**kwargs)
 
-    def get_test_user_token(
+    def get_user_token(
         self, username: str, password: str, client_id: str, client_secret: str, **kwargs
     ) -> dict:
         if not username or not password or not client_id or not client_secret:
-            raise RuntimeError("No Keycloak configured for testing.")
+            raise RuntimeError(
+                f"Missing required user data for obtaining token: "
+                f"{username=} "
+                f"password={'*****' if password else password} "
+                f"{client_id=} "
+                f"client_secret={'*****' if client_secret else client_secret}"
+            )
         openid = self.realm.open_id_connect(client_id, client_secret)
         creds = openid.password_credentials(username, password)
         return creds["access_token"]

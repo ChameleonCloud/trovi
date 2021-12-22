@@ -63,7 +63,7 @@ class TestTokenGrant(AuthTestCase):
             test_client_id = os.environ.get(f"{provider_name}_TEST_CLIENT_ID")
             test_client_secret = os.environ.get(f"{provider_name}_TEST_CLIENT_SECRET")
 
-            valid_token = provider.get_test_user_token(
+            valid_token = provider.get_user_token(
                 test_username, test_password, test_client_id, test_client_secret
             )
 
