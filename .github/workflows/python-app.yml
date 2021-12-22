@@ -18,6 +18,7 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+    - run: git submodule update --init --recursive
     - name: Create .env file
       # Remove comments and empty lines; $GITHUB_ENV is strict
       run: |
