@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("trovi", "0002_auto_20211124_1818"),
+        ("trovi", "0002_add_initial_indexes_and_nullability"),
     ]
 
     operations = [

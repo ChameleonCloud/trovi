@@ -1,3 +1,4 @@
+import io
 import logging
 from pathlib import Path
 from typing import Optional
@@ -63,10 +64,11 @@ class StreamingFileUploadHandler(FileUploadHandler):
         # This is evaluated either by a supported file extension, or a content type
         # of application/tar(+gz, etc.)
         if (
-            "".join(exts := Path(file_name).suffixes) not in self.supported_filetypes
+            (full_ext := "".join(exts := Path(file_name).suffixes))
+            not in self.supported_filetypes
             or content_type != f"application/{'+'.join(e[1:] for e in exts)}"
         ):
-            return
+            raise ValidationError(f"Unsupported file type: {full_ext}")
 
         # If the upload is above a certain threshold, we use this handler to stream
         # the file to remote storage
@@ -86,7 +88,7 @@ class StreamingFileUploadHandler(FileUploadHandler):
         else:
             return raw_data
 
-    def file_complete(self, file_size: int):
+    def file_complete(self, file_size: int) -> io.BufferedIOBase:
         if self.storage_backend and not self.storage_backend.closed:
             self.storage_backend.close()
         return self.storage_backend
