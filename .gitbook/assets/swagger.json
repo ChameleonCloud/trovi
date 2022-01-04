@@ -1,0 +1,690 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "Trovi API",
+        "description": "A collection of shared artifacts.",
+        "contact": {
+            "name": "users@chameleoncloud.org"
+        },
+        "license": {
+            "name": "Apache License 2.0"
+        },
+        "version": "v0"
+    },
+    "basePath": "/",
+    "consumes": [
+        "application/json"
+    ],
+    "produces": [
+        "application/json"
+    ],
+    "securityDefinitions": {
+        "Basic": {
+            "type": "basic"
+        }
+    },
+    "security": [
+        {
+            "Basic": []
+        }
+    ],
+    "paths": {
+        "/artifacts/": {
+            "get": {
+                "operationId": "artifacts_list",
+                "description": "Implements all endpoints at /artifacts",
+                "parameters": [
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "description": "Which field to use when ordering the results.",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Number of results to return per page.",
+                        "required": false,
+                        "type": "integer"
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The initial index from which to return the results.",
+                        "required": false,
+                        "type": "integer"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "required": [
+                                "count",
+                                "results"
+                            ],
+                            "type": "object",
+                            "properties": {
+                                "count": {
+                                    "type": "integer"
+                                },
+                                "next": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "x-nullable": true
+                                },
+                                "previous": {
+                                    "type": "string",
+                                    "format": "uri",
+                                    "x-nullable": true
+                                },
+                                "results": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/Artifact"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "post": {
+                "operationId": "artifacts_create",
+                "description": "Implements all endpoints at /artifacts",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "parameters": []
+        },
+        "/artifacts/{parent_lookup_artifact}/versions/": {
+            "post": {
+                "operationId": "artifacts_versions_create",
+                "summary": "Implements all endpoints at /artifacts/<uuid>/versions",
+                "description": "CreateArtifactVersion (self.create):\n    POST /artifacts/<uuid>/versions\n    Associate a new Version to an Artifact.\n\n    Required scopes: artifact:write\n\n    Request body:\n        - contents (required):\n            - urn: a URN \"contents:<backend>:<id>\" where the ID depends on the\n              backend:\n                - chameleon: the ID is the object UUID of the artifact's tarball\n                  contents in Swift\n                - zenodo: the ID is the DOI assigned by Zenodo\n                - github: the ID is the GitHub repository with an optional Git\n                  reference (tag, branch) ({username|org}/{repo}[@{git_ref}])\n        - links[]:\n            - label: display name for the link\n            - location: URN describing the type of link (\"disk_image\" or \"dataset\")\n              and its location; the precise structure can vary depending on where\n              the link points to, e.g.:\n                - disk_image:chameleon:CHI@UC:<uuid>: a Glance disk image located on\n                  Chameleon site CHI@UC.\n                - disk_image:fabric:<hank>:<uuid>: a Glance disk image located on\n                  some Fabric hank.\n                - dataset:globus:<endpoint>:<path>: a Globus data asset located on\n                  a given endpoint at a certain path\n                - dataset:chameleon:CHI@UC:<path>: an object stored in the\n                  Chameleon object store at CHI@UC at a given path.\n                - dataset:zenodo:<doi>:<path>: an asset published on Zenodo under\n                  a deposition with given DOI, within a given path inside\n                  that deposition.\n\n    Version Slug:\n    On creation, the artifact version is given a version slug derived from\n    the date published. It has the format:\n\n        YYYY-MM-DD[.#]\n            - YYYY: current year\n            - MM: current month, 0-padded\n            - DD: current day, 0-padded\n            - #: incrementing index, starting at 1. Increments automatically for\n              each new version published on a given day. The 1st version published\n              on a given day will not have this suffix;\n              the 2nd version will be given suffix .1, and so on.\n\n    Unique contents\n    Two ArtifactVersions cannot reference the same contents;\n    if a second ArtifactVersion is created referencing the same contents URN\n    as one that already exists, a 409 Conflict error is raised.\n\n    Response: 201 Created\n    Example response body:\n    {\n      \"slug\": \"2021-10-07.0\",\n      \"created_at\": \"2021-10-07T05:00Z\",\n      \"contents\": {\n        \"urn\": \"chameleon:108beeac-564f-4030-b126-ec4d903e680e\"\n      },\n      \"metrics\": {\n        \"access_count\": 0\n      },\n      \"links\": [\n        {\n          \"label\": \"Training data\",\n          \"verified\": true,\n          \"urn\": \"dataset:globus:979a1221-8c42-41bf-bb08-4a16ed981447:/training_set\"\n        },\n        {\n          \"label\": \"Our training image\",\n          \"verified\": true,\n          \"urn\": \"disk_image:chameleon:CHI@TACC:fd13fbc0-2d53-4084-b348-3dbd60cdc5e1\"\n        }\n      ]\n    }\n\n\nDeleteArtifactVersion (self.destroy):\n    DELETE /artifacts/<uuid>/versions/<version_slug>\n    Deletes a given Version of an Artifact.\n\n    Required scopes: artifact:write\n\n    Response: 204 No Content",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/ArtifactVersion"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/ArtifactVersion"
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "parameters": [
+                {
+                    "name": "parent_lookup_artifact",
+                    "in": "path",
+                    "required": true,
+                    "type": "string"
+                }
+            ]
+        },
+        "/artifacts/{parent_lookup_artifact}/versions/{slug__iexact}/": {
+            "delete": {
+                "operationId": "artifacts_versions_delete",
+                "summary": "Implements all endpoints at /artifacts/<uuid>/versions",
+                "description": "CreateArtifactVersion (self.create):\n    POST /artifacts/<uuid>/versions\n    Associate a new Version to an Artifact.\n\n    Required scopes: artifact:write\n\n    Request body:\n        - contents (required):\n            - urn: a URN \"contents:<backend>:<id>\" where the ID depends on the\n              backend:\n                - chameleon: the ID is the object UUID of the artifact's tarball\n                  contents in Swift\n                - zenodo: the ID is the DOI assigned by Zenodo\n                - github: the ID is the GitHub repository with an optional Git\n                  reference (tag, branch) ({username|org}/{repo}[@{git_ref}])\n        - links[]:\n            - label: display name for the link\n            - location: URN describing the type of link (\"disk_image\" or \"dataset\")\n              and its location; the precise structure can vary depending on where\n              the link points to, e.g.:\n                - disk_image:chameleon:CHI@UC:<uuid>: a Glance disk image located on\n                  Chameleon site CHI@UC.\n                - disk_image:fabric:<hank>:<uuid>: a Glance disk image located on\n                  some Fabric hank.\n                - dataset:globus:<endpoint>:<path>: a Globus data asset located on\n                  a given endpoint at a certain path\n                - dataset:chameleon:CHI@UC:<path>: an object stored in the\n                  Chameleon object store at CHI@UC at a given path.\n                - dataset:zenodo:<doi>:<path>: an asset published on Zenodo under\n                  a deposition with given DOI, within a given path inside\n                  that deposition.\n\n    Version Slug:\n    On creation, the artifact version is given a version slug derived from\n    the date published. It has the format:\n\n        YYYY-MM-DD[.#]\n            - YYYY: current year\n            - MM: current month, 0-padded\n            - DD: current day, 0-padded\n            - #: incrementing index, starting at 1. Increments automatically for\n              each new version published on a given day. The 1st version published\n              on a given day will not have this suffix;\n              the 2nd version will be given suffix .1, and so on.\n\n    Unique contents\n    Two ArtifactVersions cannot reference the same contents;\n    if a second ArtifactVersion is created referencing the same contents URN\n    as one that already exists, a 409 Conflict error is raised.\n\n    Response: 201 Created\n    Example response body:\n    {\n      \"slug\": \"2021-10-07.0\",\n      \"created_at\": \"2021-10-07T05:00Z\",\n      \"contents\": {\n        \"urn\": \"chameleon:108beeac-564f-4030-b126-ec4d903e680e\"\n      },\n      \"metrics\": {\n        \"access_count\": 0\n      },\n      \"links\": [\n        {\n          \"label\": \"Training data\",\n          \"verified\": true,\n          \"urn\": \"dataset:globus:979a1221-8c42-41bf-bb08-4a16ed981447:/training_set\"\n        },\n        {\n          \"label\": \"Our training image\",\n          \"verified\": true,\n          \"urn\": \"disk_image:chameleon:CHI@TACC:fd13fbc0-2d53-4084-b348-3dbd60cdc5e1\"\n        }\n      ]\n    }\n\n\nDeleteArtifactVersion (self.destroy):\n    DELETE /artifacts/<uuid>/versions/<version_slug>\n    Deletes a given Version of an Artifact.\n\n    Required scopes: artifact:write\n\n    Response: 204 No Content",
+                "parameters": [],
+                "responses": {
+                    "204": {
+                        "description": ""
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "parameters": [
+                {
+                    "name": "parent_lookup_artifact",
+                    "in": "path",
+                    "required": true,
+                    "type": "string"
+                },
+                {
+                    "name": "slug__iexact",
+                    "in": "path",
+                    "required": true,
+                    "type": "string",
+                    "pattern": "[^/]+"
+                }
+            ]
+        },
+        "/artifacts/{uuid}/": {
+            "get": {
+                "operationId": "artifacts_read",
+                "description": "Implements all endpoints at /artifacts",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "put": {
+                "operationId": "artifacts_update",
+                "description": "Implements all endpoints at /artifacts",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "patch": {
+                "operationId": "artifacts_partial_update",
+                "description": "Implements all endpoints at /artifacts",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/Artifact"
+                        }
+                    }
+                },
+                "tags": [
+                    "artifacts"
+                ]
+            },
+            "parameters": [
+                {
+                    "name": "uuid",
+                    "in": "path",
+                    "description": "A UUID string identifying this artifact.",
+                    "required": true,
+                    "type": "string",
+                    "format": "uuid"
+                }
+            ]
+        },
+        "/contents/": {
+            "post": {
+                "operationId": "contents_create",
+                "description": "Implements all endpoints at /contents",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/StorageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/StorageRequest"
+                        }
+                    }
+                },
+                "consumes": [],
+                "tags": [
+                    "contents"
+                ]
+            },
+            "parameters": []
+        },
+        "/contents/{urn}/": {
+            "get": {
+                "operationId": "contents_read",
+                "description": "Implements all endpoints at /contents",
+                "parameters": [],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/StorageRequest"
+                        }
+                    }
+                },
+                "consumes": [],
+                "tags": [
+                    "contents"
+                ]
+            },
+            "parameters": [
+                {
+                    "name": "urn",
+                    "in": "path",
+                    "required": true,
+                    "type": "string"
+                }
+            ]
+        },
+        "/token/": {
+            "post": {
+                "operationId": "token_create",
+                "description": "Receives a subject token from a client, exchanges it for a Trovi token, and returns\nthat token to the client",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/TokenGrantRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "",
+                        "schema": {
+                            "$ref": "#/definitions/TokenGrantRequest"
+                        }
+                    }
+                },
+                "tags": [
+                    "token"
+                ]
+            },
+            "parameters": []
+        }
+    },
+    "definitions": {
+        "ArtifactTag": {
+            "required": [
+                "tag"
+            ],
+            "type": "object",
+            "properties": {
+                "id": {
+                    "title": "ID",
+                    "type": "integer",
+                    "readOnly": true
+                },
+                "tag": {
+                    "title": "Tag",
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                },
+                "artifacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "uniqueItems": true
+                }
+            }
+        },
+        "ArtifactAuthor": {
+            "required": [
+                "full_name",
+                "email"
+            ],
+            "type": "object",
+            "properties": {
+                "id": {
+                    "title": "ID",
+                    "type": "integer",
+                    "readOnly": true
+                },
+                "full_name": {
+                    "title": "Full name",
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                },
+                "affiliation": {
+                    "title": "Affiliation",
+                    "type": "string",
+                    "maxLength": 200,
+                    "x-nullable": true
+                },
+                "email": {
+                    "title": "Email",
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254,
+                    "minLength": 1
+                },
+                "artifact": {
+                    "title": "Artifact",
+                    "type": "string",
+                    "format": "uuid",
+                    "x-nullable": true
+                }
+            }
+        },
+        "ArtifactProject": {
+            "required": [
+                "urn"
+            ],
+            "type": "object",
+            "properties": {
+                "id": {
+                    "title": "ID",
+                    "type": "integer",
+                    "readOnly": true
+                },
+                "urn": {
+                    "title": "Urn",
+                    "type": "string",
+                    "pattern": "^urn:(?P<NID>[a-z0-9-]{0,31}):(?P<NSS>[a-zA-Z0-9()+,\\-.:=@;$_!*'%/?#]+)$",
+                    "maxLength": 254,
+                    "minLength": 1
+                },
+                "artifacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "uniqueItems": true
+                }
+            }
+        },
+        "ArtifactLink": {
+            "required": [
+                "urn",
+                "label"
+            ],
+            "type": "object",
+            "properties": {
+                "id": {
+                    "title": "ID",
+                    "type": "integer",
+                    "readOnly": true
+                },
+                "urn": {
+                    "title": "Urn",
+                    "type": "string",
+                    "pattern": "^urn:(?P<NID>[a-z0-9-]{0,31}):(?P<NSS>[a-zA-Z0-9()+,\\-.:=@;$_!*'%/?#]+)$",
+                    "maxLength": 254,
+                    "minLength": 1
+                },
+                "label": {
+                    "title": "Label",
+                    "type": "string",
+                    "maxLength": 40,
+                    "minLength": 1
+                },
+                "verified_at": {
+                    "title": "Verified at",
+                    "type": "string",
+                    "format": "date-time",
+                    "x-nullable": true
+                },
+                "verified": {
+                    "title": "Verified",
+                    "type": "boolean"
+                },
+                "artifact_version": {
+                    "title": "Artifact version",
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            }
+        },
+        "ArtifactVersion": {
+            "required": [
+                "contents_urn"
+            ],
+            "type": "object",
+            "properties": {
+                "id": {
+                    "title": "ID",
+                    "type": "integer",
+                    "readOnly": true
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ArtifactLink"
+                    }
+                },
+                "created_at": {
+                    "title": "Created at",
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                },
+                "contents_urn": {
+                    "title": "Contents urn",
+                    "type": "string",
+                    "pattern": "^urn:(?P<NID>[a-z0-9-]{0,31}):(?P<NSS>[a-zA-Z0-9()+,\\-.:=@;$_!*'%/?#]+)$",
+                    "maxLength": 254,
+                    "minLength": 1
+                },
+                "slug": {
+                    "title": "Slug",
+                    "type": "string",
+                    "format": "slug",
+                    "pattern": "^[-a-zA-Z0-9_]+$",
+                    "readOnly": true,
+                    "minLength": 1
+                },
+                "artifact": {
+                    "title": "Artifact",
+                    "type": "string",
+                    "format": "uuid",
+                    "x-nullable": true
+                }
+            }
+        },
+        "Artifact": {
+            "required": [
+                "title",
+                "short_description",
+                "owner_urn"
+            ],
+            "type": "object",
+            "properties": {
+                "uuid": {
+                    "title": "Uuid",
+                    "type": "string",
+                    "format": "uuid",
+                    "readOnly": true
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ArtifactTag"
+                    }
+                },
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ArtifactAuthor"
+                    }
+                },
+                "linked_projects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ArtifactProject"
+                    }
+                },
+                "versions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ArtifactVersion"
+                    }
+                },
+                "title": {
+                    "title": "Title",
+                    "type": "string",
+                    "maxLength": 70,
+                    "minLength": 1
+                },
+                "short_description": {
+                    "title": "Short description",
+                    "type": "string",
+                    "maxLength": 70,
+                    "minLength": 1
+                },
+                "long_description": {
+                    "title": "Long description",
+                    "type": "string",
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "x-nullable": true
+                },
+                "created_at": {
+                    "title": "Created at",
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                },
+                "updated_at": {
+                    "title": "Updated at",
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true
+                },
+                "owner_urn": {
+                    "title": "Owner urn",
+                    "type": "string",
+                    "pattern": "^urn:(?P<NID>[a-z0-9-]{0,31}):(?P<NSS>[a-zA-Z0-9()+,\\-.:=@;$_!*'%/?#]+)$",
+                    "maxLength": 254,
+                    "minLength": 1
+                },
+                "is_reproducible": {
+                    "title": "Is reproducible",
+                    "type": "boolean"
+                },
+                "repro_requests": {
+                    "title": "Repro requests",
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": 0
+                },
+                "repro_access_hours": {
+                    "title": "Repro access hours",
+                    "type": "integer",
+                    "maximum": 2147483647,
+                    "minimum": -2147483648,
+                    "x-nullable": true
+                },
+                "visibility": {
+                    "title": "Visibility",
+                    "type": "string",
+                    "enum": [
+                        "public",
+                        "private"
+                    ]
+                },
+                "sharing_key": {
+                    "title": "Sharing key",
+                    "type": "string",
+                    "maxLength": 44,
+                    "minLength": 1
+                }
+            }
+        },
+        "StorageRequest": {
+            "type": "object",
+            "properties": {}
+        },
+        "TokenGrantRequest": {
+            "required": [
+                "grant_type",
+                "subject_token",
+                "subject_token_type"
+            ],
+            "type": "object",
+            "properties": {
+                "grant_type": {
+                    "title": "Grant type",
+                    "type": "string",
+                    "enum": [
+                        "token_exchange"
+                    ]
+                },
+                "subject_token": {
+                    "title": "Subject token",
+                    "type": "string",
+                    "minLength": 1
+                },
+                "subject_token_type": {
+                    "title": "Subject token type",
+                    "type": "string",
+                    "enum": [
+                        "urn:ietf:params:oauth:token-type:access_token"
+                    ]
+                },
+                "scope": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "artifacts:read",
+                            "artifacts:write",
+                            "artifacts:write_metrics"
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}
