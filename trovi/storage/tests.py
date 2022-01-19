@@ -1,6 +1,8 @@
-import os.path
+import io
+import random
 import tarfile
 from typing import IO
+from uuid import uuid4
 
 from requests import Response
 from rest_framework import status
@@ -13,20 +15,32 @@ from util.test import version_don_quixote_1, version_don_quixote_2
 
 class StorageTestCase(APITestCase):
     @staticmethod
-    def get_test_data_gzip(path: str) -> IO:
-        out = f"/tmp/trovi-test-{os.path.basename(path)}.tar.gz"
-        with tarfile.open(out, mode="w:gz") as tar:
-            tar.add(path, arcname=os.path.sep)
+    def get_test_data_gzip(n_bytes: int) -> IO:
+        tar_buf = io.BytesIO()
+        with tarfile.open(fileobj=tar_buf, mode="w:gz") as tar:
+            file_buf = io.BytesIO(random.randbytes(n_bytes))
+            tar.addfile(tarfile.TarInfo("rand_bytes"), fileobj=file_buf)
 
+        tar_buf.seek(0)
+        out = f"/tmp/trovi-test-{uuid4()}.tar.gz"
+        with open(out, mode="wb") as f:
+            # Test files are automatically cleaned up by the test runner
+            f.write(tar_buf.getvalue())
         return open(out, mode="rb")
 
     @property
     def test_data_small(self) -> IO:
-        return self.get_test_data_gzip("examples/small")
+        """
+        Returns a 256 byte test archive
+        """
+        return self.get_test_data_gzip(256)
 
     @property
     def test_data_large(self) -> IO:
-        return self.get_test_data_gzip("examples/large")
+        """
+        Returns a 3 MB test archive
+        """
+        return self.get_test_data_gzip(3 * 1024 * 1024)
 
     @staticmethod
     def store_contents_path(backend: str = "chameleon") -> str:
