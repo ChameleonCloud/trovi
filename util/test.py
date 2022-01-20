@@ -4,6 +4,7 @@ Not meant to be robust, and mostly unvalidated, but helpful to avoid
 having to reference dicts with strings repeatedly in tests.
 """
 import datetime
+import logging
 import random
 import uuid
 from typing import Union, Optional, Iterable, Any
@@ -117,6 +118,7 @@ def cut_string(s: str, max_length: int) -> str:
     return s[: min(len(s), max_length)]
 
 
+logging.getLogger("faker.factory").setLevel(logging.INFO)
 fake = faker.Faker(faker.config.AVAILABLE_LOCALES)
 
 CHI_SITES = ["TACC", "UC", "NU"]

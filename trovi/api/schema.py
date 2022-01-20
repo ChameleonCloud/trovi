@@ -2,6 +2,33 @@ import jsonschema
 
 SchemaValidator = jsonschema.Draft202012Validator
 
+version_schema = {
+    "type": "object",
+    "properties": {
+        "contents": {
+            "type": "object",
+            "properties": {
+                "urn": {"type": "string", "format": "urn"},
+            },
+        },
+        "links": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "urn": {"type": "string", "format": "urn"},
+                },
+                "required": ["label", "urn"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["contents"],
+    "additionalProperties": False,
+}
+
+CreateArtifactVersionSchema = SchemaValidator(version_schema)
 CreateArtifactSchema = SchemaValidator(
     {
         "type": "object",
@@ -47,31 +74,7 @@ CreateArtifactSchema = SchemaValidator(
                 "required": ["enable_requests"],
                 "additionalProperties": False,
             },
-            "version": {
-                "type": "object",
-                "properties": {
-                    "contents": {
-                        "type": "object",
-                        "properties": {
-                            "urn": {"type": "string", "format": "urn"},
-                        },
-                    },
-                    "links": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "label": {"type": "string"},
-                                "urn": {"type": "string", "format": "urn"},
-                            },
-                            "required": ["label", "urn"],
-                            "additionalProperties": False,
-                        },
-                    },
-                },
-                "required": ["contents"],
-                "additionalProperties": False,
-            },
+            "version": version_schema,
         },
         "required": ["title", "short_description"],
         "additionalProperties": False,

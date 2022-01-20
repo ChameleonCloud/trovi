@@ -1,9 +1,12 @@
+import logging
+
 import cmarkgfm as commonmark
 from django.conf import settings
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
+from trovi.common.exceptions import ConflictError
 from trovi.fields import URNField
 from trovi.models import (
     Artifact,
@@ -13,6 +16,8 @@ from trovi.models import (
     ArtifactVersion,
     ArtifactLink,
 )
+
+LOG = logging.getLogger(__name__)
 
 serializers.ModelSerializer.serializer_field_mapping.update(
     {URNField: serializers.CharField}
@@ -139,11 +144,34 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
         link_serializer = ArtifactLinkSerializer()
+        artifact_id = validated_data.get("artifact_id")
+        if not artifact_id:
+            # Pull out the parent Artifact UUID from the view's kwargs
+            # This is safe, as it will be overwritten by the router if the user tries
+            # to pass their own kwargs
+            view = self.context.get("view")
+            if view:
+                artifact_id = view.kwargs.get("parent_lookup_artifact")
+                validated_data["artifact_id"] = artifact_id
+                try:
+                    Artifact.objects.get(uuid=artifact_id)
+                except Artifact.DoesNotExist:
+                    raise NotFound(f"Artifact {artifact_id} not found.")
+
         with transaction.atomic():
-            version = self.Meta.model.objects.create(**validated_data)
+            try:
+                version = self.Meta.model.objects.create(**validated_data)
+            except IntegrityError as e:
+                if artifact_id:
+                    raise NotFound(f"Could not find artifact with ID {artifact_id}")
+                else:
+                    LOG.error(f"Failed to create ArtifactVersion: {str(e)}")
+                    raise e
+
             for link in links:
                 link["artifact_version_id"] = version.id
                 link_serializer.create(link)
+
         return version
 
     def to_representation(self, instance: ArtifactVersion) -> dict:
@@ -159,6 +187,16 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
             },
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
         }
+
+    def validate_contents_urn(self, urn: str):
+        # Since versions cannot be patched, we can skip uniqueness validation
+        if "patch" in self.context:
+            return urn
+        try:
+            ArtifactVersion.objects.get(contents_urn__iexact=urn)
+        except ArtifactVersion.DoesNotExist:
+            return urn
+        raise ConflictError(f"Version with contents {urn} already exists.")
 
     def to_internal_value(self, data: dict) -> dict:
         contents = data.pop("contents")
@@ -330,6 +368,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         }
 
     def to_internal_value(self, data: dict) -> dict:
+        data = data.copy()
         initial_version = data.pop("version", None)
         if initial_version:
             data["versions"] = [initial_version]

@@ -1,4 +1,6 @@
 import json
+import random
+import uuid
 
 from django.db import models
 from django.http import JsonResponse
@@ -8,13 +10,26 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
-from trovi.api.serializers import ArtifactSerializer
-from trovi.api.urls import ListArtifact, GetArtifact, CreateArtifact, UpdateArtifact
+from trovi.api.serializers import ArtifactSerializer, ArtifactVersionSerializer
+from trovi.api.urls import (
+    ListArtifact,
+    GetArtifact,
+    CreateArtifact,
+    UpdateArtifact,
+    CreateArtifactVersion,
+    DeleteArtifactVersion,
+)
 from trovi.models import (
     Artifact,
     ArtifactTag,
+    ArtifactVersion,
 )
-from util.test import DummyArtifact, artifact_don_quixote
+from util.test import (
+    DummyArtifact,
+    artifact_don_quixote,
+    version_don_quixote_1,
+    version_don_quixote_2,
+)
 
 
 class APITestCase(TestCase):
@@ -37,6 +52,21 @@ class APITestCase(TestCase):
     @staticmethod
     def update_artifact_path(artifact_uuid: str):
         return reverse(UpdateArtifact, args=[artifact_uuid])
+
+    @staticmethod
+    def create_artifact_version_path(artifact_uuid: str):
+        return (
+            reverse(
+                CreateArtifactVersion,
+                args=[artifact_uuid],
+                # This tests that the user cannot overwrite the parent artifact ID
+            )
+            + "?parent_lookup_artifact=foo"
+        )
+
+    @staticmethod
+    def delete_artifact_version_path(artifact_uuid: str, version_slug: str):
+        return reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug])
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
@@ -325,3 +355,155 @@ class TestUpdateArtifact(APITestCase):
     def test_update_sharing_key(self):
         # TODO ensure that a delete actually rotates the sharing key
         pass
+
+
+class TestCreateArtifactVersion(APITestCase):
+    example_version = {
+        "contents": {
+            "urn": "urn:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
+        },
+        "links": [
+            {
+                "label": "Training data",
+                "urn": "urn:dataset:globus:"
+                "979a1221-8c42-41bf-bb08-4a16ed981447:"
+                "/training_set",
+            },
+            {
+                "label": "Our training image",
+                "urn": "urn:disk-image:chameleon:CHI@TACC:"
+                "fd13fbc0-2d53-4084-b348-3dbd60cdc5e1",
+            },
+        ],
+    }
+
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.post(
+                self.create_artifact_version_path(artifact_don_quixote.uuid),
+                content_type="application/json",
+                data={},
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(str(e))
+
+    def test_create_artifact_version(self):
+        artifact_don_quixote.refresh_from_db()
+
+        response = self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=self.example_version,
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+        response_body = response.json()
+
+        model = ArtifactVersion.objects.get(
+            contents_urn=response_body["contents"]["urn"]
+        )
+        self.assertAPIResponseEqual(response_body, ArtifactVersionSerializer(model))
+        self.assertEqual(artifact_don_quixote.uuid, model.artifact.uuid)
+        self.assertIn(model, artifact_don_quixote.versions.all())
+
+    def test_link_to_non_existant_artifact(self):
+        fake_uuid = uuid.uuid4()
+        while True:
+            try:
+                Artifact.objects.get(uuid=fake_uuid)
+                fake_uuid = uuid.uuid4()
+            except Artifact.DoesNotExist:
+                break
+        response = self.client.post(
+            self.create_artifact_version_path(str(fake_uuid)),
+            content_type="application/json",
+            data=self.example_version,
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
+        )
+
+    def test_non_unique_artifact_contents(self):
+        example = self.example_version.copy()
+        example["contents"]["urn"] = version_don_quixote_1.contents_urn
+
+        # Test against same artifact
+        response_1 = self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=example,
+        )
+
+        self.assertEqual(
+            response_1.status_code, status.HTTP_409_CONFLICT, msg=response_1.content
+        )
+
+        # Test against different artifact
+        random_artifact = random.choice(Artifact.objects.all())
+        response_2 = self.client.post(
+            self.create_artifact_version_path(random_artifact.uuid),
+            content_type="application/json",
+            data=example,
+        )
+
+        self.assertEqual(
+            response_2.status_code, status.HTTP_409_CONFLICT, msg=response_2.content
+        )
+
+
+class TestDeleteArtifactVersion(APITestCase):
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.delete(
+                self.delete_artifact_version_path(str(artifact_don_quixote.uuid), "foo")
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)
+
+    def test_delete_artifact_version(self):
+        for version in (version_don_quixote_1, version_don_quixote_2):
+            response = self.client.delete(
+                self.delete_artifact_version_path(
+                    str(artifact_don_quixote.uuid), version.slug
+                )
+            )
+            self.assertIsNotNone(response)
+
+            self.assertEqual(
+                response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
+            )
+
+            # Ensure version has been deleted
+            exists = True
+            try:
+                ArtifactVersion.objects.get(contents_urn=version.contents_urn)
+            except ArtifactVersion.DoesNotExist:
+                exists = False
+            finally:
+                self.assertFalse(exists)
+
+            # Ensure version is no longer associated with artifact
+            self.assertNotIn(version, version.artifact.versions.all())
+
+        self.assertEqual(0, artifact_don_quixote.versions.count())
+
+    def test_delete_version_no_artifact(self):
+        fake_uuid = uuid.uuid4()
+        while True:
+            try:
+                Artifact.objects.get(uuid=fake_uuid)
+                fake_uuid = uuid.uuid4()
+            except Artifact.DoesNotExist:
+                break
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(fake_uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
+        )
