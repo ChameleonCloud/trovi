@@ -409,7 +409,7 @@ class TestCreateArtifactVersion(APITestCase):
         self.assertEqual(artifact_don_quixote.uuid, model.artifact.uuid)
         self.assertIn(model, artifact_don_quixote.versions.all())
 
-    def test_link_to_non_existant_artifact(self):
+    def test_link_to_non_existent_artifact(self):
         fake_uuid = uuid.uuid4()
         while True:
             try:
