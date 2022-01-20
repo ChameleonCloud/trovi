@@ -1,3 +1,4 @@
+import mmap
 from collections import namedtuple
 from typing import Union, Protocol, Type, Dict
 
@@ -27,3 +28,7 @@ APIObject = Dict[str, Union[APISerializable, JSON]]
 
 # Dumb type used to modify request bodies
 DummyRequest = namedtuple("DummyRequest", ["data"])
+
+ReadOnlyBuffer = bytes
+WriteableBuffer = Union[bytearray, memoryview, mmap.mmap]
+ReadableBuffer = Union[ReadOnlyBuffer, WriteableBuffer]

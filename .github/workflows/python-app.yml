@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: recursive
     - name: Create .env file
       # Remove comments and empty lines; $GITHUB_ENV is strict
       run: |
@@ -48,5 +50,10 @@ jobs:
         CHAMELEON_KEYCLOAK_TEST_USER_USERNAME: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_USER_USERNAME }}
         CHAMELEON_KEYCLOAK_TEST_USER_PASSWORD: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_USER_PASSWORD }}
         CHAMELEON_KEYCLOAK_TEST_CLIENT_SECRET: ${{ secrets.CHAMELEON_KEYCLOAK_TEST_CLIENT_SECRET }}
+        CHAMELEON_KEYSTONE_ENDPOINT: ${{ secrets.CHAMELEON_KEYSTONE_ENDPOINT }}
+        CHAMELEON_SWIFT_ACCOUNT: ${{ secrets.CHAMELEON_SWIFT_ACCOUNT }}
+        CHAMELEON_SWIFT_PASSWORD: ${{ secrets.CHAMELEON_SWIFT_PASSWORD }}
+        CHAMELEON_SWIFT_PROJECT_NAME: ${{ secrets.CHAMELEON_SWIFT_PROJECT_NAME }}
+        CHAMELEON_SWIFT_TEMP_URL_KEY: ${{ secrets.CHAMELEON_SWIFT_TEMP_URL_KEY }}
       run: |
         poetry run python manage.py test

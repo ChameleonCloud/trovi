@@ -20,4 +20,5 @@ urlpatterns = [
     path("trovi-admin-portal/", admin.site.urls),
     path("artifacts/", include("trovi.api.urls")),
     path("token/", include("trovi.auth.urls")),
+    path("contents/", include("trovi.storage.urls")),
 ]
