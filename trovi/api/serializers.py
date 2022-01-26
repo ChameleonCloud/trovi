@@ -144,29 +144,13 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
         link_serializer = ArtifactLinkSerializer()
-        artifact_id = validated_data.get("artifact_id")
-        if not artifact_id:
-            # Pull out the parent Artifact UUID from the view's kwargs
-            # This is safe, as it will be overwritten by the router if the user tries
-            # to pass their own kwargs
-            view = self.context.get("view")
-            if view:
-                artifact_id = view.kwargs.get("parent_lookup_artifact")
-                validated_data["artifact_id"] = artifact_id
-                try:
-                    Artifact.objects.get(uuid=artifact_id)
-                except Artifact.DoesNotExist:
-                    raise NotFound(f"Artifact {artifact_id} not found.")
 
         with transaction.atomic():
             try:
                 version = self.Meta.model.objects.create(**validated_data)
             except IntegrityError as e:
-                if artifact_id:
-                    raise NotFound(f"Could not find artifact with ID {artifact_id}")
-                else:
-                    LOG.error(f"Failed to create ArtifactVersion: {str(e)}")
-                    raise e
+                LOG.error(f"Failed to create ArtifactVersion: {str(e)}")
+                raise e
 
             for link in links:
                 link["artifact_version_id"] = version.id
@@ -188,7 +172,7 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
         }
 
-    def validate_contents_urn(self, urn: str):
+    def validate_contents_urn(self, urn: str) -> str:
         # Since versions cannot be patched, we can skip uniqueness validation
         if "patch" in self.context:
             return urn
@@ -202,7 +186,27 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
         contents = data.pop("contents")
         if contents:
             data["contents_urn"] = contents.get("urn")
-        return super(ArtifactVersionSerializer, self).to_internal_value(data)
+
+        # On CreateArtifactVersion requests, the Artifact UUID is attached to
+        # the view by the router, so we need to extract it from there. On
+        # CreateArtifact requests, the Artifact UUID should already be inserted
+        # into the data by the parent serializer in ArtifactSerializer.create
+        # It is safe to retrieve the artifact from the view's kwargs,
+        # as it will be overwritten by the router if the user tries to pass their own
+        # kwargs
+        view = self.context["view"]
+        data.setdefault("artifact", view.kwargs.get("parent_lookup_artifact"))
+
+        try:
+            return super(ArtifactVersionSerializer, self).to_internal_value(data)
+        except ValidationError as e:
+            # This is to trap Validation errors thrown from non-existent artifacts.
+            # By default, this will return a 400 error. We want to return 404 instead.
+            artifact_error = e.detail.get("artifact")
+            if artifact_error:
+                if any(detail.code == "does_not_exist" for detail in artifact_error):
+                    raise NotFound(e.detail)
+            raise e
 
 
 class ArtifactSerializer(serializers.ModelSerializer):
@@ -244,7 +248,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             # New relationships have to be created here,
             # with the new Artifact's ID manually shoved in
             for author in authors:
-                author["artifact_id"] = artifact.uuid
+                author["artifact"] = artifact
                 author_serializer.create(author)
             for project in linked_projects:
                 # This will retrieve the project with the matching URN,
@@ -252,7 +256,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 project_obj = project_serializer.create(project)
                 project_obj.artifacts.add(artifact.uuid)
             for version in versions:
-                version["artifact_id"] = artifact.uuid
+                version["artifact"] = artifact
                 version_serializer.create(version)
 
         return artifact
@@ -323,7 +327,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             # vs removal, we just rewrite all the authors
             instance.authors.clear()
             for author in authors:
-                author["artifact_id"] = instance.uuid
+                author["artifact"] = instance
                 author_serializer.create(author)
 
             # Remove any linked projects that are not in the updated list
