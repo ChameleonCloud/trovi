@@ -76,8 +76,8 @@ class IdentityProviderClient(ABC):
     def get_actor_subject(self) -> str:
         """
         Used to link Trovi Tokens back to the authorizing actor (the IdP)
-        This should be the value that the IdP's token endpoint inserts into the
-        'iss' claim for its subject tokens.
+        This should be the FQDN of the value that the IdP's token endpoint inserts
+        into the 'iss' claim for its subject tokens. TODO figure out way to match NIDs without URLs
         """
 
     @abstractmethod

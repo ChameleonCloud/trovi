@@ -40,7 +40,7 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     iss = subject_token.iss
     if not iss:
         raise InvalidToken("Token does not contain required claim 'iss'.")
-    client = get_clients().get(iss)
+    client = get_clients().get(iss.replace("https://", "").split("/")[0])
     if not client:
         raise InvalidToken(f"Unknown Identity Provider: {iss}")
     return client

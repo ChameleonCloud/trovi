@@ -50,7 +50,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         return creds["access_token"]
 
     def get_actor_subject(self) -> str:
-        return self.openid.get_url("issuer")
+        return self.openid.get_url("issuer").replace("https://", "").split("/")[0]
 
     def get_authorized_party(self, subject_token: JWT) -> str:
         return subject_token.additional_claims["email"]

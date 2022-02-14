@@ -3,6 +3,7 @@ import os
 import random
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
 from django.test import TestCase
@@ -71,6 +72,11 @@ class APITestCase(TestCase):
                 "scope": " ".join(map(lambda s: s.value, requesting_scopes)),
             },
         )
+
+        body = response.json()
+
+        if response.status_code != status.HTTP_201_CREATED:
+            self.fail(json.dumps(body))
 
         return response.json()["access_token"]
 
@@ -349,9 +355,19 @@ class TestUpdateArtifact(APITestCase):
         artifact_don_quixote.authors.add(
             ArtifactAuthor.objects.create(
                 full_name="Trovi Tester",
-                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
+                email=(
+                    test_user_email := os.getenv(
+                        "CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"
+                    )
+                ),
             )
         )
+        artifact_don_quixote.owner_urn = (
+            f"urn:"
+            f"{settings.CHAMELEON_KEYCLOAK_SERVER_URL.replace('https://', '')}:"
+            f"{test_user_email}"
+        )
+        artifact_don_quixote.save(update_fields=["owner_urn"])
 
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is

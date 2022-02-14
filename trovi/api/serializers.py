@@ -385,10 +385,24 @@ class ArtifactSerializer(serializers.ModelSerializer):
             data["is_reproducible"] = enable_requests
             data["repro_access_hours"] = access_hours
 
-        token = JWT.from_request(self.context["request"])
-        data.setdefault("owner_urn", f"urn:{token.act.get('sub')}:{token.azp}")
+        # If this is a new Artifact, its default owner is the user who is creating it
+        if not self.instance:
+            data.setdefault("owner_urn", self.get_token_owner_urn())
 
         return super(ArtifactSerializer, self).to_internal_value(data)
+
+    def validate_owner_urn(self, owner_urn: str) -> str:
+        if self.instance and self.instance.owner_urn != self.get_token_owner_urn():
+            raise PermissionDenied("Non-owners cannot modify owner_urn")
+        return owner_urn
+
+    def get_token_owner_urn(self) -> str:
+        """
+        Generates a default owner URN based on the requesting user's auth token
+        """
+        token = JWT.from_request(self.context["request"])
+        return f"urn:{token.act.get('sub')}:{token.azp}"
+
 
     def validate_long_description(self, long_description: str) -> str:
         try:
