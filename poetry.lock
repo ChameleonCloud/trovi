@@ -281,7 +281,7 @@ python-versions = ">=3.5"
 [[package]]
 name = "os-service-types"
 version = "1.7.0"
-description = "Python library for consuming OpenStack sevice-types-authority data"
+description = "Python library for consuming OpenStack service-types-authority data"
 category = "main"
 optional = false
 python-versions = "*"
