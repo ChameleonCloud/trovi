@@ -1,10 +1,15 @@
-from rest_framework import routers
+from rest_framework_extensions import routers
 
-from trovi.api.views import ArtifactViewSet
+from trovi.api.views import ArtifactViewSet, ArtifactVersionViewSet
 
-router = routers.SimpleRouter()
+router = routers.ExtendedSimpleRouter()
 
-router.register("", ArtifactViewSet)
+router.register("", ArtifactViewSet).register(
+    "versions",
+    ArtifactVersionViewSet,
+    basename="artifact-version",
+    parents_query_lookups=["artifact"],
+)
 
 urlpatterns = router.get_urls()
 
@@ -16,3 +21,6 @@ ListArtifact = "artifact-list"
 GetArtifact = "artifact-detail"
 CreateArtifact = "artifact-list"
 UpdateArtifact = "artifact-detail"
+
+CreateArtifactVersion = "artifact-version-list"
+DeleteArtifactVersion = "artifact-version-detail"
