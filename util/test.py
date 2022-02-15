@@ -76,6 +76,7 @@ class DummyArtifact:
         long_description: str = None,
         tags: list[str] = None,
         authors: list[dict] = None,
+        owner_urn: str = None,
         visibility: str = None,
         linked_projects: list[str] = None,
         reproducibility: dict = None,
@@ -92,6 +93,7 @@ class DummyArtifact:
                 short_description,
                 tags,
                 authors,
+                owner_urn,
                 visibility,
                 linked_projects,
                 reproducibility,
@@ -107,6 +109,7 @@ class DummyArtifact:
         self.long_description = long_description
         self.tags = tags
         self.authors = [DummyArtifactAuthor(**author) for author in authors]
+        self.owner_urn = owner_urn
         self.visibility = visibility
         self.linked_projects = linked_projects
         self.is_reproducible: bool = reproducibility["enable_requests"]

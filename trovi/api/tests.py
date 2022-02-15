@@ -21,7 +21,7 @@ from trovi.api.urls import (
     CreateArtifactVersion,
     DeleteArtifactVersion,
 )
-from trovi.auth import providers
+from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
 from trovi.models import (
     Artifact,
@@ -35,6 +35,7 @@ from util.test import (
     version_don_quixote_1,
     version_don_quixote_2,
 )
+from util.url import url_to_nid
 
 
 class APITestCase(TestCase):
@@ -43,14 +44,8 @@ class APITestCase(TestCase):
 
     def get_test_token(self, scopes: list[JWT.Scopes] = None) -> str:
         # TODO have each test run once per provider
-        keycloak = None
-        for _, provider in providers.get_clients().items():
-            if provider.get_name() == "CHAMELEON_KEYCLOAK":
-                keycloak = provider
-                break
-        if not keycloak:
-            raise ValueError("No keycloak IdP for testing.")
-        provider_name = keycloak.get_name()
+        provider_name = "CHAMELEON_KEYCLOAK"
+        keycloak = get_client_by_name(provider_name)
         test_username = os.getenv(f"{provider_name}_TEST_USER_USERNAME")
         test_password = os.getenv(f"{provider_name}_TEST_USER_PASSWORD")
         test_client_id = os.getenv(f"{provider_name}_TEST_CLIENT_ID")
@@ -143,6 +138,7 @@ class APITestCase(TestCase):
         larger = max((d1, d2), key=len)
 
         for key, small_value in smaller.items():
+            self.assertIn(key, larger)
             large_value = larger[key]
             if isinstance(small_value, dict):
                 self.assertDictContainsSubset(small_value, large_value)
@@ -281,6 +277,7 @@ class TestCreateArtifact(APITestCase):
                     "email": "no-reply@fabric-testbed.net",
                 },
             ],
+            "owner_urn": "urn:auth-chameleoncloud-org:no-reply@chameleoncloud.org",
             "visibility": "public",
             "linked_projects": [
                 "urn:chameleon:CH-1111",
@@ -364,7 +361,7 @@ class TestUpdateArtifact(APITestCase):
         )
         artifact_don_quixote.owner_urn = (
             f"urn:"
-            f"{settings.CHAMELEON_KEYCLOAK_SERVER_URL.replace('https://', '')}:"
+            f"{url_to_nid(settings.CHAMELEON_KEYCLOAK_SERVER_URL)}:"
             f"{test_user_email}"
         )
         artifact_don_quixote.save(update_fields=["owner_urn"])

@@ -10,6 +10,7 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from trovi.auth.providers.base import IdentityProviderClient
 from trovi.common.tokens import JWT, OAuth2TokenIntrospection
+from util.url import url_to_fqdn
 
 LOG = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         return creds["access_token"]
 
     def get_actor_subject(self) -> str:
-        return self.openid.get_url("issuer").replace("https://", "").split("/")[0]
+        return url_to_fqdn(self.openid.get_url("issuer"))
 
     def get_authorized_party(self, subject_token: JWT) -> str:
         return subject_token.additional_claims["email"]

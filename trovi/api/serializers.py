@@ -6,7 +6,7 @@ from django.db import transaction, IntegrityError
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
-from trovi.common.exceptions import ConflictError
+from trovi.common.exceptions import ConflictError, InvalidToken
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from trovi.models import (
@@ -17,6 +17,7 @@ from trovi.models import (
     ArtifactVersion,
     ArtifactLink,
 )
+from util.url import fqdn_to_nid
 
 LOG = logging.getLogger(__name__)
 
@@ -359,6 +360,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "long_description": instance.long_description,
             "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
             "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
+            "owner_urn": instance.owner_urn,
             "visibility": instance.visibility,
             "linked_projects": ArtifactProjectSerializer(
                 instance.linked_projects.all(), many=True
@@ -401,8 +403,9 @@ class ArtifactSerializer(serializers.ModelSerializer):
         Generates a default owner URN based on the requesting user's auth token
         """
         token = JWT.from_request(self.context["request"])
-        return f"urn:{token.act.get('sub')}:{token.azp}"
-
+        if not (actor_sub := token.act.get("sub")):
+            raise InvalidToken("Cannot derive owner_urn")
+        return f"urn:{fqdn_to_nid(actor_sub)}:{token.azp}"
 
     def validate_long_description(self, long_description: str) -> str:
         try:

@@ -56,8 +56,7 @@ class TestTokenGrant(AuthTestCase):
         self.assertEqual(base_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_valid_token(self):
-        for _, provider in providers.get_clients().items():
-            provider_name = provider.get_name()
+        for provider_name, provider in providers._idp_clients.items():
             test_username = os.environ.get(f"{provider_name}_TEST_USER_USERNAME")
             test_password = os.environ.get(f"{provider_name}_TEST_USER_PASSWORD")
             test_client_id = os.environ.get(f"{provider_name}_TEST_CLIENT_ID")

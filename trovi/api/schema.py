@@ -50,6 +50,7 @@ CreateArtifactSchema = SchemaValidator(
                     "additionalProperties": False,
                 },
             },
+            "owner_urn": {"type": "string", "format": "urn"},
             "visibility": {
                 "type": "string",
                 "enum": ["public", "private"],

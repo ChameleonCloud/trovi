@@ -11,4 +11,4 @@ class ConflictError(APIException):
 class InvalidToken(APIException):
     status_code = status.HTTP_403_FORBIDDEN
     default_detail = _("Token is invalid or expired")
-    default_code = "token_not_valid"
+    default_code = "invalid_token"

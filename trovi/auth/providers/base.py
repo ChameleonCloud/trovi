@@ -1,3 +1,4 @@
+import logging
 from abc import abstractmethod, ABC
 from datetime import datetime
 from typing import Optional, Any, Iterable
@@ -8,6 +9,8 @@ from jose.backends.base import Key
 from trovi.common.exceptions import InvalidToken
 from trovi.common.tokens import JWT, OAuth2TokenIntrospection
 from util.decorators import timed_asynchronous_lru_cache, retry
+
+LOG = logging.getLogger(__name__)
 
 
 class IdentityProviderClient(ABC):
@@ -77,7 +80,9 @@ class IdentityProviderClient(ABC):
         """
         Used to link Trovi Tokens back to the authorizing actor (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts
-        into the 'iss' claim for its subject tokens. TODO figure out way to match NIDs without URLs
+        into the 'iss' claim for its subject tokens.
+        This value should be truncated to 31 characters or fewer in order to fit within
+        the NID field of a URN.
         """
 
     @abstractmethod
@@ -160,4 +165,5 @@ class IdentityProviderClient(ABC):
         Retains a cached copy of the Identity Provider's signing keys. Lazily refreshes
         every 5 minutes.
         """
+        LOG.info(f"Refreshing signing keys for {self.get_name()}")
         return self.refresh_signing_keys()
