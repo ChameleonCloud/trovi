@@ -23,7 +23,7 @@ TokenGrantSchema = SchemaValidator(
             "requested_token_type": supported_token_types,
             "scope": {
                 "type": "string",
-                "pattern": r"^\s*[A-Za-z0-9:-_]+(?:\s+[A-Za-z0-9:-_]+)*\s*$"
+                "pattern": r"^\s*[A-Za-z0-9:-_]+(?:\s+[A-Za-z0-9:-_]+)*\s*$",
             },
             # The following properties are ignored, for now
             "resource": {"type": "string", "format": "URI"},
