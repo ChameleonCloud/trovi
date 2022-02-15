@@ -2,17 +2,32 @@ import datetime
 from dataclasses import dataclass, field, fields
 from enum import Enum, EnumMeta
 from functools import lru_cache
+from typing import Optional, Any
 
 import jwt
 from django.conf import settings
 from jwt import DecodeError
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework.request import Request
+
+from trovi.common.exceptions import InvalidToken
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
 
 class TokenTypes(Enum):
     ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+
+    def __eq__(self, other: Any) -> bool:
+        if type(other) is str:
+            return self.value == other
+        else:
+            return super(TokenTypes, self).__eq__(other)
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 # TODO python 3.10: kw_only=True
@@ -31,9 +46,25 @@ class JWT:
             return any(s.value == item for s in cls.__members__.values())
 
     class Scopes(Enum, metaclass=ScopeMeta):
+        # TODO content scopes which should be granular per provider
         ARTIFACTS_READ = "artifacts:read"
         ARTIFACTS_WRITE = "artifacts:write"
         ARTIFACTS_WRITE_METRICS = "artifacts:write_metrics"
+
+        def is_write_scope(self) -> bool:
+            return self.value.endswith(":write")
+
+        def __eq__(self, other: Any) -> bool:
+            if type(other) is str:
+                return self.value == other
+            else:
+                return super(JWT.Scopes, self).__eq__(other)
+
+        def __hash__(self) -> int:
+            return hash(self.value)
+
+        def __str__(self) -> str:
+            return self.value
 
     class Algorithm(Enum):
         HS256 = "HS256"
@@ -68,6 +99,17 @@ class JWT:
     additional_claims: dict = field(default_factory=dict)
 
     @classmethod
+    def from_request(cls, request: Request) -> Optional["JWT"]:
+        token = request.auth
+        if token:
+            # You may be asking, "Why not just use `isinstance` here?"
+            # To you, I say "Read this, and weep":
+            # https://stackoverflow.com/a/10582820
+            if token.__class__.__name__ != "JWT":
+                raise ValueError(f"Unknown token type: {type(token)}")
+        return token
+
+    @classmethod
     def from_dict(cls, kwargs: dict) -> "JWT":
         """
         Creates a JWT from a dictionary. Helpful for tokens defined as dictionaries
@@ -82,6 +124,12 @@ class JWT:
             for claim, value in kwargs.items()
             if claim not in supported_claims
         }
+
+        scopes = cleaned.get("scope", "")
+        cleaned["scope"] = [
+            JWT.Scopes(scope) for scope in scopes.split() if scope in JWT.Scopes
+        ]
+
         try:
             return JWT(additional_claims=additional_claims, **cleaned)
         except Exception:
@@ -95,7 +143,13 @@ class JWT:
         """
         try:
             options = {"verify_signature": False} if not validate else None
-            token = jwt.decode(jws, options=options)
+            token = jwt.decode(
+                jws,
+                options=options,
+                algorithms=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
+                key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
+                audience=settings.TROVI_FQDN,
+            )
         except DecodeError as e:
             raise InvalidToken(e)
 

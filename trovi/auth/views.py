@@ -1,12 +1,12 @@
+from rest_framework import generics
 from rest_framework.request import Request
-from rest_framework_simplejwt import views
 
 from trovi.api.parsers import JSONSchemaParser
 from trovi.auth import schema
 from trovi.auth.serializers import TokenGrantRequestSerializer
 
 
-class TokenGrant(views.TokenViewBase):
+class TokenGrant(generics.CreateAPIView):
     """
     Receives a subject token from a client, exchanges it for a Trovi token, and returns
     that token to the client

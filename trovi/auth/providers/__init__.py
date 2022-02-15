@@ -6,10 +6,10 @@ as well as implementations for the officially supported Identity Providers
 from functools import cache
 
 from django.conf import settings
-from rest_framework_simplejwt.exceptions import InvalidToken
 
 from trovi.auth.providers.base import IdentityProviderClient
-from trovi.auth.tokens import JWT
+from trovi.common.exceptions import InvalidToken
+from trovi.common.tokens import JWT
 
 
 def validate_subject_token(jws: str) -> JWT:

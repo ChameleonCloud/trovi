@@ -42,13 +42,11 @@ class StorageTestCase(APITestCase):
         """
         return self.get_test_data_gzip(3 * 1024 * 1024)
 
-    @staticmethod
-    def store_contents_path(backend: str = "chameleon") -> str:
-        return f"{reverse(StoreContents)}?backend={backend}"
+    def store_contents_path(self, backend: str = "chameleon") -> str:
+        return self.authenticate_url(f"{reverse(StoreContents)}?backend={backend}")
 
-    @staticmethod
-    def retrieve_contents_path(urn: str) -> str:
-        return reverse(RetrieveContents, kwargs={"urn": urn})
+    def retrieve_contents_path(self, urn: str) -> str:
+        return self.authenticate_url(reverse(RetrieveContents, kwargs={"urn": urn}))
 
     def store_content(
         self,

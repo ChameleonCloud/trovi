@@ -7,6 +7,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
 from trovi.common.exceptions import ConflictError
+from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from trovi.models import (
     Artifact,
@@ -383,6 +384,9 @@ class ArtifactSerializer(serializers.ModelSerializer):
             access_hours = reproducibility.get("access_hours")
             data["is_reproducible"] = enable_requests
             data["repro_access_hours"] = access_hours
+
+        token = JWT.from_request(self.context["request"])
+        data.setdefault("owner_urn", f"urn:{token.act.get('sub')}:{token.azp}")
 
         return super(ArtifactSerializer, self).to_internal_value(data)
 

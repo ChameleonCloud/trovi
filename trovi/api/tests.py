@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import uuid
 
@@ -19,10 +20,13 @@ from trovi.api.urls import (
     CreateArtifactVersion,
     DeleteArtifactVersion,
 )
+from trovi.auth import providers
+from trovi.common.tokens import TokenTypes, JWT
 from trovi.models import (
     Artifact,
     ArtifactTag,
     ArtifactVersion,
+    ArtifactAuthor,
 )
 from util.test import (
     DummyArtifact,
@@ -35,38 +39,81 @@ from util.test import (
 class APITestCase(TestCase):
     renderer = JSONRenderer()
     maxDiff = None
-    tests_run = 0
 
-    @staticmethod
-    def list_artifact_path():
-        return reverse(ListArtifact)
+    def get_test_token(self, scopes: list[JWT.Scopes] = None) -> str:
+        # TODO have each test run once per provider
+        keycloak = None
+        for _, provider in providers.get_clients().items():
+            if provider.get_name() == "CHAMELEON_KEYCLOAK":
+                keycloak = provider
+                break
+        if not keycloak:
+            raise ValueError("No keycloak IdP for testing.")
+        provider_name = keycloak.get_name()
+        test_username = os.getenv(f"{provider_name}_TEST_USER_USERNAME")
+        test_password = os.getenv(f"{provider_name}_TEST_USER_PASSWORD")
+        test_client_id = os.getenv(f"{provider_name}_TEST_CLIENT_ID")
+        test_client_secret = os.getenv(f"{provider_name}_TEST_CLIENT_SECRET")
 
-    @staticmethod
-    def get_artifact_path(artifact_uuid: str):
-        return reverse(GetArtifact, args=[artifact_uuid])
+        valid_token = keycloak.get_user_token(
+            test_username, test_password, test_client_id, test_client_secret
+        )
 
-    @staticmethod
-    def create_artifact_path():
-        return reverse(CreateArtifact)
+        requesting_scopes = scopes if scopes else [JWT.Scopes.ARTIFACTS_READ]
 
-    @staticmethod
-    def update_artifact_path(artifact_uuid: str):
-        return reverse(UpdateArtifact, args=[artifact_uuid])
+        response = self.client.post(
+            reverse("TokenGrant"),
+            content_type="application/json",
+            data={
+                "grant_type": "token_exchange",
+                "subject_token": valid_token,
+                "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                "scope": " ".join(map(lambda s: s.value, requesting_scopes)),
+            },
+        )
 
-    @staticmethod
-    def create_artifact_version_path(artifact_uuid: str):
+        return response.json()["access_token"]
+
+    def authenticate_url(self, url: str, scopes: list[JWT.Scopes] = None) -> str:
         return (
+            url
+            + ("?" if "?" not in url else "&")
+            + f"access_token={self.get_test_token(scopes=scopes)}"
+        )
+
+    def list_artifact_path(self):
+        return self.authenticate_url(reverse(ListArtifact))
+
+    def get_artifact_path(self, artifact_uuid: str):
+        return self.authenticate_url(reverse(GetArtifact, args=[artifact_uuid]))
+
+    def create_artifact_path(self):
+        return self.authenticate_url(
+            reverse(CreateArtifact), scopes=[JWT.Scopes.ARTIFACTS_WRITE]
+        )
+
+    def update_artifact_path(self, artifact_uuid: str):
+        return self.authenticate_url(
+            reverse(UpdateArtifact, args=[artifact_uuid]),
+            scopes=[JWT.Scopes.ARTIFACTS_READ, JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def create_artifact_version_path(self, artifact_uuid: str):
+        return self.authenticate_url(
             reverse(
                 CreateArtifactVersion,
                 args=[artifact_uuid],
                 # This tests that the user cannot overwrite the parent artifact ID
             )
-            + "?parent_lookup_artifact=foo"
+            + "?parent_lookup_artifact=foo",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
 
-    @staticmethod
-    def delete_artifact_version_path(artifact_uuid: str, version_slug: str):
-        return reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug])
+    def delete_artifact_version_path(self, artifact_uuid: str, version_slug: str):
+        return self.authenticate_url(
+            reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
@@ -154,6 +201,14 @@ class TestListArtifacts(APITestCase):
             self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
         )
 
+    def test_sharing_key(self):
+        # TODO
+        pass
+
+    def test_private_artifacts_for_user(self):
+        # TODO
+        pass
+
 
 class TestListArtifactsEmpty(TestListArtifacts):
     @classmethod
@@ -167,6 +222,8 @@ class TestGetArtifact(APITestCase):
         # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
 
         self.assertAPIResponseEqual(as_json, ArtifactSerializer(artifact_don_quixote))
 
@@ -270,6 +327,10 @@ class TestCreateArtifact(APITestCase):
         # TODO
         pass
 
+    def test_create_no_write_scope(self):
+        # TODO
+        pass
+
     def test_get_or_create_project(self):
         # TODO
         pass
@@ -282,6 +343,16 @@ class TestCreateArtifact(APITestCase):
 
 class TestUpdateArtifact(APITestCase):
     def test_update_artifact(self):
+        # Cheekily add the test user as an author for Don Quixote,
+        # so that we may write to it
+        # TODO will eventually have to add all test users as authors
+        artifact_don_quixote.authors.add(
+            ArtifactAuthor.objects.create(
+                full_name="Trovi Tester",
+                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
+            )
+        )
+
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is
         # handled by json-patch
@@ -354,6 +425,14 @@ class TestUpdateArtifact(APITestCase):
 
     def test_update_sharing_key(self):
         # TODO ensure that a delete actually rotates the sharing key
+        pass
+
+    def test_update_artifact_no_write_scope(self):
+        # TODO
+        pass
+
+    def test_update_artifact_not_author(self):
+        # TODO
         pass
 
 
@@ -453,6 +532,10 @@ class TestCreateArtifactVersion(APITestCase):
             response_2.status_code, status.HTTP_409_CONFLICT, msg=response_2.content
         )
 
+    def test_create_artifact_version_no_write_scope(self):
+        # TODO
+        pass
+
 
 class TestDeleteArtifactVersion(APITestCase):
     def test_endpoint_works(self):
@@ -465,6 +548,12 @@ class TestDeleteArtifactVersion(APITestCase):
             self.fail(e)
 
     def test_delete_artifact_version(self):
+        artifact_don_quixote.authors.add(
+            ArtifactAuthor.objects.create(
+                full_name="Trovi Tester",
+                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
+            )
+        )
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
                 self.delete_artifact_version_path(
@@ -507,3 +596,11 @@ class TestDeleteArtifactVersion(APITestCase):
         self.assertEqual(
             response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
         )
+
+    def test_delete_artifact_version_no_write_scope(self):
+        # TODO
+        pass
+
+    def test_delete_artifact_version_not_author(self):
+        # TODO
+        pass

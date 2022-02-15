@@ -15,8 +15,14 @@ from trovi.api.filters import ListArtifactsOrderingFilter
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.parsers import JSONSchemaParser
 from trovi.api.patches import ArtifactPatch
-from trovi.api.permissions import SharedWithPermission
 from trovi.api.serializers import ArtifactSerializer, ArtifactVersionSerializer
+from trovi.common.authenticators import TroviTokenAuthentication
+from trovi.common.permissions import (
+    ArtifactVisibilityPermission,
+    ArtifactScopedPermission,
+    ArtifactVersionVisibilityPermission,
+    ArtifactVersionScopedPermission,
+)
 from trovi.models import Artifact, ArtifactVersion
 from util.types import DummyRequest
 
@@ -143,7 +149,8 @@ class ArtifactViewSet(
     parser_classes = [JSONSchemaParser]
     pagination_class = ListArtifactsPagination
     filter_backends = [ListArtifactsOrderingFilter]
-    permission_classes = [SharedWithPermission]
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [ArtifactVisibilityPermission, ArtifactScopedPermission]
     lookup_field = "uuid"
 
     # JSON Patch used to provide update context to serializers
@@ -299,6 +306,11 @@ class ArtifactVersionViewSet(
     parser_classes = [JSONSchemaParser]
     lookup_field = "slug__iexact"
     serializer_class = ArtifactVersionSerializer
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [
+        ArtifactVersionVisibilityPermission,
+        ArtifactVersionScopedPermission,
+    ]
     lookup_value_regex = "[^/]+"
 
     action_schema_map = CaseInsensitiveDict(

@@ -40,7 +40,8 @@ SECURE_SSL_REDIRECT = False
 # Tells Django that connections with X-Forwarded-Proto: https are secure
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-TROVI_FQDN = os.environ.get("TROVI_FQDN")
+TROVI_FQDN = os.getenv("TROVI_FQDN", "localhost")
+TROVI_PORT = os.getenv("TROVI_PORT", "8808")
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -116,7 +117,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Plugins
     "rest_framework",
-    "rest_framework_simplejwt",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
@@ -164,9 +164,7 @@ REST_FRAMEWORK = {
     ],
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        # TODO
-    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
 }
 
 

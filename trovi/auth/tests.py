@@ -9,7 +9,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.reverse import reverse
 
 from trovi.auth import providers
-from trovi.auth.tokens import TokenTypes
+from trovi.common.tokens import TokenTypes
 
 
 class AuthTestCase(TestCase):
@@ -53,7 +53,7 @@ class TestTokenGrant(AuthTestCase):
                 "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
             },
         )
-        self.assertEqual(base_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(base_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_valid_token(self):
         for _, provider in providers.get_clients().items():
@@ -79,7 +79,7 @@ class TestTokenGrant(AuthTestCase):
 
             self.assertEqual(
                 response.status_code,
-                status.HTTP_200_OK,
+                status.HTTP_201_CREATED,
                 msg=json.loads(response.content),
             )
 

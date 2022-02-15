@@ -1,10 +1,12 @@
 from abc import abstractmethod, ABC
-from typing import Optional, Any
+from datetime import datetime
+from typing import Optional, Any, Iterable
 
 from django.conf import settings
 from jose.backends.base import Key
 
-from trovi.auth.tokens import JWT, OAuth2TokenIntrospection
+from trovi.common.exceptions import InvalidToken
+from trovi.common.tokens import JWT, OAuth2TokenIntrospection
 from util.decorators import timed_asynchronous_lru_cache, retry
 
 
@@ -79,14 +81,20 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
+    def get_authorized_party(self, subject_token: JWT) -> str:
+        """
+        Used to fill in the "username" (azp) for the Trovi Token. This should be
+        the requesting user's email address.
+        """
+
+    @abstractmethod
     def validate_subject_token(self, subject_token: JWT) -> JWT:
         """
         Validates a JWT per the specification of the Identity Provider
         """
 
-    @abstractmethod
     def exchange_token(
-        self, subject_token: JWT, requested_scope: list[JWT.Scopes] = None
+        self, subject_token: JWT, requested_scope: Iterable[JWT.Scopes] = None
     ) -> JWT:
         """
         Performs OAuth 2.0 Token Exchange
@@ -94,6 +102,29 @@ class IdentityProviderClient(ABC):
 
         Exchanges a _valid_ subject token for a Trovi token.
         """
+        scopes = (
+            requested_scope
+            if requested_scope is not None
+            else [JWT.Scopes.ARTIFACTS_READ]
+        )
+        # Tokens which request *:write scopes must be validated online
+        if any(scope.is_write_scope() for scope in scopes):
+            introspection = self.introspect_token(subject_token)
+            if introspection and not introspection.active:
+                raise InvalidToken("Subject token revoked.")
+
+        return JWT(
+            azp=(email := self.get_authorized_party(subject_token)),
+            aud=settings.TROVI_FQDN,
+            iss=settings.TROVI_FQDN,
+            iat=(now := int(datetime.utcnow().timestamp())),
+            sub=email,
+            exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
+            scope=scopes,
+            alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
+            key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
+            act={"sub": self.get_actor_subject()},
+        )
 
     @abstractmethod
     def introspect_token(

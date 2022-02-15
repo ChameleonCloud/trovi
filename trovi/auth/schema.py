@@ -1,6 +1,6 @@
 import jsonschema
 
-from trovi.auth.tokens import TokenTypes
+from trovi.common.tokens import TokenTypes
 
 SchemaValidator = jsonschema.Draft202012Validator
 
@@ -23,7 +23,7 @@ TokenGrantSchema = SchemaValidator(
             "requested_token_type": supported_token_types,
             "scope": {
                 "type": "string",
-                "pattern": r"^([0-9a-zA-Z:-_]+)*([0-9a-zA-Z:-_]\s)*$",
+                "pattern": r"^\s*[A-Za-z0-9:-_]+(?:\s+[A-Za-z0-9:-_]+)*\s*$"
             },
             # The following properties are ignored, for now
             "resource": {"type": "string", "format": "URI"},
