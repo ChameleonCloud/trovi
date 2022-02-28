@@ -1,5 +1,6 @@
 from typing import Iterable
 
+from django.conf import settings
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -15,9 +16,28 @@ class TokenGrantRequestSerializer(serializers.Serializer):
     of the JWT's content, and exchanges with an appropriate token
     """
 
-    grant_type = serializers.ChoiceField(["token_exchange"])
-    subject_token = serializers.CharField()
-    subject_token_type = serializers.ChoiceField(TokenTypes)
+    # Request
+    grant_type = serializers.ChoiceField(
+        ["token_exchange"], write_only=True, required=True
+    )
+    subject_token = serializers.CharField(write_only=True, required=True)
+    subject_token_type = serializers.ChoiceField(
+        [TokenTypes.JWT_TOKEN_TYPE], write_only=True, required=True
+    )
+
+    # Response
+    access_token = serializers.CharField(read_only=True)
+    issued_token_type = serializers.ChoiceField(
+        [TokenTypes.ACCESS_TOKEN_TYPE], read_only=True
+    )
+    token_type = serializers.ChoiceField(["bearer"], read_only=True)
+    expires_in = serializers.IntegerField(
+        min_value=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
+        max_value=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
+        read_only=True,
+    )
+
+    # Both
     scope = serializers.MultipleChoiceField(choices=JWT.Scopes, required=False)
 
     def create(self, validated_data: dict) -> JWT:

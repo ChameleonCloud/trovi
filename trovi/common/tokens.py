@@ -14,8 +14,9 @@ from trovi.common.exceptions import InvalidToken
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
 
-class TokenTypes(Enum):
+class TokenTypes(str, Enum):
     ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+    JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is str:
@@ -45,7 +46,7 @@ class JWT:
         def __contains__(cls, item: str) -> bool:
             return any(s.value == item for s in cls.__members__.values())
 
-    class Scopes(Enum, metaclass=ScopeMeta):
+    class Scopes(str, Enum, metaclass=ScopeMeta):
         # TODO content scopes which should be granular per provider
         ARTIFACTS_READ = "artifacts:read"
         ARTIFACTS_WRITE = "artifacts:write"

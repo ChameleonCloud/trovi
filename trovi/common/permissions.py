@@ -31,7 +31,10 @@ class BaseScopedPermission(permissions.BasePermission):
                 f"Required scopes not set for action {request.method} "
                 f"({request.get_full_path()})"
             )
-        return required_scopes.issubset(token.scope)
+        if not token:
+            return len(required_scopes) == 0
+        else:
+            return required_scopes.issubset(token.scope)
 
 
 class ArtifactScopedPermission(BaseScopedPermission):
@@ -107,6 +110,9 @@ class StorageVisibilityPermission(permissions.BasePermission):
     """
     Determines if a user is authenticated, which is the only requirement to upload to
     storage.
+
+    TODO downloads can be performed regardless of permission. Users should only be
+         able to download content linked to an artifact they can view
     """
 
     def has_permission(self, request: Request, view: views.View) -> bool:

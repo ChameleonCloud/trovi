@@ -28,6 +28,11 @@ class Artifact(models.Model):
     These could be research projects, Zenodo depositions, etc.
     """
 
+    class Meta:
+        indexes = [
+            models.Index("created_at", name="artifact__created_at"),
+        ]
+
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Descriptive information
@@ -87,7 +92,7 @@ class ArtifactVersion(models.Model):
         Artifact, models.CASCADE, related_name="versions", null=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    contents_urn = URNField(max_length=settings.URN_MAX_CHARS)
+    contents_urn = URNField(max_length=settings.URN_MAX_CHARS, null=True)
 
     slug = models.SlugField(max_length=settings.SLUG_MAX_CHARS, editable=False)
 

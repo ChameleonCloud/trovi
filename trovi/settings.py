@@ -47,13 +47,12 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     TROVI_FQDN,
-    # TODO reverse-proxy
 ]
 
 # Artifact storage
 CHAMELEON_KEYSTONE_ENDPOINT = os.getenv("CHAMELEON_KEYSTONE_ENDPOINT")
 CHAMELEON_SWIFT_TEMP_URL_KEY = os.getenv("CHAMELEON_SWIFT_TEMP_URL_KEY")
-os.environ["CHAMELEON_SWIFT_TEMP_URL_KEY"] = CHAMELEON_SWIFT_TEMP_URL_KEY
+os.environ["CHAMELEON_SWIFT_TEMP_URL_KEY"] = CHAMELEON_SWIFT_TEMP_URL_KEY or ""
 CHAMELEON_SWIFT_CONTAINER = os.getenv("CHAMELEON_SWIFT_CONTAINER", "trovi-dev")
 CHAMELEON_JUPYTERHUB_URL = os.getenv(
     "CHAMELEON_JUPYTERHUB_URL", "https://jupyter.chameleoncloud.org"
@@ -117,10 +116,13 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Plugins
     "rest_framework",
+    "drf_spectacular",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
     "trovi.auth.apps.AuthConfig",
+    "trovi.docs.apps.DocsConfig",
+    "trovi.storage.apps.StorageConfig",
 ]
 
 MIDDLEWARE = [
@@ -165,6 +167,7 @@ REST_FRAMEWORK = {
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
     "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_SCHEMA_CLASS": "trovi.common.schema.APIViewSetAutoSchema",
 }
 
 
@@ -320,6 +323,13 @@ LOGGING = {
 
 # Testing
 TEST_RUNNER = "util.test.SampleDataTestRunner"
+
+# Documentation
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Trovi API",
+    "DESCRIPTION": "A collection of shared artifacts.",
+    "VERSION": "0",
+}
 
 # Constraints
 URN_MAX_CHARS = 254

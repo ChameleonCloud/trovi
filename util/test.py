@@ -6,9 +6,8 @@ having to reference dicts with strings repeatedly in tests.
 import datetime
 import logging
 import random
-import uuid
 from typing import Union, Optional, Iterable, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import faker.config
 from django.conf import settings
@@ -68,7 +67,7 @@ class DummyArtifactAuthor:
 class DummyArtifact:
     def __init__(
         self,
-        id: UUID = None,
+        uuid: UUID = None,
         created_at: str = None,
         updated_at: str = None,
         title: str = None,
@@ -86,7 +85,7 @@ class DummyArtifact:
         if any(
             f is None
             for f in (
-                id,
+                uuid,
                 created_at,
                 updated_at,
                 title,
@@ -251,11 +250,11 @@ artifact_don_quixote = Artifact(
 )
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid.uuid4()}",
+    contents_urn=f"urn:chameleon:{uuid4()}",
 )
 version_don_quixote_2 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid.uuid4()}",
+    contents_urn=f"urn:chameleon:{uuid4()}",
 )
 author_don_quixote_don = ArtifactAuthor(
     artifact=artifact_don_quixote,

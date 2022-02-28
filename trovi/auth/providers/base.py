@@ -80,9 +80,7 @@ class IdentityProviderClient(ABC):
         """
         Used to link Trovi Tokens back to the authorizing actor (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts
-        into the 'iss' claim for its subject tokens.
-        This value should be truncated to 31 characters or fewer in order to fit within
-        the NID field of a URN.
+        into the 'iss' claim for its subject tokens. TODO figure out way to match NIDs without URLs
         """
 
     @abstractmethod

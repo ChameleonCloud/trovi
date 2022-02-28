@@ -11,7 +11,7 @@ import jsonpatch
 from rest_framework.exceptions import ValidationError
 
 from trovi.models import ArtifactAuthor
-from util.types import JSONObject
+from util.types import JSONObject, JSON
 
 patch_errors = defaultdict(list)
 
@@ -52,8 +52,11 @@ class ArtifactPatchMixin:
             "short_description": None,
             "long_description": None,
             "tags": defaultdict(self._tag_key_generator),
-            "linked_projects": defaultdict(self._author_key_generator),
+            "authors": defaultdict(self._author_key_generator),
+            "linked_projects": defaultdict(self._int_key_only),
             "reproducibility": {"enable_requests": None, "access_hours": None},
+            "owner_urn": None,
+            "visibility": None,
         }
         for step in path:
             walk = walk.get(step, self.INVALID_PATH)
@@ -119,14 +122,35 @@ class ArtifactPatch(jsonpatch.JsonPatch):
         }
     )
 
-    def apply(self, obj: JSONObject, in_place: bool = False) -> JSONObject:
+    def apply(self, obj: dict[str, JSON], in_place: bool = False) -> dict[str, JSON]:
+        """
+        Overwrites the behavior of apply to create a partially updated object
+        (unless in_place is True). Since the API no longer relies on JSON schema, and
+        serializers allow partial updates, we only need to return the fields which are
+        updated. This makes serializer validation easier.
+
+        The only limitation here is that the updates are resolved via a shallow diff.
+        Deep diff would be ideal, but that is much more complicated. For now, this is
+        ok since the nested objects are ok to be replaced completely. If database
+        relationships ever get more complicated than they currently are, this will
+        need to be updated.
+        """
         try:
-            finished = super(ArtifactPatch, self).apply(obj, in_place=in_place)
+            new_artifact = super(ArtifactPatch, self).apply(obj, in_place=in_place)
         except Exception as e:
             raise ValidationError(str(e))
         if errors := patch_errors.pop(id(self), None):
             raise ValidationError(errors)
-        return finished
+
+        if in_place:
+            return new_artifact
+
+        updated_fields = {}
+        for field in obj.keys():
+            if obj.get(field) != new_artifact.get(field):
+                updated_fields[field] = new_artifact.get(field)
+
+        return updated_fields
 
     def _get_operation(self, operation: JSONObject) -> jsonpatch.PatchOperation:
         try:
