@@ -21,7 +21,7 @@ drf-extensions = "^0.7.1"
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
 flake8 = "^4.0.1"
-Faker = "^10.0.0"
+Faker = "^13.3.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
