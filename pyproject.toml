@@ -19,7 +19,7 @@ djangorestframework-simplejwt = "^5.0.0"
 drf-extensions = "^0.7.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
+pytest = "^7.0.1"
 flake8 = "^4.0.1"
 Faker = "^10.0.0"
 
