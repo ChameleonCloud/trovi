@@ -17,6 +17,8 @@ from rest_framework_extensions.mixins import NestedViewSetMixin
 from trovi.api.docs.extensions import (
     ArtifactTagSerializerExtension,
     ArtifactProjectSerializerExtension,
+    TroviTokenAuthenticationExtension,
+    TokenGrantRequestSerializerExtension,
 )
 from trovi.api.filters import (
     ListArtifactsOrderingFilter,
@@ -29,7 +31,6 @@ from trovi.api.serializers import (
     ArtifactPatchSerializer,
     ArtifactSerializer,
 )
-from trovi.auth.extensions import TroviTokenAuthenticationExtension
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
     ArtifactVisibilityPermission,
@@ -198,6 +199,7 @@ class ArtifactViewSet(
         ArtifactTagSerializerExtension,
         ArtifactProjectSerializerExtension,
         TroviTokenAuthenticationExtension,
+        TokenGrantRequestSerializerExtension,
     ]
 
     def update(self, request: Request, *args, **kwargs) -> Response:

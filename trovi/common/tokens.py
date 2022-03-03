@@ -91,7 +91,7 @@ class JWT:
     # Algorithm: The algorithm with which the key is signed
     alg: Algorithm = field(default=Algorithm.HS256)
     # Key: The key which signed this JWT
-    key: bytes = field(default=None)
+    key: str = field(default=None)
 
     # The raw serialized token in base64
     jws: str = field(default=None)

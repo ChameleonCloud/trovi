@@ -3,7 +3,6 @@ import os
 import random
 import uuid
 
-from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
 from django.test import TestCase
@@ -35,7 +34,6 @@ from util.test import (
     version_don_quixote_1,
     version_don_quixote_2,
 )
-from util.url import url_to_nid
 
 
 class APITestCase(TestCase):
@@ -404,9 +402,6 @@ class TestUpdateArtifact(APITestCase):
         self.assertNotEqual(
             new_description, artifact_don_quixote.short_description, msg=diff_msg
         )
-
-        new_access_hours = new_donq.repro_access_hours
-        self.assertIsNone(new_access_hours)
 
         self.assertIsNone(new_donq.long_description, msg=diff_msg)
         self.assertEqual(new_donq.title, artifact_don_quixote.long_description)
