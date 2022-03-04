@@ -63,7 +63,7 @@ class APITestCase(TestCase):
             data={
                 "grant_type": "token_exchange",
                 "subject_token": valid_token,
-                "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
                 "scope": " ".join(map(lambda s: s.value, requesting_scopes)),
             },
         )
@@ -194,7 +194,7 @@ class TestListArtifacts(APITestCase):
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["id"], private_artifacts)
+            self.assertNotIn(artifact["uuid"], private_artifacts)
 
     def test_url_parameters(self):
         # TODO
@@ -318,7 +318,7 @@ class TestCreateArtifact(APITestCase):
         )
 
         # TODO test that automatic fields are created properly
-        model = Artifact.objects.get(uuid=response_body["id"])
+        model = Artifact.objects.get(uuid=response_body["uuid"])
         new_artifact["versions"] = [new_artifact.pop("version")]
         self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
 
@@ -359,12 +359,6 @@ class TestUpdateArtifact(APITestCase):
                 ),
             )
         )
-        artifact_don_quixote.owner_urn = (
-            f"urn:"
-            f"{url_to_nid(settings.CHAMELEON_KEYCLOAK_SERVER_URL)}:"
-            f"{test_user_email}"
-        )
-        artifact_don_quixote.save(update_fields=["owner_urn"])
 
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is
@@ -372,22 +366,24 @@ class TestUpdateArtifact(APITestCase):
         artifact_don_quixote.refresh_from_db()
         old_donq_as_json = ArtifactSerializer(artifact_don_quixote).data
 
-        patch = [
-            {
-                "op": "replace",
-                "path": "/short_description",
-                "value": "I've been patched!!!",
-            },
-            {
-                "op": "remove",
-                "path": "/reproducibility/access_hours",
-            },
-            {
-                "op": "move",
-                "from": "/long_description",
-                "path": "/title",
-            },
-        ]
+        patch = {
+            "patch": [
+                {
+                    "op": "replace",
+                    "path": "/short_description",
+                    "value": "I've been patched!!!",
+                },
+                {
+                    "op": "remove",
+                    "path": "/reproducibility/access_hours",
+                },
+                {
+                    "op": "move",
+                    "from": "/long_description",
+                    "path": "/title",
+                },
+            ]
+        }
 
         response = self.client.patch(
             self.update_artifact_path(artifact_don_quixote.uuid),
@@ -404,7 +400,7 @@ class TestUpdateArtifact(APITestCase):
         # Test that the intended fields changed
         diff_msg = f"{old_donq_as_json=} {new_donq_as_json=}"
         new_description = new_donq.short_description
-        self.assertEqual(new_description, patch[0]["value"], msg=diff_msg)
+        self.assertEqual(new_description, patch["patch"][0]["value"], msg=diff_msg)
         self.assertNotEqual(
             new_description, artifact_don_quixote.short_description, msg=diff_msg
         )
