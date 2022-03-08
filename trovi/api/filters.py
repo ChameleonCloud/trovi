@@ -18,6 +18,10 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     ) -> models.QuerySet:
         sharing_key = request.query_params.get("sharing_key")
         token = JWT.from_request(request)
+
+        if any(scope == JWT.Scopes.TROVI_ADMIN for scope in token.scope):
+            return queryset
+
         if token:
             user = token.azp
         else:
