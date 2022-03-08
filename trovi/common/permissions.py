@@ -126,3 +126,15 @@ class StorageVisibilityPermission(permissions.BasePermission):
     def has_permission(self, request: Request, view: views.View) -> bool:
         token = JWT.from_request(request)
         return token and (token.iss == settings.TROVI_FQDN or token.is_admin())
+
+class BaseMetadataPermission(permissions.BasePermission):
+    """
+    Base permissions for viewing API metadata
+    """
+
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        if request.method.upper() == "GET":
+            return True
+        else:
+            token = JWT.from_request(request)
+            return token.is_admin()

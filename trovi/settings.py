@@ -125,6 +125,7 @@ INSTALLED_APPS = [
     "trovi.auth.apps.AuthConfig",
     "trovi.docs.apps.DocsConfig",
     "trovi.storage.apps.StorageConfig",
+    "trovi.meta.apps.MetaConfig",
 ]
 
 MIDDLEWARE = [

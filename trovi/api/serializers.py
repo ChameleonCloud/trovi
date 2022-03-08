@@ -78,6 +78,12 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
         return tag
 
 
+class ArtifactTagSerializerWritable(serializers.ModelSerializer):
+    class Meta:
+        model = ArtifactTag
+        fields = "__all__"
+
+
 @extend_schema_serializer(exclude_fields=["id", "artifact"])
 class ArtifactAuthorSerializer(serializers.ModelSerializer):
     """
