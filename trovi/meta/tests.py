@@ -25,7 +25,7 @@ class TestListTags(APITestCase):
         self.assertIn("tags", as_json)
 
         self.assertListEqual(
-            sorted(as_json["tags"]),
+            sorted(tag["tag"] for tag in as_json["tags"]),
             [tag.tag for tag in ArtifactTag.objects.order_by("tag")],
         )
 
