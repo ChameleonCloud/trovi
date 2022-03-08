@@ -10,6 +10,7 @@ from jwt import DecodeError
 from rest_framework.request import Request
 
 from trovi.common.exceptions import InvalidToken
+from util.url import url_to_nid
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
@@ -51,6 +52,7 @@ class JWT:
         ARTIFACTS_READ = "artifacts:read"
         ARTIFACTS_WRITE = "artifacts:write"
         ARTIFACTS_WRITE_METRICS = "artifacts:write_metrics"
+        TROVI_ADMIN = "trovi:admin"
 
         def is_write_scope(self) -> bool:
             return self.value.endswith(":write")
@@ -169,6 +171,10 @@ class JWT:
             key=self.key,
             algorithm=self.alg,
         )
+
+    def to_urn(self) -> str:
+        # TODO this is not a perfect solution. Not every token will have the email claim
+        return f"urn:{url_to_nid(self.iss)}:{self.additional_claims['email']}"
 
     def asdict(self) -> dict:
         """

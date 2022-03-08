@@ -29,7 +29,12 @@ from util.types import JSON
                     key="A" * 256,
                 ).to_jws(),
                 "subject_token_type": TokenTypes.JWT_TOKEN_TYPE,
-                "scope": (scope_str := " ".join(JWT.Scopes)),
+                "scope": " ".join(
+                    example_scope := [
+                        JWT.Scopes.ARTIFACTS_READ,
+                        JWT.Scopes.ARTIFACTS_WRITE,
+                    ]
+                ),
             },
             request_only=True,
             response_only=False,
@@ -44,7 +49,7 @@ from util.types import JSON
                     iat=int(datetime.utcnow().timestamp()),
                     sub=email,
                     exp=exp,
-                    scope=list(JWT.Scopes),
+                    scope=example_scope,
                     alg=JWT.Algorithm.HS256.value,
                     key="B" * 256,
                     act={"sub": url},
@@ -52,7 +57,7 @@ from util.types import JSON
                 "issued_token_type": TokenTypes.ACCESS_TOKEN_TYPE,
                 "token_type": "bearer",
                 "expires_in": settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
-                "scope": scope_str,
+                "scope": " ".join(example_scope),
             },
         ),
     ]
