@@ -112,6 +112,13 @@ class IdentityProviderClient(ABC):
             if requested_scope is not None
             else [JWT.Scopes.ARTIFACTS_READ]
         )
+
+        # Tokens which request admin scope must be in a list of approved users
+        if any(scope == JWT.Scopes.TROVI_ADMIN for scope in scopes):
+            if subject_token.to_urn() not in settings.AUTH_TROVI_ADMIN_USERS:
+                raise InvalidToken(
+                    "User does not have permission to request admin token"
+                )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):
             introspection = self.introspect_token(subject_token)

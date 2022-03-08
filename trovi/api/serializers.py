@@ -394,8 +394,13 @@ class ArtifactSerializer(serializers.ModelSerializer):
         return super(ArtifactSerializer, self).to_internal_value(data)
 
     def validate_owner_urn(self, owner_urn: str) -> str:
-        if self.instance and self.instance.owner_urn != self.get_token_owner_urn():
+        token_urn = self.get_token_owner_urn()
+        if JWT.Scopes.TROVI_ADMIN in JWT.from_request(self.context["request"]).scope:
+            return owner_urn
+        elif self.instance and self.instance.owner_urn != token_urn:
             raise PermissionDenied("Non-owners cannot modify owner_urn")
+        elif not self.instance and owner_urn != token_urn:
+            raise PermissionDenied("The owner of an artifact can only be set")
         return owner_urn
 
     def get_token_owner_urn(self) -> str:
