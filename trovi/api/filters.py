@@ -75,7 +75,7 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
         sharing_key = request.query_params.get("sharing_key")
         token = JWT.from_request(request)
 
-        if any(scope == JWT.Scopes.TROVI_ADMIN for scope in token.scope):
+        if token.is_admin():
             return queryset
 
         if token:

@@ -199,6 +199,9 @@ class JWT:
     def scope_to_str(self) -> str:
         return " ".join(s.value for s in self.scope)
 
+    def is_admin(self) -> bool:
+        return any(scope == JWT.Scopes.TROVI_ADMIN for scope in self.scope)
+
     def __repr__(self) -> str:
         return repr(self.asdict())
 

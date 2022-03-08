@@ -25,6 +25,8 @@ class BaseScopedPermission(permissions.BasePermission):
 
     def has_permission(self, request: Request, view: views.View) -> bool:
         token = JWT.from_request(request)
+        if token.is_admin():
+            return True
         required_scopes = self.action_scope_map.get(request.method)
         if required_scopes is None:
             raise KeyError(
@@ -49,6 +51,8 @@ class ArtifactScopedPermission(BaseScopedPermission):
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
+        if token.is_admin():
+            return True
         user = token.azp
         if not obj.authors.filter(email__iexact=user).exists():
             return not any(scope.is_write_scope() for scope in token.scope)
@@ -63,12 +67,16 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
+        token = JWT.from_request(request)
+        if not token:
+            return False
+        if token.is_admin():
+            return True
         if obj.visibility == Artifact.Visibility.PRIVATE:
             sharing_key = request.query_params.get("sharing_key")
             if sharing_key:
                 return sharing_key == obj.sharing_key
             else:
-                token = JWT.from_request(request)
                 if not token:
                     return False
                 user = token.azp
@@ -117,4 +125,4 @@ class StorageVisibilityPermission(permissions.BasePermission):
 
     def has_permission(self, request: Request, view: views.View) -> bool:
         token = JWT.from_request(request)
-        return token and token.iss == settings.TROVI_FQDN
+        return token and (token.iss == settings.TROVI_FQDN or token.is_admin())
