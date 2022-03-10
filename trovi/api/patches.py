@@ -32,13 +32,13 @@ class ArtifactPatchMixin:
         Helper function that ensures a defaultdict's key is only an integer.
         User for paths that are supposed to be lists.
         """
-        if type(desired_key) is not int:
-            if desired_key.strip() == "-":
-                return -1
-            else:
-                return self.INVALID_PATH
-        else:
+        if desired_key == "-":
             return value
+        try:
+            int(desired_key)
+        except ValueError:
+            return self.INVALID_PATH
+        return value
 
     _tag_key_generator = partial(_int_key_only, value=None)
     _author_key_generator = partial(_int_key_only, value=_artifact_author_description)
