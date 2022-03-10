@@ -410,7 +410,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         token = JWT.from_request(self.context["request"])
         if not (actor_sub := token.act.get("sub")):
             raise InvalidToken("Cannot derive owner_urn")
-        return f"urn:{fqdn_to_nid(actor_sub)}:{token.azp}"
+        return f"urn:{fqdn_to_nid(actor_sub)}:{token.sub}"
 
     def validate_long_description(self, long_description: str) -> str:
         try:

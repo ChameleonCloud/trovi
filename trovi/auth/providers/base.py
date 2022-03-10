@@ -86,7 +86,7 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_authorized_party(self, subject_token: JWT) -> str:
+    def get_subject(self, subject_token: JWT) -> str:
         """
         Used to fill in the "username" (azp) for the Trovi Token. This should be
         the requesting user's email address.
@@ -126,11 +126,11 @@ class IdentityProviderClient(ABC):
                 raise InvalidToken("Subject token revoked.")
 
         return JWT(
-            azp=(email := self.get_authorized_party(subject_token)),
+            azp=subject_token.azp,
             aud=settings.TROVI_FQDN,
             iss=settings.TROVI_FQDN,
             iat=(now := int(datetime.utcnow().timestamp())),
-            sub=email,
+            sub=self.get_subject(subject_token),
             exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
             scope=scopes,
             alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,

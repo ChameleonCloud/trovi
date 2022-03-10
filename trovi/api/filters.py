@@ -1,11 +1,15 @@
 from django.db import models
-from django.db.models import Sum
+from django.db.models import (
+    F,
+    Count,
+    Q,
+)
+from django.utils.translation import gettext_lazy as _
 from rest_framework import filters, views
-from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact
+from trovi.models import Artifact, ArtifactEvent
 
 
 class ListArtifactsOrderingFilter(filters.OrderingFilter):
@@ -13,9 +17,42 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     Handles sorting for ListArtifacts
     """
 
+    ordering_param = "sort_by"
+    ordering_fields = ["date", "access_count", "updated_at"]
+    ordering_description = _("The criteria by which to sort the Artifacts.")
+
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
     ) -> models.QuerySet:
+
+        # Annotate the query such that the database understands our sort_by params
+        prepared_query = queryset.annotate(
+            date=F("created_at"),
+            # access_count=Sum("versions__access_count"),
+            access_count=Count(
+                "versions__events",
+                filter=Q(versions__events__event_type=ArtifactEvent.EventType.LAUNCH),
+            ),
+        )
+
+        # The prepared query from above will be sorted properly using the
+        # sort_by url param in the super call here
+        return (
+            super(ListArtifactsOrderingFilter, self)
+            .filter_queryset(request, prepared_query, view)
+            .reverse()
+        )
+
+
+class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
+    """
+    Filters the queryset for Artifacts that the user has permission to see
+    """
+
+    def filter_queryset(
+        self, request: Request, queryset: models.QuerySet, view: views.View
+    ) -> models.QuerySet:
+        # TODO support multiple sharing keys
         sharing_key = request.query_params.get("sharing_key")
         token = JWT.from_request(request)
 
@@ -23,33 +60,17 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
             return queryset
 
         if token:
-            user = token.azp
+            user = token.sub
         else:
             user = None
 
         public = queryset.filter(visibility=Artifact.Visibility.PUBLIC)
         private = queryset.filter(visibility=Artifact.Visibility.PRIVATE)
+
         if sharing_key:
             shared_with = private.filter(sharing_key=sharing_key)
         else:
             shared_with = Artifact.objects.none()
         member_of = private.filter(authors__email__iexact=user)
 
-        authz_query = (public | shared_with | member_of).distinct()
-
-        sort_by = request.query_params.get("sort_by")
-
-        if sort_by is not None:
-            if sort_by == "date":
-                sorted_query = authz_query.order_by("created_at")
-            elif sort_by == "access_count":
-                sorted_query = authz_query.annotate(
-                    access_count=Sum("versions__access_count")
-                ).order_by("-access_count")
-            else:
-                raise ValidationError(f"Unknown 'sort_by' key. ({sort_by})")
-        else:
-            # By default, artifacts are sorted by most recently updated
-            sorted_query = authz_query.order_by("-updated_at")
-
-        return sorted_query
+        return (public | shared_with | member_of).distinct()

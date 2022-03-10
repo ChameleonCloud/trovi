@@ -6,7 +6,6 @@ from typing import Optional, Any
 
 import jwt
 from django.conf import settings
-from jwt import DecodeError
 from rest_framework.request import Request
 
 from trovi.common.exceptions import InvalidToken
@@ -15,8 +14,9 @@ from util.url import url_to_nid
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
 
-class TokenTypes(Enum):
+class TokenTypes(str, Enum):
     ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+    JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 
     def __eq__(self, other: Any) -> bool:
         if type(other) is str:
@@ -46,7 +46,7 @@ class JWT:
         def __contains__(cls, item: str) -> bool:
             return any(s.value == item for s in cls.__members__.values())
 
-    class Scopes(Enum, metaclass=ScopeMeta):
+    class Scopes(str, Enum, metaclass=ScopeMeta):
         # TODO content scopes which should be granular per provider
         ARTIFACTS_READ = "artifacts:read"
         ARTIFACTS_WRITE = "artifacts:write"
@@ -92,7 +92,7 @@ class JWT:
     # Algorithm: The algorithm with which the key is signed
     alg: Algorithm = field(default=Algorithm.HS256)
     # Key: The key which signed this JWT
-    key: bytes = field(default=None)
+    key: str = field(default=None)
 
     # The raw serialized token in base64
     jws: str = field(default=None)
@@ -152,7 +152,7 @@ class JWT:
                 key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
                 audience=settings.TROVI_FQDN,
             )
-        except DecodeError as e:
+        except jwt.InvalidTokenError as e:
             raise InvalidToken(e)
 
         token["jws"] = jws

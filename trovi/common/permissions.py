@@ -50,7 +50,7 @@ class ArtifactScopedPermission(BaseScopedPermission):
         token = JWT.from_request(request)
         if token.is_admin():
             return True
-        user = token.azp
+        user = token.sub
         if not obj.authors.filter(email__iexact=user).exists():
             return not any(scope.is_write_scope() for scope in token.scope)
         return True
@@ -76,7 +76,7 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
             else:
                 if not token:
                     return False
-                user = token.azp
+                user = token.sub
                 # If the viewer is one of the authors, then they may access the Artifact
                 return obj.authors.filter(email__iexact=user).exists()
         else:

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework_extensions.mixins import NestedViewSetMixin
 
 from trovi.api import schema
-from trovi.api.filters import ListArtifactsOrderingFilter
+from trovi.api.filters import ListArtifactsOrderingFilter, ListArtifactsVisibilityFilter
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.parsers import JSONSchemaParser
 from trovi.api.patches import ArtifactPatch
@@ -148,7 +148,9 @@ class ArtifactViewSet(
     serializer_class = ArtifactSerializer
     parser_classes = [JSONSchemaParser]
     pagination_class = ListArtifactsPagination
-    filter_backends = [ListArtifactsOrderingFilter]
+    filter_backends = [ListArtifactsVisibilityFilter, ListArtifactsOrderingFilter]
+    ordering_fields = ["date", "updated_at", "access_count"]
+    ordering = ["updated_at"]
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [ArtifactVisibilityPermission, ArtifactScopedPermission]
     lookup_field = "uuid"

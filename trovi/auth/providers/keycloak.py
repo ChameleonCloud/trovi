@@ -53,7 +53,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
     def get_actor_subject(self) -> str:
         return url_to_fqdn(self.openid.get_url("issuer"))
 
-    def get_authorized_party(self, subject_token: JWT) -> str:
+    def get_subject(self, subject_token: JWT) -> str:
         return subject_token.additional_claims["email"]
 
     def validate_subject_token(self, subject_token: JWT) -> JWT:

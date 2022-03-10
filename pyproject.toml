@@ -6,16 +6,16 @@ authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-Django = "^3.2.10"
+Django = "^4.0"
 djangorestframework = "^3.12.4"
-jsonschema = "^4.2.1"
+mysqlclient = "^2.0.3"
+jsonschema = "^4.4.0"
 jsonpatch = "^1.32"
-cmarkgfm = "^0.6.0"
+cmarkgfm = "^0.7.0"
 keystoneauth1 = "^4.4.0"
 python-jose = "^3.3.0"
 python-keycloak-client = "^0.2.3"
 drf-extensions = "^0.7.1"
-mysqlclient = "^2.1.0"
 PyJWT = "^2.3.0"
 
 [tool.poetry.dev-dependencies]

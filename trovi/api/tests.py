@@ -3,7 +3,6 @@ import os
 import random
 import uuid
 
-from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
 from django.test import TestCase
@@ -35,7 +34,6 @@ from util.test import (
     version_don_quixote_1,
     version_don_quixote_2,
 )
-from util.url import url_to_nid
 
 
 class APITestCase(TestCase):
@@ -194,18 +192,107 @@ class TestListArtifacts(APITestCase):
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["uuid"], private_artifacts)
+            self.assertNotIn(artifact["id"], private_artifacts)
 
     def test_url_parameters(self):
-        # TODO
-        pass
-        self.client.get(
-            self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
-        )
+        def after(url: str) -> str:
+            return f"{url}&after={artifact_don_quixote.uuid}"
 
-    def test_sharing_key(self):
-        # TODO
-        pass
+        def sort(url: str, by: str) -> str:
+            return f"{url}&sort_by={by}"
+
+        def test_after(body: dict[str, list[dict]], artifact: Artifact):
+            self.assertEqual(str(artifact.uuid), body["artifacts"][0]["id"])
+
+        def test_sorted(body: dict[str, list[dict]], by: str):
+            artifact_models = Artifact.objects.filter(
+                uuid__in={a["id"] for a in body["artifacts"]}
+            )
+            if by == "date":
+                # Our ground truth is a sorted list of all the IDs
+                # for every artifact returned by the API call
+                # String timestamps are not precise enough to test sorting, and have too
+                # many duplicate values. The order of the IDs sorted by creation time
+                # is a more accurate representation.
+                base = [
+                    str(a.uuid)
+                    for a in sorted(
+                        artifact_models.all(), reverse=True, key=lambda a: a.created_at
+                    )
+                ]
+                test = [a["id"] for a in body["artifacts"]]
+            elif by == "access_count":
+                # Our ground truth is a sorted list of the sums of all the versions'
+                # access_counts for each artifact returned by the API call
+                # The access_counts have the potential for repeat values which do not
+                # guarantee that the artifacts with the same value will be sorted in
+                # the same order. As such, we check against the sorted access_counts
+                # themselves
+                base = list(
+                    sorted(
+                        (
+                            sum(v.access_count for v in a.versions.all())
+                            for a in artifact_models
+                        ),
+                        reverse=True,
+                    )
+                )
+                test = list(
+                    [
+                        sum(v["metrics"]["access_count"] for v in a["versions"])
+                        for a in body["artifacts"]
+                    ]
+                )
+            else:
+                base = []
+                test = [1]
+
+            self.assertListEqual(base, test, f"Improperly sorted for key {by}")
+
+        # Test paging
+        response = self.client.get(after(self.list_artifact_path()))
+        body = response.json()
+        if Artifact.objects.count() > 0:
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            test_after(body, artifact_don_quixote)
+        else:
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Test sorting
+        for sort_param in ("date", "access_count"):
+            if sort_param == "access_count":
+                print("foo")
+            response = self.client.get(sort(self.list_artifact_path(), sort_param))
+            body = response.json()
+            if Artifact.objects.count() > 0:
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                test_sorted(body, sort_param)
+            else:
+                # We don't use 'after' here so there should be no 404
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Test sharing key
+        a_private_artifact = Artifact.objects.filter(
+            visibility=Artifact.Visibility.PRIVATE
+        ).first()
+        if not a_private_artifact:
+            # Create a dummy to generate a sharing key
+            a_private_artifact = Artifact()
+        for sort_param in ("date", "access_count"):
+            response = self.client.get(
+                f"{sort(self.list_artifact_path(), sort_param)}"
+                f"&sharing_key={a_private_artifact.sharing_key}"
+            )
+            body = response.json()
+            if len(body.get("artifacts", [])) > 0:
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                test_sorted(body, sort_param)
+                privs = [a for a in body["artifacts"] if a["visibility"] == "private"]
+                self.assertEqual(len(privs), 1)
+                self.assertEqual(privs[0]["id"], str(a_private_artifact.uuid))
+            else:
+                # We don't use 'after' here so there should be no 404
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_private_artifacts_for_user(self):
         # TODO
@@ -277,7 +364,6 @@ class TestCreateArtifact(APITestCase):
                     "email": "no-reply@fabric-testbed.net",
                 },
             ],
-            "owner_urn": "urn:auth-chameleoncloud-org:no-reply@chameleoncloud.org",
             "visibility": "public",
             "linked_projects": [
                 "urn:chameleon:CH-1111",
@@ -318,7 +404,7 @@ class TestCreateArtifact(APITestCase):
         )
 
         # TODO test that automatic fields are created properly
-        model = Artifact.objects.get(uuid=response_body["uuid"])
+        model = Artifact.objects.get(uuid=response_body["id"])
         new_artifact["versions"] = [new_artifact.pop("version")]
         self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
 

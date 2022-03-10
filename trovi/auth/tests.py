@@ -105,10 +105,10 @@ class TestTokenGrant(AuthTestCase):
             except Exception as e:
                 self.fail(e)
             self.assertEqual(
-                os.environ.get("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"), token["azp"]
+                os.environ.get("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"), token["sub"]
             )
             self.assertEqual(settings.TROVI_FQDN, token["aud"])
-            self.assertEqual(token["azp"], token["sub"])
+            self.assertEqual(token["azp"], test_client_id)
             self.assertEqual(
                 token["exp"], token["iat"] + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
             )
