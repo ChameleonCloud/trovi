@@ -33,7 +33,10 @@ class ArtifactPatchMixin:
         User for paths that are supposed to be lists.
         """
         if type(desired_key) is not int:
-            return self.INVALID_PATH
+            if desired_key.strip() == "-":
+                return -1
+            else:
+                return self.INVALID_PATH
         else:
             return value
 
