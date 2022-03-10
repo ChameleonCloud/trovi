@@ -48,7 +48,7 @@ class JsonPatchOperationSerializer(serializers.Serializer):
     value = AnyField(write_only=True, required=False)
 
     op_arguments_map = {
-        "add": ["path"],
+        "add": ["path", "value"],
         "remove": ["path"],
         "replace": ["path", "value"],
         "move": ["from", "path"],
