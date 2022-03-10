@@ -39,6 +39,7 @@ class ArtifactPatchMixin:
 
     _tag_key_generator = partial(_int_key_only, value=None)
     _author_key_generator = partial(_int_key_only, value=_artifact_author_description)
+    _linked_project_generator = partial(_int_key_only, value=None)
 
     def valid_mutable_path(self, operation: dict, path: list):
         """
@@ -52,8 +53,13 @@ class ArtifactPatchMixin:
             "short_description": None,
             "long_description": None,
             "tags": defaultdict(self._tag_key_generator),
-            "linked_projects": defaultdict(self._author_key_generator),
+            "authors": defaultdict(self._author_key_generator),
+            "linked_projects": defaultdict(self._linked_project_generator),
             "reproducibility": {"enable_requests": None, "access_hours": None},
+            # owner_urn is mutable, but only current owners can modify it
+            # this is enforced by the ArtifactSerializer
+            "owner_urn": None,
+            "visibility": None,
         }
         for step in path:
             walk = walk.get(step, self.INVALID_PATH)
