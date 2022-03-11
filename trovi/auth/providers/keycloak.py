@@ -50,7 +50,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         creds = openid.password_credentials(username, password)
         return creds["access_token"]
 
-    def get_actor_subject(self) -> str:
+    def get_issuer(self) -> str:
         return url_to_fqdn(self.openid.get_url("issuer"))
 
     def get_authorized_party(self, subject_token: JWT) -> str:

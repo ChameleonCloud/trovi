@@ -23,13 +23,6 @@ def validate_subject_token(jws: str) -> JWT:
     provider = get_subject_token_provider(jwt)
     validated_token = provider.validate_subject_token(jwt)
 
-    # Internal validation
-    # Ensure token authorized party is approved client ID
-    if validated_token.azp not in settings.AUTH_APPROVED_AUTHORIZED_PARTIES:
-        raise InvalidToken(
-            f"Authorized party is not approved client ID: {validated_token.azp}"
-        )
-
     return validated_token
 
 
@@ -40,7 +33,7 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     iss = subject_token.iss
     if not iss:
         raise InvalidToken("Token does not contain required claim 'iss'.")
-    client = get_client_by_subject(url_to_fqdn(iss))
+    client = get_client_by_issuer(url_to_fqdn(iss))
     return client
 
 
@@ -66,16 +59,12 @@ def get_client_by_name(name: str) -> IdentityProviderClient:
     return client
 
 
-def get_client_by_subject(actor_subject: str) -> IdentityProviderClient:
+def get_client_by_issuer(issuer: str) -> IdentityProviderClient:
     # Look up an Identity Provider by the actor subject of a token
     provider = next(
-        (
-            client
-            for client in _idp_clients.values()
-            if client.get_actor_subject() == actor_subject
-        ),
+        (client for client in _idp_clients.values() if client.get_issuer() == issuer),
         None,
     )
     if not provider:
-        raise InvalidToken(f"Cannot find identity provider for subject {actor_subject}")
+        raise InvalidToken(f"Unknown identity provider: {issuer}")
     return provider

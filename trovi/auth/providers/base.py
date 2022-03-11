@@ -76,9 +76,9 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_actor_subject(self) -> str:
+    def get_issuer(self) -> str:
         """
-        Used to link Trovi Tokens back to the authorizing actor (the IdP)
+        Used to link Trovi Tokens back to the token issuer (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts
         into the 'iss' claim for its subject tokens. TODO figure out way to match NIDs without URLs
         """
@@ -133,7 +133,7 @@ class IdentityProviderClient(ABC):
             scope=scopes,
             alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
             key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
-            act={"sub": self.get_actor_subject()},
+            act={"sub": self.get_issuer()},
         )
 
     @abstractmethod

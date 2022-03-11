@@ -60,22 +60,19 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
         model = ArtifactTag
         fields = "__all__"
 
+    def create(self, validated_data: dict[str, str]) -> ArtifactTag:
+        tag = validated_data["tag"]
+        try:
+            return ArtifactTag.objects.get(tag__iexact=tag)
+        except ArtifactTag.DoesNotExist:
+            raise NotFound(f"Unknown tag {tag}")
+
     def to_representation(self, instance: ArtifactTag) -> str:
         return instance.tag
 
     def to_internal_value(self, data: str) -> dict:
         # We skip the super call here to avoid running into the uniqueness validator
-        return {"tag": self.validate_tag(data)}
-
-    def validate_tag(self, tag: str) -> str:
-        """
-        While tags are read-only via the API, the reverse-serialization of the tags
-        exists to validate each tag's existence rather than create a new one.
-        """
-        # Ensure that 1 and only 1 of the given tag exists
-        if self.Meta.model.objects.filter(tag__iexact=tag).count() != 1:
-            raise ValidationError(f"Unknown tag: {tag}")
-        return tag
+        return {"tag": data}
 
 
 class ArtifactTagSerializerWritable(serializers.ModelSerializer):
@@ -162,6 +159,7 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
 
     def create(self, validated_data: dict[str, JSON]) -> ArtifactVersion:
         self.instance.contents_urn = validated_data["urn"]
+        self.instance.save()
         return self.instance
 
     def update(self, _, validated_data: dict[str, JSON]) -> ArtifactVersion:
@@ -196,24 +194,27 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
-        link_serializer = ArtifactLinkSerializer()
         contents = validated_data.pop("contents", {})
 
         with transaction.atomic():
             try:
-                version = self.Meta.model.objects.create(**validated_data)
+                version = super(ArtifactVersionSerializer, self).create(validated_data)
             except IntegrityError as e:
                 LOG.error(f"Failed to create ArtifactVersion: {str(e)}")
                 raise e
 
-            for link in links:
-                link["artifact_version_id"] = version.id
-                link_serializer.create(link)
+            if links:
+                for link in links:
+                    link["artifact_version"] = version.id
+                link_serializer = ArtifactLinkSerializer(data=links, many=True)
+                link_serializer.is_valid(raise_exception=True)
+                version.links.add(*link_serializer.save())
 
-            contents_serializer = ArtifactVersionContentsSerializer(version)
-            contents_serializer.create(contents)
-
-            version.save()
+            contents_serializer = ArtifactVersionContentsSerializer(
+                data=contents, instance=version
+            )
+            contents_serializer.is_valid(raise_exception=True)
+            contents_serializer.save()
 
         return version
 
@@ -288,18 +289,6 @@ class ArtifactReproducibilitySerializer(serializers.Serializer):
         instance.save(update_fields=["repro_access_hours", "is_reproducible"])
         return instance
 
-    def validate(self, attrs: dict[str, JSON]) -> dict[str, JSON]:
-        enable_requests = attrs.get("enable_requests")
-        access_hours = attrs.get("access_hours")
-
-        if not enable_requests and access_hours:
-            raise ValidationError(
-                "Attempted to set reproducibility access hours "
-                "without enabling reproducibility requests."
-            )
-
-        return super(ArtifactReproducibilitySerializer, self).validate(attrs)
-
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         return {
             "enable_requests": instance.is_reproducible,
@@ -336,52 +325,107 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Artifact:
         # All nested fields have to be manually created, so that is done here
-        tags = {t["tag"] for t in validated_data.pop("tags", [])}
+        tags = validated_data.pop("tags", [])
         authors = validated_data.pop("authors", [])
         linked_projects = validated_data.pop("linked_projects", [])
         version = validated_data.pop("version", {})
         reproducibility = validated_data.pop("reproducibility", {})
 
-        # For some reason, member serializers are not accessible in here
-        author_serializer = ArtifactAuthorSerializer()
-        project_serializer = ArtifactProjectSerializer()
-        version_serializer = ArtifactVersionSerializer()
-
         with transaction.atomic():
-            artifact = self.Meta.model.objects.create(**validated_data)
-            reproducibility_serializer = ArtifactReproducibilitySerializer(artifact)
-
-            # Since ArtifactTags are only supposed to be created internally, we look
-            # for existing ones that match those in the request, and add the new
-            # Artifact as a relationship
-            tag_objs = ArtifactTag.objects.filter(tag__in=tags)
-            artifact.tags.add(*tag_objs)
+            artifact = super(ArtifactSerializer, self).create(validated_data)
 
             # New relationships have to be created here,
             # with the new Artifact's ID manually shoved in
-            for author in authors:
-                author["artifact"] = artifact
-                author_serializer.create(author)
-            for project in linked_projects:
+            if tags:
+                tag_serializer = ArtifactTagSerializer(data=tags, many=True)
+                tag_serializer.is_valid(raise_exception=True)
+                artifact.tags.add(*tag_serializer.save())
+            if authors:
+                for author in authors:
+                    author["artifact"] = artifact.uuid
+                author_serializer = ArtifactAuthorSerializer(data=authors, many=True)
+                author_serializer.is_valid(raise_exception=True)
+                author_serializer.save()
+            if linked_projects:
                 # This will retrieve the project with the matching URN,
                 # or create a new one if it doesn't yet exist
-                project_obj = project_serializer.create(project)
-                project_obj.artifacts.add(artifact.uuid)
+                project_serializer = ArtifactProjectSerializer(
+                    data=linked_projects, many=True
+                )
+                project_serializer.is_valid(raise_exception=True)
+                artifact.linked_projects.add(*project_serializer.save())
             if version:
-                version["artifact"] = artifact
-                version_serializer.create(version)
+                version["artifact"] = artifact.uuid
+                version_serializer = ArtifactVersionSerializer(
+                    data=version, context=self.context
+                )
+                version_serializer.is_valid(raise_exception=True)
+                version_serializer.save()
             if reproducibility:
-                artifact = reproducibility_serializer.create(reproducibility)
+                reproducibility_serializer = ArtifactReproducibilitySerializer(
+                    data=reproducibility, instance=artifact
+                )
+                reproducibility_serializer.is_valid(raise_exception=True)
+                artifact = reproducibility_serializer.save()
 
         return artifact
 
     def update(self, instance: Artifact, validated_data: dict) -> Artifact:
-        if (sharing_key := "sharing_key") in validated_data:
-            # Special exception for sharing_key, which is regenerated on remove
-            sharing_key_field = instance._meta.local_fields[sharing_key]
-            validated_data[sharing_key] = sharing_key_field.default()
+        # All nested fields have to be manually updated, so that is done here
+        authors = validated_data.pop("authors", None)
+        linked_projects = validated_data.pop("linked_projects", None)
+        if linked_projects is not None:
+            linked_projects = [p["urn"] for p in linked_projects]
+        tags = validated_data.pop("tags", None)
+        if tags is not None:
+            tags = [t["tag"] for t in tags]
+        reproducibility = validated_data.pop("reproducibility", None)
 
-        return super(ArtifactSerializer, self).update(instance, validated_data)
+        with transaction.atomic():
+            if authors is not None:
+                # Since authors are ManyToOne, and it's hard to tell what is an update
+                # vs removal, we just rewrite all the authors
+                instance.authors.clear()
+                for author in authors:
+                    author["artifact"] = instance.uuid
+                author_serializer = ArtifactAuthorSerializer(data=authors, many=True)
+                author_serializer.is_valid(raise_exception=True)
+                author_serializer.save()
+
+            if tags is not None:
+                tag_serializer = ArtifactTagSerializer(data=tags, many=True)
+                tag_serializer.is_valid(raise_exception=True)
+                instance.tags.clear()
+                instance.tags.add(tag_serializer.data)
+
+            # Remove any linked projects that are not in the updated list
+            if linked_projects is not None:
+                for project in instance.linked_projects.all():
+                    if project.urn not in linked_projects:
+                        instance.linked_projects.remove(project)
+                    else:
+                        linked_projects.remove(project.urn)
+                # Add new/updated projects to the relationship
+                project_serializer = ArtifactProjectSerializer(
+                    data=linked_projects, many=True
+                )
+                project_serializer.is_valid(raise_exception=True)
+                project_serializer.save()
+
+            # Handle reproducibility changes
+            if reproducibility is not None:
+                repro_serializer = ArtifactReproducibilitySerializer(
+                    data=reproducibility, instance=instance
+                )
+                repro_serializer.is_valid(raise_exception=True)
+                repro_serializer.save()
+
+            # Special exception for sharing_key, which is regenerated on remove
+            if (sharing_key := "sharing_key") in validated_data:
+                sharing_key_field = instance._meta.local_fields[sharing_key]
+                validated_data[sharing_key] = sharing_key_field.default()
+
+            return super(ArtifactSerializer, self).update(instance, validated_data)
 
     def to_internal_value(self, data: dict) -> dict:
         # If this is a new Artifact, its default owner is the user who is creating it
@@ -397,7 +441,9 @@ class ArtifactSerializer(serializers.ModelSerializer):
         elif self.instance and self.instance.owner_urn != token_urn:
             raise PermissionDenied("Non-owners cannot modify owner_urn")
         elif not self.instance and owner_urn != token_urn:
-            raise PermissionDenied("The owner of an artifact can only be set")
+            raise PermissionDenied(
+                "The owner of an artifact can only be set by the current owner."
+            )
         return owner_urn
 
     def get_token_owner_urn(self) -> str:
