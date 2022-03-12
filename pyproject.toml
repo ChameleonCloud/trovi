@@ -17,6 +17,7 @@ python-jose = "^3.3.0"
 python-keycloak-client = "^0.2.3"
 drf-extensions = "^0.7.1"
 PyJWT = "^2.3.0"
+drf-spectacular = "^0.21.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

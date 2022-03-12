@@ -36,7 +36,7 @@ class TestTokenGrant(AuthTestCase):
                 data={
                     "grant_type": "token_exchange",
                     "subject_token": self.dummy_jwt,
-                    "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                    "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
                 },
             )
             self.assertIsNotNone(base_response)
@@ -50,7 +50,7 @@ class TestTokenGrant(AuthTestCase):
             data={
                 "grant_type": "token_exchange",
                 "subject_token": self.dummy_jwt,
-                "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
             },
         )
         self.assertEqual(base_response.status_code, status.HTTP_403_FORBIDDEN)
@@ -72,7 +72,7 @@ class TestTokenGrant(AuthTestCase):
                 data={
                     "grant_type": "token_exchange",
                     "subject_token": valid_token,
-                    "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                    "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
                 },
             )
 

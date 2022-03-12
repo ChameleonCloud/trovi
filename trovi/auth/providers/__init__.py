@@ -33,7 +33,7 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     azp = settings.AUTH_ISSUERS[url_to_fqdn(iss)]
     if not azp:
         raise InvalidToken("Unknown identity provider")
-    client = get_client_by_authorized_party(azp, subject_token)
+    client = get_client_by_issuer(url_to_fqdn(iss))
     return client
 
 
@@ -59,16 +59,12 @@ def get_client_by_name(name: str) -> IdentityProviderClient:
     return client
 
 
-def get_client_by_authorized_party(azp: str, token: JWT) -> IdentityProviderClient:
+def get_client_by_issuer(issuer: str) -> IdentityProviderClient:
     # Look up an Identity Provider by the actor subject of a token
     provider = next(
-        (
-            client
-            for client in _idp_clients.values()
-            if client.get_azp_for_trovi_token(token) == azp
-        ),
+        (client for client in _idp_clients.values() if client.get_issuer() == issuer),
         None,
     )
     if not provider:
-        raise InvalidToken(f"Cannot find identity provider for subject {azp}")
+        raise InvalidToken(f"Unknown identity provider: {issuer}")
     return provider

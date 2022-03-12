@@ -49,7 +49,6 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     TROVI_FQDN,
-    # TODO reverse-proxy
 ]
 
 # Artifact storage
@@ -121,10 +120,14 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Plugins
     "rest_framework",
+    "drf_spectacular",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
     "trovi.auth.apps.AuthConfig",
+    "trovi.docs.apps.DocsConfig",
+    "trovi.storage.apps.StorageConfig",
+    "trovi.meta.apps.MetaConfig",
 ]
 
 MIDDLEWARE = [
@@ -171,6 +174,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "trovi.common.authenticators.AlwaysFailAuthentication"
     ],
+    "DEFAULT_SCHEMA_CLASS": "trovi.common.schema.APIViewSetAutoSchema",
 }
 
 
@@ -326,6 +330,13 @@ LOGGING = {
 
 # Testing
 TEST_RUNNER = "util.test.SampleDataTestRunner"
+
+# Documentation
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Trovi API",
+    "DESCRIPTION": "A collection of shared artifacts.",
+    "VERSION": "0",
+}
 
 # Constraints
 URN_MAX_CHARS = 254

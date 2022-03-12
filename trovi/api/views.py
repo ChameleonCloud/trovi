@@ -3,19 +3,34 @@ from typing import Mapping
 
 from django.db import transaction, models
 from django.db.models import QuerySet
-from requests.structures import CaseInsensitiveDict
+from django.utils.decorators import method_decorator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework import viewsets, mixins
 from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import Serializer
 from rest_framework_extensions.mixins import NestedViewSetMixin
 
-from trovi.api import schema
-from trovi.api.filters import ListArtifactsOrderingFilter, ListArtifactsVisibilityFilter
+from trovi.api.docs.extensions import (
+    ArtifactTagSerializerExtension,
+    ArtifactProjectSerializerExtension,
+    TroviTokenAuthenticationExtension,
+    TokenGrantRequestSerializerExtension,
+)
+from trovi.api.filters import (
+    ListArtifactsOrderingFilter,
+    ListArtifactsVisibilityFilter,
+    sharing_key_parameter,
+)
 from trovi.api.paginators import ListArtifactsPagination
-from trovi.api.parsers import JSONSchemaParser
-from trovi.api.patches import ArtifactPatch
-from trovi.api.serializers import ArtifactSerializer, ArtifactVersionSerializer
+from trovi.api.serializers import (
+    ArtifactVersionSerializer,
+    ArtifactPatchSerializer,
+    ArtifactSerializer,
+)
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
     ArtifactVisibilityPermission,
@@ -24,7 +39,6 @@ from trovi.common.permissions import (
     ArtifactVersionScopedPermission,
 )
 from trovi.models import Artifact, ArtifactVersion
-from util.types import DummyRequest
 
 
 class APIViewSet(viewsets.GenericViewSet):
@@ -32,7 +46,9 @@ class APIViewSet(viewsets.GenericViewSet):
     Implements generic behavior useful to all API views
     """
 
-    action_schema_map: Mapping
+    action_schema_map: Mapping = None
+    # Serializer used for
+    patch_serializer_class: Serializer = None
 
     @cache
     def get_object(self) -> models.Model:
@@ -44,21 +60,46 @@ class APIViewSet(viewsets.GenericViewSet):
         # This override ensures relevant objects in the database to maintain the same
         # state for any operations which require that behavior.
         qs = super(APIViewSet, self).get_queryset()
-        if self.action in ("list", "create", "partial_update"):
+        if self.action.lower() in ("list", "create", "update", "partial_update"):
             qs = qs.select_for_update()
         return qs
 
-    def get_parser_context(self, http_request: Request) -> dict:
-        context = super(APIViewSet, self).get_parser_context(http_request)
+    def get_serializer_class(self):
+        if self.is_patch():
+            return self.patch_serializer_class
+        else:
+            return super(APIViewSet, self).get_serializer_class()
 
-        # Since action has not been defined at this point, we determine the appropriate
-        # schema via the request method
-        if (json_schema := self.action_schema_map.get(self.request.method)) is not None:
-            context["schema"] = json_schema
-
-        return context
+    def is_patch(self) -> bool:
+        return self.request.method.upper() in ("PATCH", "PUT")
 
 
+@extend_schema_view(
+    list=extend_schema(
+        description="Lists all visible artifacts for the requesting user.",
+    ),
+    retrieve=extend_schema(
+        parameters=[sharing_key_parameter],
+        description="Retrieve an artifact given its ID.",
+    ),
+    create=extend_schema(description="Create a new Artifact resource."),
+    update=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="partial",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="Signifies that the update specified is partial. "
+                "Required 'true' to make PUT requests.",
+            )
+        ],
+        description=(update_description := "Update an Artifact's representation."),
+    ),
+    partial_update=extend_schema(description=update_description),
+)
+@method_decorator(transaction.atomic, name="list")
+@method_decorator(transaction.atomic, name="partial_update")
 class ArtifactViewSet(
     NestedViewSetMixin,
     APIViewSet,
@@ -146,55 +187,28 @@ class ArtifactViewSet(
 
     queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer
-    parser_classes = [JSONSchemaParser]
+    patch_serializer_class = ArtifactPatchSerializer
+    parser_classes = [JSONParser]
     pagination_class = ListArtifactsPagination
     filter_backends = [ListArtifactsVisibilityFilter, ListArtifactsOrderingFilter]
+    ordering = ["-updated_at"]
     ordering_fields = ["date", "updated_at", "access_count"]
-    ordering = ["updated_at"]
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [ArtifactVisibilityPermission, ArtifactScopedPermission]
     lookup_field = "uuid"
-
-    # JSON Patch used to provide update context to serializers
-    patch = None
-
-    action_schema_map = CaseInsensitiveDict(
-        {
-            "POST": schema.CreateArtifactSchema,
-            "PATCH": schema.UpdateArtifactSchema,
-            "UPDATE": schema.UpdateArtifactSchema,
-        }
-    )
-
-    @transaction.atomic
-    def list(self, request: Request, *args, **kwargs) -> Response:
-        return super(ArtifactViewSet, self).list(request, *args, **kwargs)
-
-    @transaction.atomic
-    def partial_update(self, request: Request, *args, **kwargs) -> Response:
-        # Since the serializer doesn't understand JSON Patch,
-        # we apply the patch here, and then pass the resultant object on
-        # as a regular update.
-        artifact = self.get_serializer(self.get_object()).data
-        raw = request.data
-        self.patch = ArtifactPatch(raw)
-        diff = self.patch.apply(artifact)
-        # Here, we get around request objects being mostly immutable (for good reason).
-        # This could be dangerous if rest_framework makes changes to its mixins.
-        # If this endpoint starts failing, don't be surprised if this is why.
-        # Since the super call only needs the request to pull the body (data) from it,
-        # we can simply just pass it a named tuple with the attribute it references.
-        dummy_request = DummyRequest(data=diff)
-        return super(ArtifactViewSet, self).partial_update(
-            dummy_request, *args, **kwargs
-        )
+    openapi_extensions = [
+        ArtifactTagSerializerExtension,
+        ArtifactProjectSerializerExtension,
+        TroviTokenAuthenticationExtension,
+        TokenGrantRequestSerializerExtension,
+    ]
 
     @transaction.atomic
     def update(self, request: Request, *args, **kwargs) -> Response:
         # This method is implemented by the UpdateMixin to support the PUT method
         # We don't support full updates, so this endpoint is overridden here
         # to prevent it from being accessed.
-        if not self.patch:
+        if not self.is_patch():
             raise MethodNotAllowed(
                 "Full Artifact updates are not supported for UpdateArtifact. "
                 "Please use PATCH with a properly formatted JSON Patch."
@@ -202,15 +216,38 @@ class ArtifactViewSet(
         else:
             return super(ArtifactViewSet, self).update(request, *args, **kwargs)
 
-    def get_serializer_context(self):
-        context = super(ArtifactViewSet, self).get_serializer_context()
-        # Plumb JSON Patches into the serializer context
-        # so that the update function will understand what operations are performed
-        context["patch"] = self.patch
 
-        return context
+parent_artifact_parameter = OpenApiParameter(
+    name="parent_lookup_artifact",
+    type=OpenApiTypes.UUID,
+    location=OpenApiParameter.PATH,
+    required=True,
+    allow_blank=False,
+    description="The UUID of the Artifact to which the Version belongs.",
+)
 
 
+@extend_schema_view(
+    create=extend_schema(
+        parameters=[parent_artifact_parameter],
+        description="Associate a new Version to an Artifact.",
+    ),
+    destroy=extend_schema(
+        parameters=[
+            parent_artifact_parameter,
+            OpenApiParameter(
+                name="slug__iexact",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                required=True,
+                allow_blank=False,
+                description="The slug for the Version to be deleted.",
+            ),
+        ],
+        description="Deletes a given Version of an Artifact.",
+    ),
+)
+@method_decorator(transaction.atomic, name="destroy")
 class ArtifactVersionViewSet(
     NestedViewSetMixin,
     APIViewSet,
@@ -306,7 +343,7 @@ class ArtifactVersionViewSet(
     """
 
     queryset = ArtifactVersion.objects.all()
-    parser_classes = [JSONSchemaParser]
+    parser_classes = [JSONParser]
     lookup_field = "slug__iexact"
     serializer_class = ArtifactVersionSerializer
     authentication_classes = [TroviTokenAuthentication]
@@ -315,9 +352,3 @@ class ArtifactVersionViewSet(
         ArtifactVersionScopedPermission,
     ]
     lookup_value_regex = "[^/]+"
-
-    action_schema_map = CaseInsensitiveDict(
-        {
-            "POST": schema.CreateArtifactVersionSchema,
-        }
-    )

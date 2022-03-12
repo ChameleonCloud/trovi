@@ -1,5 +1,12 @@
 from django.db.models import QuerySet
 from django.http import JsonResponse
+from drf_spectacular.plumbing import (
+    build_parameter_type,
+    build_basic_type,
+    build_object_type,
+)
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 from rest_framework import views
 from rest_framework.exceptions import NotFound
 from rest_framework.pagination import LimitOffsetPagination
@@ -12,6 +19,7 @@ from util.types import JSON
 class ListArtifactsPagination(LimitOffsetPagination):
     limit_query_param = "limit"
     offset_query_param = "after"
+    offset_query_description = "The initial artifact from which to start the page"
     default_limit = None
     max_limit = None
     limit = None
@@ -48,19 +56,37 @@ class ListArtifactsPagination(LimitOffsetPagination):
         )
 
     def get_paginated_response_schema(self, schema: JSON) -> JSON:
-        return {
-            "type": "object",
-            "properties": {
+        return build_object_type(
+            properties={
                 "artifacts": schema,
-                "next": {
-                    "type": "object",
-                    "properties": {
-                        "after": {"type": "UUID4"},
-                        "limit": {"type": "int", "nullable": True},
-                    },
-                },
-            },
-        }
+                "next": build_object_type(
+                    properties={
+                        "after": build_basic_type(OpenApiTypes.UUID),
+                        "limit": build_basic_type(OpenApiTypes.INT),
+                    }
+                ),
+            }
+        )
+
+    def get_schema_operation_parameters(
+        self, view: views.View
+    ) -> list[dict[str, JSON]]:
+        return [
+            build_parameter_type(
+                name=self.limit_query_param,
+                schema=build_basic_type(OpenApiTypes.INT),
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=self.limit_query_description,
+            ),
+            build_parameter_type(
+                name=self.offset_query_param,
+                schema=build_basic_type(OpenApiTypes.UUID),
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=self.offset_query_description,
+            ),
+        ]
 
     def get_paginated_response(self, data: JSON) -> JsonResponse:
         return JsonResponse(

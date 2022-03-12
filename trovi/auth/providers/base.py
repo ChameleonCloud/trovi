@@ -1,7 +1,7 @@
 import logging
 from abc import abstractmethod, ABC
 from datetime import datetime
-from typing import Optional, Any, Iterable, Collection
+from typing import Optional, Any, Collection
 
 from django.conf import settings
 from jose.backends.base import Key
@@ -76,14 +76,11 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_azp_for_trovi_token(self, token) -> str:
+    def get_issuer(self) -> str:
         """
-        Used to link Trovi Tokens back to the authorizing actor (the IdP)
+        Used to link Trovi Tokens back to the token issuer (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts
         into the 'iss' claim for its subject tokens.
-        This value should be truncated to 31 characters or fewer in order to fit within
-        the NID field of a URN.
-        :param token:
         """
 
     @abstractmethod

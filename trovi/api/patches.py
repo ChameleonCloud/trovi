@@ -3,7 +3,6 @@ The classes in this file provide overrides to JSON Patch classes to ensure that
 patches are valid specifically for our Trovi models.
 """
 from collections import defaultdict
-from functools import partial
 from types import MappingProxyType
 from typing import Any
 
@@ -11,7 +10,7 @@ import jsonpatch
 from rest_framework.exceptions import ValidationError
 
 from trovi.models import ArtifactAuthor
-from util.types import JSONObject
+from util.types import JSONObject, JSON
 
 patch_errors = defaultdict(list)
 
@@ -21,25 +20,30 @@ class ArtifactPatchMixin:
     Provides helpers to all ArtifactPatchOperations
     """
 
+    class walker(defaultdict):
+        def __missing__(self, key: Any) -> Any:
+            dict.__setitem__(self, key, self.default_factory(key))
+            return self[key]
+
     error_id = None
     INVALID_PATH = "I'm an invalid path because paths are only ever dict or None"
     _artifact_author_description = {
         str(f): None for f in ArtifactAuthor._meta.get_fields()
     }
 
-    def _int_key_only(self, value: Any, desired_key: Any) -> Any:
+    def _int_key_only(self, desired_key: Any, value: Any = None) -> Any:
         """
         Helper function that ensures a defaultdict's key is only an integer.
         User for paths that are supposed to be lists.
         """
-        if type(desired_key) is not int:
-            return self.INVALID_PATH
-        else:
+        # In JSON Patch syntax, "-" means "end of list"
+        if desired_key == "-":
             return value
-
-    _tag_key_generator = partial(_int_key_only, value=None)
-    _author_key_generator = partial(_int_key_only, value=_artifact_author_description)
-    _linked_project_generator = partial(_int_key_only, value=None)
+        try:
+            int(desired_key)
+            return value
+        except ValueError:
+            return self.INVALID_PATH
 
     def valid_mutable_path(self, operation: dict, path: list):
         """
@@ -52,22 +56,28 @@ class ArtifactPatchMixin:
             "title": None,
             "short_description": None,
             "long_description": None,
-            "tags": defaultdict(self._tag_key_generator),
-            "authors": defaultdict(self._author_key_generator),
-            "linked_projects": defaultdict(self._linked_project_generator),
+            "tags": self.walker(self._int_key_only),
+            "authors": self.walker(
+                lambda a: self._int_key_only(a, self._artifact_author_description)
+            ),
+            "linked_projects": self.walker(self._int_key_only),
             "reproducibility": {"enable_requests": None, "access_hours": None},
             # owner_urn is mutable, but only current owners can modify it
             # this is enforced by the ArtifactSerializer
             "owner_urn": None,
             "visibility": None,
         }
+        error = (
+            f"Write operation '{operation['op']}' does not have "
+            f"valid mutable path: {path}"
+        )
         for step in path:
-            walk = walk.get(step, self.INVALID_PATH)
+            if walk is None:
+                patch_errors[self.error_id].append(error)
+                return False
+            walk = walk[step]
             if walk == self.INVALID_PATH:
-                patch_errors[self.error_id].append(
-                    f"Write operation '{operation['op']}' "
-                    f"does not have valid mutable path: {path}"
-                )
+                patch_errors[self.error_id].append(error)
                 return False
         return True
 
@@ -125,14 +135,35 @@ class ArtifactPatch(jsonpatch.JsonPatch):
         }
     )
 
-    def apply(self, obj: JSONObject, in_place: bool = False) -> JSONObject:
+    def apply(self, obj: dict[str, JSON], in_place: bool = False) -> dict[str, JSON]:
+        """
+        Overwrites the behavior of apply to create a partially updated object
+        (unless in_place is True). Since the API no longer relies on JSON schema, and
+        serializers allow partial updates, we only need to return the fields which are
+        updated. This makes serializer validation easier.
+
+        The only limitation here is that the updates are resolved via a shallow diff.
+        Deep diff would be ideal, but that is much more complicated. For now, this is
+        ok since the nested objects are ok to be replaced completely. If database
+        relationships ever get more complicated than they currently are, this will
+        need to be updated.
+        """
         try:
-            finished = super(ArtifactPatch, self).apply(obj, in_place=in_place)
-        except Exception as e:
+            new_artifact = super(ArtifactPatch, self).apply(obj, in_place=in_place)
+        except jsonpatch.JsonPatchException as e:
             raise ValidationError(str(e))
         if errors := patch_errors.pop(id(self), None):
             raise ValidationError(errors)
-        return finished
+
+        if in_place:
+            return new_artifact
+
+        updated_fields = {}
+        for field in obj.keys():
+            if obj.get(field) != new_artifact.get(field):
+                updated_fields[field] = new_artifact.get(field)
+
+        return updated_fields
 
     def _get_operation(self, operation: JSONObject) -> jsonpatch.PatchOperation:
         try:

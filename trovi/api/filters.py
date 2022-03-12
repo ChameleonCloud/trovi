@@ -1,11 +1,24 @@
 from django.db import models
 from django.db.models import F
 from django.utils.translation import gettext_lazy as _
+from drf_spectacular.plumbing import build_parameter_type, build_basic_type
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 from rest_framework import filters, views
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
 from trovi.models import Artifact
+from util.types import JSON
+
+sharing_key_parameter = OpenApiParameter(
+    name="sharing_key",
+    type=OpenApiTypes.STR,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    allow_blank=False,
+    description="An artifact sharing key.",
+)
 
 
 class ListArtifactsOrderingFilter(filters.OrderingFilter):
@@ -32,6 +45,20 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
             .reverse()
         )
 
+    def get_schema_operation_parameters(
+            self, view: views.View
+    ) -> list[dict[str, JSON]]:
+        return [
+            build_parameter_type(
+                name=self.ordering_param,
+                schema=build_basic_type(OpenApiTypes.STR),
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=self.ordering_description,
+                enum=self.ordering_fields,
+                default=getattr(view, "ordering", "-")[1:],
+            ),
+        ]
 
 class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
     """
@@ -63,3 +90,16 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
         member_of = private.filter(authors__email__iexact=user)
 
         return (public | shared_with | member_of).distinct()
+
+    def get_schema_operation_parameters(
+        self, view: views.View
+    ) -> list[dict[str, JSON]]:
+        return [
+            build_parameter_type(
+                name=sharing_key_parameter.name,
+                schema=build_basic_type(sharing_key_parameter.type),
+                location=sharing_key_parameter.location,
+                required=sharing_key_parameter.required,
+                description=sharing_key_parameter.description,
+            )
+        ]

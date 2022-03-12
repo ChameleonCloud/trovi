@@ -29,7 +29,6 @@ from trovi.models import (
     ArtifactAuthor,
 )
 from util.test import (
-    DummyArtifact,
     artifact_don_quixote,
     version_don_quixote_1,
     version_don_quixote_2,
@@ -457,12 +456,21 @@ class TestUpdateArtifact(APITestCase):
                 },
                 {
                     "op": "remove",
-                    "path": "/reproducibility/access_hours",
+                    "path": "/reproducibility/enable_requests",
                 },
                 {
                     "op": "move",
                     "from": "/long_description",
                     "path": "/title",
+                },
+                {
+                    "op": "add",
+                    "path": "/authors/1",
+                    "value": {
+                        "full_name": "Petey Patch",
+                        "email": "petey@patchme.io",
+                        "affiliation": "The Patch People",
+                    },
                 },
             ]
         }
@@ -477,21 +485,22 @@ class TestUpdateArtifact(APITestCase):
         self.assertIsInstance(response, Response)
         new_donq_as_json = json.loads(response.content)
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=new_donq_as_json)
-        new_donq = DummyArtifact(**new_donq_as_json)
+        new_donq = new_donq_as_json
 
         # Test that the intended fields changed
         diff_msg = f"{old_donq_as_json=} {new_donq_as_json=}"
-        new_description = new_donq.short_description
+        new_description = new_donq["short_description"]
         self.assertEqual(new_description, patch["patch"][0]["value"], msg=diff_msg)
         self.assertNotEqual(
             new_description, artifact_don_quixote.short_description, msg=diff_msg
         )
 
-        new_access_hours = new_donq.repro_access_hours
-        self.assertIsNone(new_access_hours)
+        self.assertIsNone(new_donq["long_description"], msg=diff_msg)
+        self.assertEqual(new_donq["title"], artifact_don_quixote.long_description)
 
-        self.assertIsNone(new_donq.long_description, msg=diff_msg)
-        self.assertEqual(new_donq.title, artifact_don_quixote.long_description)
+        new_authors = new_donq["authors"]
+        target_author = patch["patch"][3]["value"]
+        self.assertIn(target_author, new_authors, msg=diff_msg)
 
         # Test that nothing unexpected changed
         new_donq_as_json.pop("updated_at")
@@ -504,6 +513,12 @@ class TestUpdateArtifact(APITestCase):
         old_donq_as_json.pop("reproducibility")
         new_donq_as_json.pop("title")
         old_donq_as_json.pop("title")
+        old_donq_as_json["authors"] = [
+            a for a in old_donq_as_json["authors"] if a != target_author
+        ]
+        new_donq_as_json["authors"] = [
+            a for a in new_donq_as_json["authors"] if a != target_author
+        ]
         self.assertDictEqual(new_donq_as_json, old_donq_as_json)
 
     def test_update_artifact_abilities(self):
