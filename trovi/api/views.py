@@ -189,6 +189,7 @@ class ArtifactViewSet(
             dummy_request, *args, **kwargs
         )
 
+    @transaction.atomic
     def update(self, request: Request, *args, **kwargs) -> Response:
         # This method is implemented by the UpdateMixin to support the PUT method
         # We don't support full updates, so this endpoint is overridden here

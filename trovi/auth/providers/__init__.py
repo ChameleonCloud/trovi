@@ -14,21 +14,11 @@ from util.url import url_to_fqdn
 
 def validate_subject_token(jws: str) -> JWT:
     """
-    Attempts to verify a token in JWS format against all Identity Providers.
-
-    If anu succeed, returns the decoded JWT. If zero providers can
-    validate the token, raises ``AuthenticationFailed``.
+    Performs signature validation of a subject token against a supported IdP
     """
     jwt = JWT.from_jws(jws, validate=False)
     provider = get_subject_token_provider(jwt)
     validated_token = provider.validate_subject_token(jwt)
-
-    # Internal validation
-    # Ensure token authorized party is approved client ID
-    if validated_token.azp not in settings.AUTH_APPROVED_AUTHORIZED_PARTIES:
-        raise InvalidToken(
-            f"Authorized party is not approved client ID: {validated_token.azp}"
-        )
 
     return validated_token
 
@@ -40,7 +30,10 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     iss = subject_token.iss
     if not iss:
         raise InvalidToken("Token does not contain required claim 'iss'.")
-    client = get_client_by_subject(url_to_fqdn(iss))
+    azp = settings.AUTH_ISSUERS[url_to_fqdn(iss)]
+    if not azp:
+        raise InvalidToken("Unknown identity provider")
+    client = get_client_by_authorized_party(azp, subject_token)
     return client
 
 
@@ -66,16 +59,16 @@ def get_client_by_name(name: str) -> IdentityProviderClient:
     return client
 
 
-def get_client_by_subject(actor_subject: str) -> IdentityProviderClient:
+def get_client_by_authorized_party(azp: str, token: JWT) -> IdentityProviderClient:
     # Look up an Identity Provider by the actor subject of a token
     provider = next(
         (
             client
             for client in _idp_clients.values()
-            if client.get_actor_subject() == actor_subject
+            if client.get_azp_for_trovi_token(token) == azp
         ),
         None,
     )
     if not provider:
-        raise InvalidToken(f"Cannot find identity provider for subject {actor_subject}")
+        raise InvalidToken(f"Cannot find identity provider for subject {azp}")
     return provider

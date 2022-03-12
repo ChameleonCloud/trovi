@@ -6,7 +6,7 @@ from django.db import transaction, IntegrityError
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
-from trovi.common.exceptions import ConflictError, InvalidToken
+from trovi.common.exceptions import ConflictError
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from trovi.models import (
@@ -17,7 +17,6 @@ from trovi.models import (
     ArtifactVersion,
     ArtifactLink,
 )
-from util.url import fqdn_to_nid
 
 LOG = logging.getLogger(__name__)
 
@@ -400,7 +399,11 @@ class ArtifactSerializer(serializers.ModelSerializer):
         elif self.instance and self.instance.owner_urn != token_urn:
             raise PermissionDenied("Non-owners cannot modify owner_urn")
         elif not self.instance and owner_urn != token_urn:
-            raise PermissionDenied("The owner of an artifact can only be set")
+            raise PermissionDenied(
+                "The owner of an artifact can only be edited by the artifact owner "
+                "after creation. "
+                "The default artifact owner is the user who created the artifact."
+            )
         return owner_urn
 
     def get_token_owner_urn(self) -> str:
@@ -408,9 +411,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         Generates a default owner URN based on the requesting user's auth token
         """
         token = JWT.from_request(self.context["request"])
-        if not (actor_sub := token.act.get("sub")):
-            raise InvalidToken("Cannot derive owner_urn")
-        return f"urn:{fqdn_to_nid(actor_sub)}:{token.sub}"
+        return f"urn:{token.azp}:{token.sub}"
 
     def validate_long_description(self, long_description: str) -> str:
         try:

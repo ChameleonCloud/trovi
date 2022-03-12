@@ -9,7 +9,6 @@ from django.conf import settings
 from rest_framework.request import Request
 
 from trovi.common.exceptions import InvalidToken
-from util.url import url_to_nid
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
@@ -72,15 +71,15 @@ class JWT:
         HS256 = "HS256"
         RS256 = "RS256"
 
-    # Authorized Party: The party to whom the token was issued
+    # Authorized Party: The client application via which the token was acquired
     azp: str
-    # Audience: The audience for whom the token is intended
+    # Audience: The applications by which the token is intended to be used
     aud: list[str]
-    # Issuer: The party who issued the token
+    # Issuer: The party (IdP) who issued the token
     iss: str
     # Issued At: The time at which the token was issued
     iat: int
-    # Subject: The subject of the token
+    # Subject: The subject (user) who received the token
     sub: str
     # Expiration: The time past which this token can no longer be used
     exp: int = field(default=int(LONGEST_EXPIRATION))
@@ -89,9 +88,9 @@ class JWT:
     # Actor: The acting party (IdP) who authorized the token (Trovi Token only)
     act: dict[str, str] = field(default=None)
 
-    # Algorithm: The algorithm with which the key is signed
+    # Algorithm: The algorithm with which the token is signed
     alg: Algorithm = field(default=Algorithm.HS256)
-    # Key: The key which signed this JWT
+    # Key: The key which signed the token
     key: str = field(default=None)
 
     # The raw serialized token in base64
@@ -173,7 +172,10 @@ class JWT:
 
     def to_urn(self) -> str:
         # TODO this is not a perfect solution. Not every token will have the email claim
-        return f"urn:{url_to_nid(self.iss)}:{self.additional_claims['email']}"
+        nid = settings.AUTH_ISSUERS.get(self.iss)
+        if not nid:
+            raise ValueError("Unknown issuer")
+        return f"urn:{nid}:{self.additional_claims['preferred_username']}"
 
     def asdict(self) -> dict:
         """

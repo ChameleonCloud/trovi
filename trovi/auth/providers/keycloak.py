@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+from django.conf import settings
 from jose import jwk, JOSEError
 from jose.backends.base import Key
 from jose.constants import ALGORITHMS
@@ -9,6 +10,7 @@ from requests import HTTPError
 from rest_framework.exceptions import AuthenticationFailed
 
 from trovi.auth.providers.base import IdentityProviderClient
+from trovi.common.exceptions import InvalidToken
 from trovi.common.tokens import JWT, OAuth2TokenIntrospection
 from util.url import url_to_fqdn
 
@@ -50,11 +52,14 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         creds = openid.password_credentials(username, password)
         return creds["access_token"]
 
-    def get_actor_subject(self) -> str:
-        return url_to_fqdn(self.openid.get_url("issuer"))
+    def get_azp_for_trovi_token(self, token: JWT) -> str:
+        azp = settings.AUTH_ISSUERS.get(url_to_fqdn(token.iss))
+        if not azp:
+            raise InvalidToken(f"Unknown token issuer {token.iss}")
+        return azp
 
     def get_subject(self, subject_token: JWT) -> str:
-        return subject_token.additional_claims["email"]
+        return subject_token.additional_claims["preferred_username"]
 
     def validate_subject_token(self, subject_token: JWT) -> JWT:
         for key in self.signing_keys:

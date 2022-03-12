@@ -438,11 +438,7 @@ class TestUpdateArtifact(APITestCase):
         artifact_don_quixote.authors.add(
             ArtifactAuthor.objects.create(
                 full_name="Trovi Tester",
-                email=(
-                    test_user_email := os.getenv(
-                        "CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"
-                    )
-                ),
+                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
             )
         )
 

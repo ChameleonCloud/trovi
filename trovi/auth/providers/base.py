@@ -76,19 +76,20 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_actor_subject(self) -> str:
+    def get_azp_for_trovi_token(self, token) -> str:
         """
         Used to link Trovi Tokens back to the authorizing actor (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts
         into the 'iss' claim for its subject tokens.
         This value should be truncated to 31 characters or fewer in order to fit within
         the NID field of a URN.
+        :param token:
         """
 
     @abstractmethod
     def get_subject(self, subject_token: JWT) -> str:
         """
-        Used to fill in the "username" (azp) for the Trovi Token. This should be
+        Used to fill in the "username" (sub) for the Trovi Token. This should be
         the requesting user's email address.
         """
 
@@ -96,6 +97,8 @@ class IdentityProviderClient(ABC):
     def validate_subject_token(self, subject_token: JWT) -> JWT:
         """
         Validates a JWT per the specification of the Identity Provider
+
+        Should raise InvalidToken if validation fails
         """
 
     def exchange_token(
@@ -126,16 +129,16 @@ class IdentityProviderClient(ABC):
                 raise InvalidToken("Subject token revoked.")
 
         return JWT(
-            azp=subject_token.azp,
+            azp=self.get_azp_for_trovi_token(subject_token),
             aud=settings.TROVI_FQDN,
             iss=settings.TROVI_FQDN,
             iat=(now := int(datetime.utcnow().timestamp())),
             sub=self.get_subject(subject_token),
+
             exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
             scope=scopes,
             alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
             key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
-            act={"sub": self.get_actor_subject()},
         )
 
     @abstractmethod

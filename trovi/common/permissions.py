@@ -25,6 +25,8 @@ class BaseScopedPermission(permissions.BasePermission):
 
     def has_permission(self, request: Request, view: views.View) -> bool:
         token = JWT.from_request(request)
+        if not token:
+            return False
         if token.is_admin():
             return True
         required_scopes = self.action_scope_map.get(request.method)

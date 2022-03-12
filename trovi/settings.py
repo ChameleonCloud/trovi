@@ -13,6 +13,8 @@ import secrets
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+from urllib.parse import urlparse
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -344,11 +346,10 @@ AUTH_TROVI_TOKEN_SIGNING_KEY = os.environ.get(
 AUTH_TROVI_TOKEN_SIGNING_ALGORITHM = "HS256"
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS = 5
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_SECONDS = 2
-# TODO allow this to be pluggable by third party IdPs
-AUTH_APPROVED_AUTHORIZED_PARTIES = set(
-    os.environ.get("AUTH_APPROVED_AUTHORIZED_PARTIES").split(",")
-)
 AUTH_TOKEN_CONVERSION_CACHE_SIZE = 256
+AUTH_ISSUERS = {
+    urlparse(CHAMELEON_KEYCLOAK_SERVER_URL).netloc: "chameleon",
+}
 
 ARTIFACT_TITLE_MAX_CHARS = 70
 ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70
