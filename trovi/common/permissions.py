@@ -117,6 +117,7 @@ class BaseMetadataPermission(permissions.BasePermission):
             token = JWT.from_request(request)
             return token.is_admin()
 
+
 class IsAuthenticatedWithTroviToken(permissions.BasePermission):
     def has_permission(self, request: Request, view: views.View) -> bool:
         return JWT.from_request(request) is not None

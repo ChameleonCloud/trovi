@@ -46,7 +46,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
         )
 
     def get_schema_operation_parameters(
-            self, view: views.View
+        self, view: views.View
     ) -> list[dict[str, JSON]]:
         return [
             build_parameter_type(
@@ -59,6 +59,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
                 default=getattr(view, "ordering", "-")[1:],
             ),
         ]
+
 
 class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
     """

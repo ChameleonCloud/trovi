@@ -259,7 +259,6 @@ class TestListArtifacts(APITestCase):
 
         # Test sorting
         for sort_param in ("date", "access_count"):
-            if sort_param == "access_count":
             response = self.client.get(sort(self.list_artifact_path(), sort_param))
             body = response.json()
             if Artifact.objects.count() > 0:
