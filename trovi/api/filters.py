@@ -1,15 +1,11 @@
 from django.db import models
-from django.db.models import (
-    F,
-    Count,
-    Q,
-)
+from django.db.models import F
 from django.utils.translation import gettext_lazy as _
 from rest_framework import filters, views
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact, ArtifactEvent
+from trovi.models import Artifact
 
 
 class ListArtifactsOrderingFilter(filters.OrderingFilter):
@@ -26,14 +22,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     ) -> models.QuerySet:
 
         # Annotate the query such that the database understands our sort_by params
-        prepared_query = queryset.annotate(
-            date=F("created_at"),
-            # access_count=Sum("versions__access_count"),
-            access_count=Count(
-                "versions__events",
-                filter=Q(versions__events__event_type=ArtifactEvent.EventType.LAUNCH),
-            ),
-        )
+        prepared_query = queryset.annotate(date=F("created_at"))
 
         # The prepared query from above will be sorted properly using the
         # sort_by url param in the super call here

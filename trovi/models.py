@@ -6,8 +6,9 @@ from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models import F
 from django.db.models.functions import Lower
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.utils.translation import gettext_lazy as _
 
 from trovi.fields import URNField
@@ -55,6 +56,9 @@ class Artifact(models.Model):
         ],
     )
     repro_access_hours = models.IntegerField(null=True)
+
+    # Hidden field which tracks how many times this artifact has been launched
+    access_count = models.PositiveIntegerField(default=0)
 
     # Sharing metadata
     class Visibility(models.TextChoices):
@@ -125,7 +129,22 @@ class ArtifactVersion(models.Model):
                 if versions_today:
                     time_stamp += f".{versions_today}"
                 instance.slug = time_stamp
-                instance.save()
+                instance.save(update_fields=["slug"])
+
+    @staticmethod
+    def delete_access_count(instance: "ArtifactVersion", **_):
+        """
+        Updates the parent artifact's access_count such that it no longer counts
+        accesses of the deleted version
+        """
+        try:
+            if instance.artifact:
+                instance.artifact.access_count = (
+                    F("access_count") - instance.access_count
+                )
+                instance.artifact.save(update_fields=["access_count"])
+        except Artifact.DoesNotExist:
+            pass
 
 
 class ArtifactEvent(models.Model):
@@ -152,6 +171,22 @@ class ArtifactEvent(models.Model):
 
     # The time at which the event occurred
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+
+    @staticmethod
+    def incr_access_count(instance: "ArtifactEvent", created: bool = False, **_):
+        if created:
+            try:
+                if (
+                    not instance.artifact_version
+                    or not instance.artifact_version.artifact
+                ):
+                    pass
+                if instance.event_type == ArtifactEvent.EventType.LAUNCH:
+                    artifact = instance.artifact_version.artifact
+                    artifact.access_count = F("access_count") + 1
+                    artifact.save(update_fields=["access_count"])
+            except (Artifact.DoesNotExist, ArtifactVersion.DoesNotExist):
+                pass
 
 
 class ArtifactTag(models.Model):
@@ -205,3 +240,5 @@ class ArtifactLink(models.Model):
 
 # Signals
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)
+post_save.connect(ArtifactEvent.incr_access_count, sender=ArtifactEvent)
+post_delete.connect(ArtifactVersion.delete_access_count, sender=ArtifactVersion)
