@@ -117,7 +117,7 @@ class IdentityProviderClient(ABC):
                 not in settings.AUTH_TROVI_ADMIN_USERS
             ):
                 raise InvalidToken(
-                    f"User does not have permission to request admin token {os.getenv('TROVI_ADMIN_USERS')}"
+                    f"User does not have permission to request admin token"
                 )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):
