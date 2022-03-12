@@ -9,7 +9,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
 from trovi.api.patches import ArtifactPatch
-from trovi.common.exceptions import ConflictError, InvalidToken
+from trovi.common.exceptions import ConflictError
 from trovi.common.serializers import JsonPatchOperationSerializer, URNSerializerField
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
@@ -22,7 +22,6 @@ from trovi.models import (
     ArtifactLink,
 )
 from util.types import JSON
-from util.url import fqdn_to_nid
 
 LOG = logging.getLogger(__name__)
 

@@ -76,7 +76,7 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def get_issuer(self) -> str:
+    def get_azp_for_trovi_token(self, token: JWT) -> str:
         """
         Used to link Trovi Tokens back to the token issuer (the IdP)
         This should be the FQDN of the value that the IdP's token endpoint inserts

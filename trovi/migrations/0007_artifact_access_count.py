@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("trovi", "0004_remove_default_owner_urn"),
+        ("trovi", "0006_add_artifact_sorting_indexes"),
     ]
 
     operations = [
