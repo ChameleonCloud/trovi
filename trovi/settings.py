@@ -168,7 +168,9 @@ REST_FRAMEWORK = {
     ],
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "trovi.common.authenticators.AlwaysFailAuthentication"
+    ],
 }
 
 

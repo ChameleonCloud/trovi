@@ -4,6 +4,7 @@ from rest_framework.request import Request
 from trovi.api.parsers import JSONSchemaParser
 from trovi.auth import schema
 from trovi.auth.serializers import TokenGrantRequestSerializer
+from trovi.common.authenticators import AlwaysPassAuthentication
 
 
 class TokenGrant(generics.CreateAPIView):
@@ -14,6 +15,7 @@ class TokenGrant(generics.CreateAPIView):
 
     serializer_class = TokenGrantRequestSerializer
     parser_classes = [JSONSchemaParser]
+    authentication_classes = [AlwaysPassAuthentication]
 
     def get_parser_context(self, http_request: Request) -> dict:
         context = super(TokenGrant, self).get_parser_context(http_request)

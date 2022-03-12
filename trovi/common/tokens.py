@@ -53,7 +53,7 @@ class JWT:
         TROVI_ADMIN = "trovi:admin"
 
         def is_write_scope(self) -> bool:
-            return self.value.endswith(":write")
+            return self.value.endswith(":write") or self.value == self.TROVI_ADMIN
 
         def __eq__(self, other: Any) -> bool:
             if type(other) is str:
@@ -149,7 +149,7 @@ class JWT:
                 options=options,
                 algorithms=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
                 key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
-                audience=settings.TROVI_FQDN,
+                audience=[settings.TROVI_FQDN],
             )
         except jwt.InvalidTokenError as e:
             raise InvalidToken(e)
@@ -170,12 +170,16 @@ class JWT:
             algorithm=self.alg,
         )
 
-    def to_urn(self) -> str:
-        # TODO this is not a perfect solution. Not every token will have the email claim
-        nid = settings.AUTH_ISSUERS.get(self.iss)
+    def to_urn(self, is_subject_token=False) -> str:
+        if is_subject_token:
+            nid = settings.AUTH_ISSUERS.get(self.iss)
+            nss = self.additional_claims["preferred_username"]
+        else:
+            nid = self.azp
+            nss = self.sub
         if not nid:
             raise ValueError("Unknown issuer")
-        return f"urn:{nid}:{self.additional_claims['preferred_username']}"
+        return f"urn:{nid}:{nss}"
 
     def asdict(self) -> dict:
         """

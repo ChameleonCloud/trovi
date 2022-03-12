@@ -1,4 +1,3 @@
-from django.conf import settings
 from requests.structures import CaseInsensitiveDict
 from rest_framework import permissions, views
 from rest_framework.request import Request
@@ -43,7 +42,7 @@ class ArtifactScopedPermission(BaseScopedPermission):
     Determines if the user's authorization scope permits them to interact with the
     Artifact in the way they desire.
 
-    TODO allow owners to specify writability for their Artifacts
+    TODO allow owners to specify which users may write to their artifacts
     """
 
     def has_object_permission(
@@ -52,8 +51,9 @@ class ArtifactScopedPermission(BaseScopedPermission):
         token = JWT.from_request(request)
         if token.is_admin():
             return True
-        user = token.sub
-        if not obj.authors.filter(email__iexact=user).exists():
+        # If the authenticated user is not the artifact owner,
+        # they may not write to the artifact
+        if token.to_urn() != obj.owner_urn:
             return not any(scope.is_write_scope() for scope in token.scope)
         return True
 
@@ -69,21 +69,15 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
         token = JWT.from_request(request)
         if not token:
             return False
-        if token.is_admin():
+        if token.is_admin() or obj.visibility == Artifact.Visibility.PUBLIC:
             return True
-        if obj.visibility == Artifact.Visibility.PRIVATE:
-            sharing_key = request.query_params.get("sharing_key")
-            if sharing_key:
-                return sharing_key == obj.sharing_key
-            else:
-                if not token:
-                    return False
-                user = token.sub
-                # If the viewer is one of the authors, then they may access the Artifact
-                return obj.authors.filter(email__iexact=user).exists()
+        sharing_key = request.query_params.get("sharing_key")
+        if sharing_key:
+            return sharing_key == obj.sharing_key
         else:
-            # If the Artifact is public, then everyone may view
-            return True
+            # If the authenticated user owns the Artifact,
+            # then they may access the Artifact
+            return token.to_urn() == obj.owner_urn
 
 
 class ArtifactVersionVisibilityPermission(ArtifactVisibilityPermission):
@@ -94,9 +88,8 @@ class ArtifactVersionVisibilityPermission(ArtifactVisibilityPermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
-        return super(ArtifactVersionVisibilityPermission, self).has_object_permission(
-            request, view, obj.artifact
-        )
+        artifact_visibility = ArtifactVisibilityPermission()
+        return artifact_visibility.has_object_permission(request, view, obj.artifact)
 
 
 class ArtifactVersionScopedPermission(ArtifactScopedPermission):
@@ -108,17 +101,5 @@ class ArtifactVersionScopedPermission(ArtifactScopedPermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
-        return super(ArtifactVersionScopedPermission, self).has_object_permission(
-            request, view, obj.artifact
-        )
-
-
-class StorageVisibilityPermission(permissions.BasePermission):
-    """
-    Determines if a user is authenticated, which is the only requirement to upload to
-    storage.
-    """
-
-    def has_permission(self, request: Request, view: views.View) -> bool:
-        token = JWT.from_request(request)
-        return token and (token.iss == settings.TROVI_FQDN or token.is_admin())
+        artifact_scope = ArtifactScopedPermission()
+        return artifact_scope.has_object_permission(request, view, obj.artifact)

@@ -639,12 +639,10 @@ class TestDeleteArtifactVersion(APITestCase):
             self.fail(e)
 
     def test_delete_artifact_version(self):
-        artifact_don_quixote.authors.add(
-            ArtifactAuthor.objects.create(
-                full_name="Trovi Tester",
-                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
-            )
+        artifact_don_quixote.owner_urn = (
+            f"urn:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         )
+        artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
                 self.delete_artifact_version_path(

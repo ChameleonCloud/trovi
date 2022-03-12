@@ -1,7 +1,7 @@
 import logging
 from abc import abstractmethod, ABC
 from datetime import datetime
-from typing import Optional, Any, Iterable
+from typing import Optional, Any, Iterable, Collection
 
 from django.conf import settings
 from jose.backends.base import Key
@@ -102,7 +102,7 @@ class IdentityProviderClient(ABC):
         """
 
     def exchange_token(
-        self, subject_token: JWT, requested_scope: Iterable[JWT.Scopes] = None
+        self, subject_token: JWT, requested_scope: Collection[JWT.Scopes] = None
     ) -> JWT:
         """
         Performs OAuth 2.0 Token Exchange
@@ -110,11 +110,7 @@ class IdentityProviderClient(ABC):
 
         Exchanges a _valid_ subject token for a Trovi token.
         """
-        scopes = (
-            requested_scope
-            if requested_scope is not None
-            else [JWT.Scopes.ARTIFACTS_READ]
-        )
+        scopes = requested_scope or [JWT.Scopes.ARTIFACTS_READ]
 
         # Tokens which request admin scope must be in a list of approved users
         if any(scope == JWT.Scopes.TROVI_ADMIN for scope in scopes):
@@ -128,13 +124,14 @@ class IdentityProviderClient(ABC):
             if introspection and not introspection.active:
                 raise InvalidToken("Subject token revoked.")
 
+        now = int(datetime.utcnow().timestamp())
+
         return JWT(
             azp=self.get_azp_for_trovi_token(subject_token),
-            aud=settings.TROVI_FQDN,
+            aud=[settings.TROVI_FQDN],
             iss=settings.TROVI_FQDN,
-            iat=(now := int(datetime.utcnow().timestamp())),
+            iat=now,
             sub=self.get_subject(subject_token),
-
             exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
             scope=scopes,
             alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,

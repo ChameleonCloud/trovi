@@ -1,6 +1,7 @@
 from typing import Optional
 
 from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
@@ -23,3 +24,15 @@ class TroviTokenAuthentication(BaseAuthentication):
 
     def authenticate_header(self, _: Request) -> str:
         return "Token"
+
+
+class AlwaysFailAuthentication(BaseAuthentication):
+    def authenticate(self, request: Request):
+        # Any endpoint which has this authenticator enabled is probably
+        # one we don't want anyone to know about
+        raise NotFound()
+
+
+class AlwaysPassAuthentication(BaseAuthentication):
+    def authenticate(self, request: Request) -> tuple[None, None]:
+        return None, None

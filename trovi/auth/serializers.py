@@ -28,7 +28,7 @@ class TokenGrantRequestSerializer(serializers.Serializer):
         if not provider:
             raise InvalidToken(f"Unknown Identity Provider: {validated_token.iss}")
 
-        requested_scope = validated_data.get("scope", [JWT.Scopes.ARTIFACTS_READ])
+        requested_scope = validated_data.get("scope")
 
         # TODO Error response according to
         #  https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
@@ -51,6 +51,8 @@ class TokenGrantRequestSerializer(serializers.Serializer):
 
     def validate_scope(self, scope: Iterable[str]) -> list[JWT.Scopes]:
         # Valid scope values are handled by the scope field's validators
+        if not scope:
+            raise ValidationError("Requested token with zero authorization scope")
         return [JWT.Scopes(s) for s in scope]
 
     def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
@@ -60,5 +62,5 @@ class TokenGrantRequestSerializer(serializers.Serializer):
                 raise ValidationError(
                     f"Scope should be space-separated string of scopes ({scope})"
                 )
-            data["scope"] = scope.split()
+            data["scope"] = scope.strip().split()
         return super(TokenGrantRequestSerializer, self).to_internal_value(data)
