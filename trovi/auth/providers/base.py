@@ -1,5 +1,4 @@
 import logging
-import os
 from abc import abstractmethod, ABC
 from datetime import datetime
 from typing import Optional, Any, Collection
@@ -117,7 +116,7 @@ class IdentityProviderClient(ABC):
                 not in settings.AUTH_TROVI_ADMIN_USERS
             ):
                 raise InvalidToken(
-                    f"User does not have permission to request admin token"
+                    "User does not have permission to request admin token"
                 )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):
