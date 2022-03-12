@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import abstractmethod, ABC
 from datetime import datetime
 from typing import Optional, Any, Collection
@@ -111,9 +112,12 @@ class IdentityProviderClient(ABC):
 
         # Tokens which request admin scope must be in a list of approved users
         if any(scope == JWT.Scopes.TROVI_ADMIN for scope in scopes):
-            if subject_token.to_urn() not in settings.AUTH_TROVI_ADMIN_USERS:
+            if (
+                subject_token.to_urn(is_subject_token=True)
+                not in settings.AUTH_TROVI_ADMIN_USERS
+            ):
                 raise InvalidToken(
-                    "User does not have permission to request admin token"
+                    f"User does not have permission to request admin token {os.getenv('TROVI_ADMIN_USERS')}"
                 )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):

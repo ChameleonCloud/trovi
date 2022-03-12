@@ -1,7 +1,7 @@
 from typing import Optional
 
 from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, AuthenticationFailed
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
@@ -15,8 +15,7 @@ class TroviTokenAuthentication(BaseAuthentication):
     def authenticate(self, request: Request) -> Optional[tuple[None, JWT]]:
         access_token = request.query_params.get("access_token")
         if not access_token:
-            # If authentication doesn't occur, this method is supposed to return None
-            return None
+            raise AuthenticationFailed("Missing required access_token parameter")
         # The token returned from here is attached to the relevant request object
         # The User model is omitted since all user data is embedded in the token
         # Authentication (token verification) is performed when the token is decoded

@@ -7,8 +7,8 @@ from drf_spectacular.utils import (
 )
 from rest_framework import viewsets, mixins
 from rest_framework.parsers import FileUploadParser
-from rest_framework.permissions import IsAuthenticated
 
+from trovi.common.permissions import IsAuthenticatedWithTroviToken
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.models import ArtifactVersion
 from trovi.storage.serializers import StorageRequestSerializer
@@ -141,7 +141,7 @@ class StorageViewSet(
     queryset = ArtifactVersion.objects.all()
     parser_classes = [FileUploadParser]
     authentication_classes = [TroviTokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedWithTroviToken]
     serializer_class = StorageRequestSerializer
     lookup_field = "contents_urn__iexact"
     lookup_url_kwarg = "urn"

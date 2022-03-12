@@ -105,7 +105,7 @@ class TestTokenGrant(AuthTestCase):
             except Exception as e:
                 self.fail(e)
             self.assertEqual(test_username, token["sub"])
-            self.assertEqual(settings.TROVI_FQDN, token["aud"])
+            self.assertEqual([settings.TROVI_FQDN], token["aud"])
             self.assertIn(token["azp"], settings.AUTH_ISSUERS.values())
             self.assertEqual(
                 token["exp"], token["iat"] + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS

@@ -13,14 +13,16 @@ TAGS_PATH = reverse("Tags")
 class TestListTags(APITestCase):
     def test_endpoint_works(self):
         try:
-            base_response = self.client.get(TAGS_PATH)
+            base_response = self.client.get(self.authenticate_url(TAGS_PATH))
             self.assertIsNotNone(base_response)
         except Exception as e:
             self.fail(str(e))
 
     def test_response_format(self):
-        response = self.client.get(TAGS_PATH)
+        response = self.client.get(self.authenticate_url(TAGS_PATH))
         as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
 
         self.assertIn("tags", as_json)
 

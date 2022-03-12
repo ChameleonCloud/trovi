@@ -103,3 +103,20 @@ class ArtifactVersionScopedPermission(ArtifactScopedPermission):
     ) -> bool:
         artifact_scope = ArtifactScopedPermission()
         return artifact_scope.has_object_permission(request, view, obj.artifact)
+
+
+class BaseMetadataPermission(permissions.BasePermission):
+    """
+    Base permissions for viewing API metadata
+    """
+
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        if request.method.upper() == "GET":
+            return True
+        else:
+            token = JWT.from_request(request)
+            return token.is_admin()
+
+class IsAuthenticatedWithTroviToken(permissions.BasePermission):
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        return JWT.from_request(request) is not None

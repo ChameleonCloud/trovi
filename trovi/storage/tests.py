@@ -114,8 +114,12 @@ class TestRetrieveContents(StorageTestCase):
         if not self.real_contents_urn:
             response1 = self.store_content(self.test_data_small)
             response2 = self.store_content(self.test_data_small)
-            version_don_quixote_1.contents_urn = response1.json()["contents"]["urn"]
-            version_don_quixote_2.contents_urn = response2.json()["contents"]["urn"]
+            json1 = response1.json()
+            json2 = response2.json()
+            self.assertEqual(response1.status_code, status.HTTP_201_CREATED, msg=json1)
+            self.assertEqual(response2.status_code, status.HTTP_201_CREATED, msg=json2)
+            version_don_quixote_1.contents_urn = json1["contents"]["urn"]
+            version_don_quixote_2.contents_urn = json2["contents"]["urn"]
             version_don_quixote_1.save()
             version_don_quixote_2.save()
             self.real_contents_urn = True

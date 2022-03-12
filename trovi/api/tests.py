@@ -191,7 +191,7 @@ class TestListArtifacts(APITestCase):
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["id"], private_artifacts)
+            self.assertNotIn(artifact["uuid"], private_artifacts)
 
     def test_url_parameters(self):
         def after(url: str) -> str:
@@ -201,11 +201,11 @@ class TestListArtifacts(APITestCase):
             return f"{url}&sort_by={by}"
 
         def test_after(body: dict[str, list[dict]], artifact: Artifact):
-            self.assertEqual(str(artifact.uuid), body["artifacts"][0]["id"])
+            self.assertEqual(str(artifact.uuid), body["artifacts"][0]["uuid"])
 
         def test_sorted(body: dict[str, list[dict]], by: str):
             artifact_models = Artifact.objects.filter(
-                uuid__in={a["id"] for a in body["artifacts"]}
+                uuid__in={a["uuid"] for a in body["artifacts"]}
             )
             if by == "date":
                 # Our ground truth is a sorted list of all the IDs
@@ -219,7 +219,7 @@ class TestListArtifacts(APITestCase):
                         artifact_models.all(), reverse=True, key=lambda a: a.created_at
                     )
                 ]
-                test = [a["id"] for a in body["artifacts"]]
+                test = [a["uuid"] for a in body["artifacts"]]
             elif by == "access_count":
                 # Our ground truth is a sorted list of the sums of all the versions'
                 # access_counts for each artifact returned by the API call
@@ -288,7 +288,7 @@ class TestListArtifacts(APITestCase):
                 test_sorted(body, sort_param)
                 privs = [a for a in body["artifacts"] if a["visibility"] == "private"]
                 self.assertEqual(len(privs), 1)
-                self.assertEqual(privs[0]["id"], str(a_private_artifact.uuid))
+                self.assertEqual(privs[0]["uuid"], str(a_private_artifact.uuid))
             else:
                 # We don't use 'after' here so there should be no 404
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -403,7 +403,7 @@ class TestCreateArtifact(APITestCase):
         )
 
         # TODO test that automatic fields are created properly
-        model = Artifact.objects.get(uuid=response_body["id"])
+        model = Artifact.objects.get(uuid=response_body["uuid"])
         new_artifact["versions"] = [new_artifact.pop("version")]
         self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
 
@@ -433,13 +433,10 @@ class TestUpdateArtifact(APITestCase):
     def test_update_artifact(self):
         # Cheekily add the test user as an author for Don Quixote,
         # so that we may write to it
-        # TODO will eventually have to add all test users as authors
-        artifact_don_quixote.authors.add(
-            ArtifactAuthor.objects.create(
-                full_name="Trovi Tester",
-                email=os.getenv("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"),
-            )
+        artifact_don_quixote.owner_urn = (
+            f"urn:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         )
+        artifact_don_quixote.save()
 
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is

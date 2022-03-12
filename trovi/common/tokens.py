@@ -9,6 +9,7 @@ from django.conf import settings
 from rest_framework.request import Request
 
 from trovi.common.exceptions import InvalidToken
+from util.url import url_to_fqdn
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
@@ -172,7 +173,7 @@ class JWT:
 
     def to_urn(self, is_subject_token=False) -> str:
         if is_subject_token:
-            nid = settings.AUTH_ISSUERS.get(self.iss)
+            nid = settings.AUTH_ISSUERS.get(url_to_fqdn(self.iss))
             nss = self.additional_claims["preferred_username"]
         else:
             nid = self.azp
