@@ -362,10 +362,10 @@ class TestCreateArtifact(APITestCase):
                 },
             ],
             "visibility": "public",
-            "linked_projects": [
-                "urn:chameleon:CH-1111",
-                "urn:chameleon:CH-2222",
-            ],
+            # "linked_projects": [  TODO eventually, users will be allowed to set this
+            #     "urn:chameleon:CH-1111",
+            #     "urn:chameleon:CH-2222",
+            # ],
             "reproducibility": {"enable_requests": True, "access_hours": 3},
             "version": {
                 "contents": {

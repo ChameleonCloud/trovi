@@ -447,6 +447,14 @@ class ArtifactSerializer(serializers.ModelSerializer):
             )
         return owner_urn
 
+    def validate_linked_projects(self, linked_projects: list[str]) -> list[str]:
+        token = JWT.from_request(self.context["request"])
+        if not token.is_admin():
+            raise PermissionDenied(
+                "Only Trovi admins are allowed to modify an artifact's linked projects."
+            )
+        return linked_projects
+
     def get_token_owner_urn(self) -> str:
         """
         Generates a default owner URN based on the requesting user's auth token
