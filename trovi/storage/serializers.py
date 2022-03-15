@@ -1,15 +1,66 @@
+import hashlib
+import hmac
+import random
+from datetime import datetime
 from typing import Union
+from uuid import uuid4
 
+from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
+from drf_spectacular.utils import extend_schema_serializer, OpenApiExample
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from trovi.common.serializers import URNSerializerField
 from trovi.models import ArtifactVersion
 from trovi.storage.backends import get_backend
 from trovi.storage.backends.base import StorageBackend
+from trovi.storage.links.http import HttpDownloadLink
 
 
+class StorageContentsSerializer(serializers.Serializer):
+
+    urn = URNSerializerField(required=True)
+
+    def update(self, instance, validated_data):
+        return NotImplementedError("Improper use of StorageContentsSerializer")
+
+    def create(self, validated_data: dict) -> dict[str, str]:
+        return validated_data
+
+
+@extend_schema_serializer(
+    examples=[
+        OpenApiExample(
+            name="Chameleon Swift",
+            value={
+                "contents": f"urn:trovi:contents:chameleon:{(example_uuid := uuid4())}",
+                "access_methods": [
+                    HttpDownloadLink(
+                        exp=(example_exp := datetime(year=2049, month=7, day=6)),
+                        url=f"https://example.com/swift/"
+                        f"{example_uuid}"
+                        f"?temp_url_sig={hmac.new(bytes([random.randint(0, 10)]), bytes([random.randint(0, 10)]), hashlib.sha1).hexdigest()}"
+                        f"&temp_url_exp={example_exp.strftime(settings.DATETIME_FORMAT)}",
+                        headers={},
+                        method="GET",
+                    ).to_json()
+                ],
+            },
+            description="An archive stored in Chameleon's Swift object storage backend.",
+            request_only=False,
+            response_only=True,
+        )
+    ]
+)
 class StorageRequestSerializer(serializers.Serializer):
+
+    contents = StorageContentsSerializer(read_only=True)
+    access_methods = serializers.ListField(
+        child=serializers.JSONField(), read_only=True, min_length=1
+    )
+    data_ = serializers.FileField(required=False, write_only=True, allow_null=True)
+
     def update(self, instance, validated_data):
         raise NotImplementedError
 
@@ -24,6 +75,13 @@ class StorageRequestSerializer(serializers.Serializer):
             backend.write(file)
 
         return backend
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        fields = super(StorageRequestSerializer, self).get_fields()
+        data = fields.pop("data_", None)
+        if data is not None:
+            fields["data"] = data
+        return fields
 
     def to_internal_value(self, data: dict) -> dict:
         file = data.get("file")
@@ -47,7 +105,10 @@ class StorageRequestSerializer(serializers.Serializer):
     ) -> dict:
         if isinstance(instance, StorageBackend):
             # StoreContents
-            return {"contents": {"urn": instance.to_urn()}}
+            return {
+                "contents": {"urn": instance.to_urn()},
+                "access_methods": instance.get_links(),
+            }
         elif isinstance(instance, ArtifactVersion):
             # RetrieveContents
             urn = instance.contents_urn

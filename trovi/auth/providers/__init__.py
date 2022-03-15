@@ -3,32 +3,22 @@ This package provides the interface for implementing Cloud Identity Provider plu
 as well as implementations for the officially supported Identity Providers
 """
 
-from functools import cache
-
 from django.conf import settings
-from rest_framework_simplejwt.exceptions import InvalidToken
 
 from trovi.auth.providers.base import IdentityProviderClient
-from trovi.auth.tokens import JWT
+from trovi.auth.providers.keycloak import KeycloakIdentityProvider
+from trovi.common.exceptions import InvalidToken, InvalidClient
+from trovi.common.tokens import JWT
+from util.url import url_to_fqdn
 
 
 def validate_subject_token(jws: str) -> JWT:
     """
-    Attempts to verify a token in JWS format against all Identity Providers.
-
-    If anu succeed, returns the decoded JWT. If zero providers can
-    validate the token, raises ``AuthenticationFailed``.
+    Performs signature validation of a subject token against a supported IdP
     """
     jwt = JWT.from_jws(jws, validate=False)
     provider = get_subject_token_provider(jwt)
     validated_token = provider.validate_subject_token(jwt)
-
-    # Internal validation
-    # Ensure token authorized party is approved client ID
-    if validated_token.azp not in settings.AUTH_APPROVED_AUTHORIZED_PARTIES:
-        raise InvalidToken(
-            f"Authorized party is not approved client ID: {validated_token.azp}"
-        )
 
     return validated_token
 
@@ -40,26 +30,45 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     iss = subject_token.iss
     if not iss:
         raise InvalidToken("Token does not contain required claim 'iss'.")
-    client = get_clients().get(iss)
-    if not client:
-        raise InvalidToken(f"Unknown Identity Provider: {iss}")
+    azp = settings.AUTH_ISSUERS[url_to_fqdn(iss)]
+    if not azp:
+        raise InvalidClient("Unknown identity provider")
+    client = get_client_by_authorized_party(azp, subject_token)
     return client
 
 
-@cache
-def get_clients() -> dict[str, IdentityProviderClient]:
-    # Dictionary used for registering Identity Providers
+_idp_clients = {
     # TODO replace with Python entry_point to allow for pluggable providers
-    from trovi.auth.providers.keycloak import KeycloakIdentityProvider
+    client.get_name(): client
+    for client in [
+        KeycloakIdentityProvider(
+            client_id=settings.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_ID,
+            client_secret=settings.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET,
+            server_url=settings.CHAMELEON_KEYCLOAK_SERVER_URL,
+            realm_name=settings.CHAMELEON_KEYCLOAK_REALM_NAME,
+        )
+    ]
+}
 
-    return {
-        client.get_actor_subject(): client
-        for client in [
-            KeycloakIdentityProvider(
-                client_id=settings.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_ID,
-                client_secret=settings.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET,
-                server_url=settings.CHAMELEON_KEYCLOAK_SERVER_URL,
-                realm_name=settings.CHAMELEON_KEYCLOAK_REALM_NAME,
-            )
-        ]
-    }
+
+def get_client_by_name(name: str) -> IdentityProviderClient:
+    # Look up an identity provider client by its internal name
+    client = _idp_clients.get(name)
+    if not client:
+        raise ValueError(f"Unknown identity provider: {name}")
+    return client
+
+
+def get_client_by_authorized_party(azp: str, token: JWT) -> IdentityProviderClient:
+    # Look up an Identity Provider by the authorizing party of a token
+    provider = next(
+        (
+            client
+            for client in _idp_clients.values()
+            if client.subject_iss_to_trovi_azp(token) == azp
+        ),
+        None,
+    )
+    if not provider:
+        raise InvalidClient(f"Cannot find identity provider for subject {azp}")
+    return provider

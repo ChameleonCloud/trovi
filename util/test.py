@@ -6,9 +6,8 @@ having to reference dicts with strings repeatedly in tests.
 import datetime
 import logging
 import random
-import uuid
 from typing import Union, Optional, Iterable, Any
-from uuid import UUID
+from uuid import uuid4
 
 import faker.config
 from django.conf import settings
@@ -25,93 +24,6 @@ from trovi.models import (
     ArtifactTag,
     ArtifactProject,
 )
-
-
-class DummyArtifactLink:
-    def __init__(self, label: str = None, verified: bool = None, urn: str = None):
-        if any(f is None for f in (label, verified, urn)):
-            raise ValueError("Invalid Artifact Link from API Response")
-        self.label = label
-        self.verified = verified
-        self.urn = urn
-
-
-class DummyArtifactVersion:
-    def __init__(
-        self,
-        slug: str = None,
-        created_at: str = None,
-        contents: dict = None,
-        metrics: dict = None,
-        links: list[dict] = None,
-    ):
-        if any(f is None for f in (slug, created_at, contents, metrics, links)):
-            raise ValueError("Invalid Artifact Version from API Response")
-        self.slug = slug
-        self.created_at = created_at
-        self.contents_urn = contents["urn"]
-        self.access_count = metrics["access_count"]
-        self.links = [DummyArtifactLink(**link) for link in links]
-
-
-class DummyArtifactAuthor:
-    def __init__(
-        self, full_name: str = None, affiliation: str = None, email: str = None
-    ):
-        if any(f is None for f in (full_name, email)):
-            raise ValueError("Invalid Artifact Author from API Response")
-        self.full_name = full_name
-        self.affiliation = affiliation
-        self.email = email
-
-
-class DummyArtifact:
-    def __init__(
-        self,
-        id: UUID = None,
-        created_at: str = None,
-        updated_at: str = None,
-        title: str = None,
-        short_description: str = None,
-        long_description: str = None,
-        tags: list[str] = None,
-        authors: list[dict] = None,
-        visibility: str = None,
-        linked_projects: list[str] = None,
-        reproducibility: dict = None,
-        versions: dict = None,
-    ):
-        # Verify all required fields are provided
-        if any(
-            f is None
-            for f in (
-                id,
-                created_at,
-                updated_at,
-                title,
-                short_description,
-                tags,
-                authors,
-                visibility,
-                linked_projects,
-                reproducibility,
-                versions,
-            )
-        ):
-            raise ValueError("Invalid Artifact API Response")
-        self.uuid = id
-        self.created_at = created_at
-        self.updated_at = updated_at
-        self.title = title
-        self.short_description = short_description
-        self.long_description = long_description
-        self.tags = tags
-        self.authors = [DummyArtifactAuthor(**author) for author in authors]
-        self.visibility = visibility
-        self.linked_projects = linked_projects
-        self.is_reproducible: bool = reproducibility["enable_requests"]
-        self.repro_access_hours: int = reproducibility["access_hours"]
-        self.versions = [DummyArtifactVersion(**version) for version in versions]
 
 
 def cut_string(s: str, max_length: int) -> str:
@@ -180,7 +92,7 @@ def fake_git_ref() -> str:
 
 def fake_contents_urn() -> str:
     return (
-        "urn:"
+        "urn:trovi:contents:"
         + random.choice(
             [
                 lambda: f"chameleon:{fake.uuid4()}",
@@ -193,11 +105,11 @@ def fake_contents_urn() -> str:
 
 
 def fake_user_urn() -> str:
-    return f"urn:chameleon:{fake_email()}"
+    return f"urn:trovi:chameleon:{fake_email()}"
 
 
 def fake_project_urn() -> str:
-    return f"urn:chameleon:CHI-{fake.unique.random_int(1, 999999)}"
+    return f"urn:trovi:chameleon:CHI-{fake.unique.random_int(1, 999999)}"
 
 
 def fake_link_urn() -> str:
@@ -205,13 +117,13 @@ def fake_link_urn() -> str:
         "urn:"
         + random.choice(
             [
-                lambda: f"disk-image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
+                lambda: f"trovi:chameleon:disk-image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
                 # TODO unsure of how fabric data should be formatted
                 # lambda: f"disk-image:fabric:{fake.slug()}:{fake.uuid4()}",
-                lambda: f"dataset:globus:{fake.uuid4()}:{fake.uri_path()}",
-                lambda: f"dataset:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}:"
+                lambda: f"globus:dataset:{fake.uuid4()}:{fake.uri_path()}",
+                lambda: f"trovi:chameleon:dataset:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}:"
                 f"{fake.uri_path()}",
-                lambda: f"dataset:zenodo:{fake.doi()}:{fake.uri_path()}",
+                lambda: f"trovi:dataset:zenodo:{fake.doi()}:{fake.uri_path()}",
             ]
         )()
     )
@@ -241,18 +153,18 @@ artifact_don_quixote = Artifact(
     title="Evaluating Windmill-Based Threat Models",
     short_description="Are they, or aren't they, actually giants?",
     long_description="foo",
-    owner_urn="urn:chameleon:donquixote",
+    owner_urn="urn:trovi:chameleon:donquixote@rosinante.io",
     visibility=Artifact.Visibility.PUBLIC,
     is_reproducible=True,
     repro_access_hours=3,
 )
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid.uuid4()}",
+    contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",
 )
 version_don_quixote_2 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid.uuid4()}",
+    contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",
 )
 author_don_quixote_don = ArtifactAuthor(
     artifact=artifact_don_quixote,
@@ -269,26 +181,26 @@ author_don_quixote_sancho = ArtifactAuthor(
 event_don_quixote_launch1 = ArtifactEvent(
     artifact_version=version_don_quixote_1,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch2 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch3 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 link_don_quixote_dataset = ArtifactLink(
     artifact_version=version_don_quixote_1,
-    urn="urn:dataset:globus:9a7c09d3-80e7-466c-9325-423f4358db96:/data",
+    urn="urn:globus:dataset:9a7c09d3-80e7-466c-9325-423f4358db96:/data",
     label="Windmill Data",
 )
 link_don_quixote_image = ArtifactLink(
     artifact_version=version_don_quixote_2,
-    urn="urn:disk-image:chameleon:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
+    urn="urn:trovi:chameleon:disk-image:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
     label="Image of DuchessOS",
 )
 don_quixote = [

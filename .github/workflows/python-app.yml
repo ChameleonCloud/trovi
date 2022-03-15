@@ -55,5 +55,6 @@ jobs:
         CHAMELEON_SWIFT_PASSWORD: ${{ secrets.CHAMELEON_SWIFT_PASSWORD }}
         CHAMELEON_SWIFT_PROJECT_NAME: ${{ secrets.CHAMELEON_SWIFT_PROJECT_NAME }}
         CHAMELEON_SWIFT_TEMP_URL_KEY: ${{ secrets.CHAMELEON_SWIFT_TEMP_URL_KEY }}
+        TROVI_ADMIN_USERS: ${{ secrets.TROVI_ADMIN_USERS }}
       run: |
         poetry run python manage.py test

@@ -1,10 +1,65 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    extend_schema_view,
+    extend_schema,
+    OpenApiParameter,
+    OpenApiExample,
+)
 from rest_framework import viewsets, mixins
 from rest_framework.parsers import FileUploadParser
 
+from trovi.common.permissions import IsAuthenticatedWithTroviToken
+from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.models import ArtifactVersion
 from trovi.storage.serializers import StorageRequestSerializer
 
 
+@extend_schema_view(
+    create=extend_schema(
+        description="Upload an artifact archive to a storage backend.",
+        parameters=[
+            OpenApiParameter(
+                name="backend",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                enum=["chameleon"],
+                description="The storage backend to which the archive will be uploaded.",
+            ),
+            OpenApiParameter(
+                name="content-disposition",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                examples=[
+                    OpenApiExample(
+                        name="filename",
+                        value="attachment; filename=foo.tar.gz",
+                        media_type="application/tar+gz",
+                        description="Pass a filename",
+                    )
+                ],
+                description="Includes metadata about the uploaded file.",
+            ),
+        ],
+    ),
+    retrieve=extend_schema(
+        description="Retrieve metadata about an artifact archive.",
+        parameters=[
+            OpenApiParameter(
+                name="urn",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="The URN of the archive for which metadata will be fetched.",
+            ),
+            OpenApiParameter(
+                name="content-type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                enum=["application/tar+gz"],
+            ),
+        ],
+    ),
+)
 class StorageViewSet(
     viewsets.GenericViewSet, mixins.CreateModelMixin, mixins.RetrieveModelMixin
 ):
@@ -12,7 +67,7 @@ class StorageViewSet(
     Implements all endpoints at /contents
 
     StoreContents: (self.create)
-        POST /contents?target=<repository>
+        POST /contents?backend=<repository>
 
         Upload a tarfile to store as contents for an ArtifactVersion.
 
@@ -34,6 +89,7 @@ class StorageViewSet(
         }
 
     RetrieveContents: (self.retrieve)
+        TODO fetch via version endpoint not implemented yet
         GET /artifacts/<uuid>/versions/<version_slug>/contents[?sharing_key=<key>]
         GET /contents?urn=<urn>[&sharing_key=<key>]
         Retrieve a given ArtifactVersion's contents. If the contents URN is known,
@@ -84,6 +140,8 @@ class StorageViewSet(
 
     queryset = ArtifactVersion.objects.all()
     parser_classes = [FileUploadParser]
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [IsAuthenticatedWithTroviToken]
     serializer_class = StorageRequestSerializer
     lookup_field = "contents_urn__iexact"
     lookup_url_kwarg = "urn"

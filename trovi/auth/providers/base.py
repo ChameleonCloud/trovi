@@ -1,11 +1,21 @@
+import logging
 from abc import abstractmethod, ABC
-from typing import Optional, Any
+from datetime import datetime
+from typing import Optional, Any, Collection
 
 from django.conf import settings
 from jose.backends.base import Key
 
-from trovi.auth.tokens import JWT, OAuth2TokenIntrospection
-from util.decorators import timed_asynchronous_lru_cache, retry
+from trovi.common.exceptions import (
+    InvalidScope,
+    InvalidGrant,
+    InvalidClient,
+)
+from trovi.common.tokens import JWT, OAuth2TokenIntrospection
+from util.decorators import timed_lru_cache, retry
+from util.url import url_to_fqdn
+
+LOG = logging.getLogger(__name__)
 
 
 class IdentityProviderClient(ABC):
@@ -70,23 +80,34 @@ class IdentityProviderClient(ABC):
         are used to authenticate to Trovi. The client should not be Trovi itself.
         """
 
-    @abstractmethod
-    def get_actor_subject(self) -> str:
+    def subject_iss_to_trovi_azp(self, token: JWT) -> str:
         """
-        Used to link Trovi Tokens back to the authorizing actor (the IdP)
-        This should be the value that the IdP's token endpoint inserts into the
-        'iss' claim for its subject tokens.
+        Used to link Trovi Tokens back to the token issuer (the IdP)
+        This translates the subject token's issuer FQDN to a string which
+        describes the IdP. This string is used to generate user URNs.
+        """
+        azp = settings.AUTH_ISSUERS.get(url_to_fqdn(token.iss))
+        if not azp:
+            raise InvalidClient(f"Unknown token issuer {token.iss}")
+        return azp
+
+    @abstractmethod
+    def get_subject(self, subject_token: JWT) -> str:
+        """
+        Used to fill in the "username" (sub) for the Trovi Token. This should be
+        the requesting user's username.
         """
 
     @abstractmethod
     def validate_subject_token(self, subject_token: JWT) -> JWT:
         """
         Validates a JWT per the specification of the Identity Provider
+
+        Should raise InvalidToken if validation fails
         """
 
-    @abstractmethod
     def exchange_token(
-        self, subject_token: JWT, requested_scope: list[JWT.Scopes] = None
+        self, subject_token: JWT, requested_scope: Collection[JWT.Scopes] = None
     ) -> JWT:
         """
         Performs OAuth 2.0 Token Exchange
@@ -94,6 +115,36 @@ class IdentityProviderClient(ABC):
 
         Exchanges a _valid_ subject token for a Trovi token.
         """
+        scopes = requested_scope or [JWT.Scopes.ARTIFACTS_READ]
+
+        # Tokens which request admin scope must be in a list of approved users
+        if any(scope == JWT.Scopes.TROVI_ADMIN for scope in scopes):
+            if (
+                subject_token.to_urn(is_subject_token=True)
+                not in settings.AUTH_TROVI_ADMIN_USERS
+            ):
+                raise InvalidScope(
+                    "User does not have permission to request admin token"
+                )
+        # Tokens which request *:write scopes must be validated online
+        if any(scope.is_write_scope() for scope in scopes):
+            introspection = self.introspect_token(subject_token)
+            if introspection and not introspection.active:
+                raise InvalidGrant("Subject token revoked.")
+
+        now = int(datetime.utcnow().timestamp())
+
+        return JWT(
+            azp=self.subject_iss_to_trovi_azp(subject_token),
+            aud=[settings.TROVI_FQDN],
+            iss=settings.TROVI_FQDN,
+            iat=now,
+            sub=self.get_subject(subject_token),
+            exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
+            scope=scopes,
+            alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
+            key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
+        )
 
     @abstractmethod
     def introspect_token(
@@ -114,9 +165,7 @@ class IdentityProviderClient(ABC):
         """
 
     @property
-    @timed_asynchronous_lru_cache(
-        maxsize=1, timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
-    )
+    @timed_lru_cache(maxsize=1, timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
     @retry(
         n=settings.AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS,
         cond=lambda keys: isinstance(keys, list)
@@ -129,4 +178,5 @@ class IdentityProviderClient(ABC):
         Retains a cached copy of the Identity Provider's signing keys. Lazily refreshes
         every 5 minutes.
         """
+        LOG.info(f"Refreshing signing keys for {self.get_name()}")
         return self.refresh_signing_keys()

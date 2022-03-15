@@ -15,8 +15,9 @@ cmarkgfm = "^0.7.0"
 keystoneauth1 = "^4.4.0"
 python-jose = "^3.3.0"
 python-keycloak-client = "^0.2.3"
-djangorestframework-simplejwt = "^5.0.0"
 drf-extensions = "^0.7.1"
+PyJWT = "^2.3.0"
+drf-spectacular = "^0.21.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

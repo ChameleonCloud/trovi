@@ -2,17 +2,33 @@ import datetime
 from dataclasses import dataclass, field, fields
 from enum import Enum, EnumMeta
 from functools import lru_cache
+from typing import Optional, Any
 
 import jwt
 from django.conf import settings
-from jwt import DecodeError
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework.request import Request
+
+from trovi.common.exceptions import InvalidToken, InvalidClient, InvalidGrant
+from util.url import url_to_fqdn
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
 
 
-class TokenTypes(Enum):
+class TokenTypes(str, Enum):
     ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token"
+    JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
+
+    def __eq__(self, other: Any) -> bool:
+        if type(other) is str:
+            return self.value == other
+        else:
+            return super(TokenTypes, self).__eq__(other)
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+    def __str__(self) -> str:
+        return str(self.value)
 
 
 # TODO python 3.10: kw_only=True
@@ -30,24 +46,41 @@ class JWT:
         def __contains__(cls, item: str) -> bool:
             return any(s.value == item for s in cls.__members__.values())
 
-    class Scopes(Enum, metaclass=ScopeMeta):
+    class Scopes(str, Enum, metaclass=ScopeMeta):
+        # TODO content scopes which should be granular per provider
         ARTIFACTS_READ = "artifacts:read"
         ARTIFACTS_WRITE = "artifacts:write"
         ARTIFACTS_WRITE_METRICS = "artifacts:write_metrics"
+        TROVI_ADMIN = "trovi:admin"
+
+        def is_write_scope(self) -> bool:
+            return self.value.endswith(":write") or self.value == self.TROVI_ADMIN
+
+        def __eq__(self, other: Any) -> bool:
+            if type(other) is str:
+                return self.value == other
+            else:
+                return super(JWT.Scopes, self).__eq__(other)
+
+        def __hash__(self) -> int:
+            return hash(self.value)
+
+        def __str__(self) -> str:
+            return self.value
 
     class Algorithm(Enum):
         HS256 = "HS256"
         RS256 = "RS256"
 
-    # Authorized Party: The party to whom the token was issued
+    # Authorized Party: The client application via which the token was acquired
     azp: str
-    # Audience: The audience for whom the token is intended
+    # Audience: The applications by which the token is intended to be used
     aud: list[str]
-    # Issuer: The party who issued the token
+    # Issuer: The party (IdP) who issued the token
     iss: str
     # Issued At: The time at which the token was issued
     iat: int
-    # Subject: The subject of the token
+    # Subject: The subject (user) who received the token
     sub: str
     # Expiration: The time past which this token can no longer be used
     exp: int = field(default=int(LONGEST_EXPIRATION))
@@ -56,16 +89,23 @@ class JWT:
     # Actor: The acting party (IdP) who authorized the token (Trovi Token only)
     act: dict[str, str] = field(default=None)
 
-    # Algorithm: The algorithm with which the key is signed
+    # Algorithm: The algorithm with which the token is signed
     alg: Algorithm = field(default=Algorithm.HS256)
-    # Key: The key which signed this JWT
-    key: bytes = field(default=None)
+    # Key: The key which signed the token
+    key: str = field(default=None)
 
     # The raw serialized token in base64
     jws: str = field(default=None)
 
     # Any claims not explicitly declared above
     additional_claims: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_request(cls, request: Request) -> Optional["JWT"]:
+        token = request.auth
+        if token and isinstance(token, JWT):
+            return token
+        raise ValueError(f"Unknown token type: {type(token)}")
 
     @classmethod
     def from_dict(cls, kwargs: dict) -> "JWT":
@@ -82,6 +122,12 @@ class JWT:
             for claim, value in kwargs.items()
             if claim not in supported_claims
         }
+
+        scopes = cleaned.get("scope", "")
+        cleaned["scope"] = [
+            JWT.Scopes(scope) for scope in scopes.split() if scope in JWT.Scopes
+        ]
+
         try:
             return JWT(additional_claims=additional_claims, **cleaned)
         except Exception:
@@ -95,8 +141,32 @@ class JWT:
         """
         try:
             options = {"verify_signature": False} if not validate else None
-            token = jwt.decode(jws, options=options)
-        except DecodeError as e:
+            token = jwt.decode(
+                jws,
+                options=options,
+                algorithms=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
+                key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
+                audience=[settings.TROVI_FQDN],
+            )
+        except jwt.InvalidSignatureError as e:
+            raise InvalidGrant(e)
+        except jwt.ExpiredSignatureError as e:
+            raise InvalidGrant(e)
+        except (jwt.DecodeError, jwt.InvalidTokenError) as e:
+            raise InvalidToken(e)
+        except jwt.InvalidAlgorithmError as e:
+            raise InvalidClient(e)
+        except jwt.InvalidAudienceError as e:
+            raise InvalidGrant(e)
+        except jwt.InvalidIssuerError as e:
+            raise InvalidGrant(e)
+        except jwt.InvalidIssuedAtError as e:
+            raise InvalidToken(e)
+        except jwt.ImmatureSignatureError as e:
+            raise InvalidToken(e)
+        except jwt.InvalidKeyError as e:
+            raise InvalidClient(e)
+        except jwt.MissingRequiredClaimError as e:
             raise InvalidToken(e)
 
         token["jws"] = jws
@@ -114,6 +184,17 @@ class JWT:
             key=self.key,
             algorithm=self.alg,
         )
+
+    def to_urn(self, is_subject_token=False) -> str:
+        if is_subject_token:
+            nid = settings.AUTH_ISSUERS.get(url_to_fqdn(self.iss))
+            nss = self.additional_claims["preferred_username"]
+        else:
+            nid = self.azp
+            nss = self.sub
+        if not nid:
+            raise ValueError("Unknown issuer")
+        return f"urn:trovi:{nid}:{nss}"
 
     def asdict(self) -> dict:
         """
@@ -137,6 +218,9 @@ class JWT:
 
     def scope_to_str(self) -> str:
         return " ".join(s.value for s in self.scope)
+
+    def is_admin(self) -> bool:
+        return any(scope == JWT.Scopes.TROVI_ADMIN for scope in self.scope)
 
     def __repr__(self) -> str:
         return repr(self.asdict())
@@ -192,4 +276,4 @@ class OAuth2TokenIntrospection:
                 additional_claims=additional_claims, **cleaned
             )
         except Exception:
-            raise InvalidToken
+            raise InvalidClient("OAuth 2.0 token introspection failed")

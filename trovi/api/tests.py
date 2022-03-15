@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import uuid
 
@@ -19,13 +20,14 @@ from trovi.api.urls import (
     CreateArtifactVersion,
     DeleteArtifactVersion,
 )
+from trovi.auth.providers import get_client_by_name
+from trovi.common.tokens import TokenTypes, JWT
 from trovi.models import (
     Artifact,
     ArtifactTag,
     ArtifactVersion,
 )
 from util.test import (
-    DummyArtifact,
     artifact_don_quixote,
     version_don_quixote_1,
     version_don_quixote_2,
@@ -35,38 +37,80 @@ from util.test import (
 class APITestCase(TestCase):
     renderer = JSONRenderer()
     maxDiff = None
-    tests_run = 0
 
-    @staticmethod
-    def list_artifact_path():
-        return reverse(ListArtifact)
+    def get_test_token(self, scopes: list[JWT.Scopes] = None) -> str:
+        # TODO have each test run once per provider
+        provider_name = "CHAMELEON_KEYCLOAK"
+        keycloak = get_client_by_name(provider_name)
+        test_username = os.getenv(f"{provider_name}_TEST_USER_USERNAME")
+        test_password = os.getenv(f"{provider_name}_TEST_USER_PASSWORD")
+        test_client_id = os.getenv(f"{provider_name}_TEST_CLIENT_ID")
+        test_client_secret = os.getenv(f"{provider_name}_TEST_CLIENT_SECRET")
 
-    @staticmethod
-    def get_artifact_path(artifact_uuid: str):
-        return reverse(GetArtifact, args=[artifact_uuid])
+        valid_token = keycloak.get_user_token(
+            test_username, test_password, test_client_id, test_client_secret
+        )
 
-    @staticmethod
-    def create_artifact_path():
-        return reverse(CreateArtifact)
+        requesting_scopes = scopes if scopes else [JWT.Scopes.ARTIFACTS_READ]
 
-    @staticmethod
-    def update_artifact_path(artifact_uuid: str):
-        return reverse(UpdateArtifact, args=[artifact_uuid])
+        response = self.client.post(
+            reverse("TokenGrant"),
+            content_type="application/json",
+            data={
+                "grant_type": "token_exchange",
+                "subject_token": valid_token,
+                "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
+                "scope": " ".join(map(lambda s: s.value, requesting_scopes)),
+            },
+        )
 
-    @staticmethod
-    def create_artifact_version_path(artifact_uuid: str):
+        body = response.json()
+
+        if response.status_code != status.HTTP_201_CREATED:
+            self.fail(json.dumps(body))
+
+        return response.json()["access_token"]
+
+    def authenticate_url(self, url: str, scopes: list[JWT.Scopes] = None) -> str:
         return (
+            url
+            + ("?" if "?" not in url else "&")
+            + f"access_token={self.get_test_token(scopes=scopes)}"
+        )
+
+    def list_artifact_path(self):
+        return self.authenticate_url(reverse(ListArtifact))
+
+    def get_artifact_path(self, artifact_uuid: str):
+        return self.authenticate_url(reverse(GetArtifact, args=[artifact_uuid]))
+
+    def create_artifact_path(self):
+        return self.authenticate_url(
+            reverse(CreateArtifact), scopes=[JWT.Scopes.ARTIFACTS_WRITE]
+        )
+
+    def update_artifact_path(self, artifact_uuid: str):
+        return self.authenticate_url(
+            reverse(UpdateArtifact, args=[artifact_uuid]),
+            scopes=[JWT.Scopes.ARTIFACTS_READ, JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def create_artifact_version_path(self, artifact_uuid: str):
+        return self.authenticate_url(
             reverse(
                 CreateArtifactVersion,
                 args=[artifact_uuid],
                 # This tests that the user cannot overwrite the parent artifact ID
             )
-            + "?parent_lookup_artifact=foo"
+            + "?parent_lookup_artifact=foo",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
 
-    @staticmethod
-    def delete_artifact_version_path(artifact_uuid: str, version_slug: str):
-        return reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug])
+    def delete_artifact_version_path(self, artifact_uuid: str, version_slug: str):
+        return self.authenticate_url(
+            reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
@@ -90,6 +134,7 @@ class APITestCase(TestCase):
         larger = max((d1, d2), key=len)
 
         for key, small_value in smaller.items():
+            self.assertIn(key, larger)
             large_value = larger[key]
             if isinstance(small_value, dict):
                 self.assertDictContainsSubset(small_value, large_value)
@@ -145,14 +190,109 @@ class TestListArtifacts(APITestCase):
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["id"], private_artifacts)
+            self.assertNotIn(artifact["uuid"], private_artifacts)
 
     def test_url_parameters(self):
+        def after(url: str) -> str:
+            return f"{url}&after={artifact_don_quixote.uuid}"
+
+        def sort(url: str, by: str) -> str:
+            return f"{url}&sort_by={by}"
+
+        def test_after(body: dict[str, list[dict]], artifact: Artifact):
+            self.assertEqual(str(artifact.uuid), body["artifacts"][0]["uuid"])
+
+        def test_sorted(body: dict[str, list[dict]], by: str):
+            artifact_models = Artifact.objects.filter(
+                uuid__in={a["uuid"] for a in body["artifacts"]}
+            )
+            if by == "date":
+                # Our ground truth is a sorted list of all the IDs
+                # for every artifact returned by the API call
+                # String timestamps are not precise enough to test sorting, and have too
+                # many duplicate values. The order of the IDs sorted by creation time
+                # is a more accurate representation.
+                base = [
+                    str(a.uuid)
+                    for a in sorted(
+                        artifact_models.all(), reverse=True, key=lambda a: a.created_at
+                    )
+                ]
+                test = [a["uuid"] for a in body["artifacts"]]
+            elif by == "access_count":
+                # Our ground truth is a sorted list of the sums of all the versions'
+                # access_counts for each artifact returned by the API call
+                # The access_counts have the potential for repeat values which do not
+                # guarantee that the artifacts with the same value will be sorted in
+                # the same order. As such, we check against the sorted access_counts
+                # themselves
+                base = list(
+                    sorted(
+                        (
+                            sum(v.access_count for v in a.versions.all())
+                            for a in artifact_models
+                        ),
+                        reverse=True,
+                    )
+                )
+                test = list(
+                    [
+                        sum(v["metrics"]["access_count"] for v in a["versions"])
+                        for a in body["artifacts"]
+                    ]
+                )
+            else:
+                base = []
+                test = [1]
+
+            self.assertListEqual(base, test, f"Improperly sorted for key {by}")
+
+        # Test paging
+        response = self.client.get(after(self.list_artifact_path()))
+        body = response.json()
+        if Artifact.objects.count() > 0:
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            test_after(body, artifact_don_quixote)
+        else:
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Test sorting
+        for sort_param in ("date", "access_count"):
+            response = self.client.get(sort(self.list_artifact_path(), sort_param))
+            body = response.json()
+            if Artifact.objects.count() > 0:
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                test_sorted(body, sort_param)
+            else:
+                # We don't use 'after' here so there should be no 404
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Test sharing key
+        a_private_artifact = Artifact.objects.filter(
+            visibility=Artifact.Visibility.PRIVATE
+        ).first()
+        if not a_private_artifact:
+            # Create a dummy to generate a sharing key
+            a_private_artifact = Artifact()
+        for sort_param in ("date", "access_count"):
+            response = self.client.get(
+                f"{sort(self.list_artifact_path(), sort_param)}"
+                f"&sharing_key={a_private_artifact.sharing_key}"
+            )
+            body = response.json()
+            if len(body.get("artifacts", [])) > 0:
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                test_sorted(body, sort_param)
+                privs = [a for a in body["artifacts"] if a["visibility"] == "private"]
+                self.assertEqual(len(privs), 1)
+                self.assertEqual(privs[0]["uuid"], str(a_private_artifact.uuid))
+            else:
+                # We don't use 'after' here so there should be no 404
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_private_artifacts_for_user(self):
         # TODO
         pass
-        self.client.get(
-            self.list_artifact_path() + f"?after={artifact_don_quixote.uuid}"
-        )
 
 
 class TestListArtifactsEmpty(TestListArtifacts):
@@ -167,6 +307,8 @@ class TestGetArtifact(APITestCase):
         # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
 
         self.assertAPIResponseEqual(as_json, ArtifactSerializer(artifact_don_quixote))
 
@@ -205,7 +347,7 @@ class TestCreateArtifact(APITestCase):
             "some unit tests for the Trovi CreateArtifact API endpoint. "
             "Yes siree, this sure is a mighty fine endpoint, "
             "if I do say so myself.",
-            "tags": [],
+            "tags": [ArtifactTag.objects.first().tag, ArtifactTag.objects.last().tag],
             "authors": [
                 {
                     "full_name": "Dr. Leon Cloudly",
@@ -219,25 +361,26 @@ class TestCreateArtifact(APITestCase):
                 },
             ],
             "visibility": "public",
-            "linked_projects": [
-                "urn:chameleon:CH-1111",
-                "urn:chameleon:CH-2222",
-            ],
+            # "linked_projects": [  TODO eventually, users will be allowed to set this
+            #     "urn:trovi:chameleon:CH-1111",
+            #     "urn:trovi:chameleon:CH-2222",
+            # ],
             "reproducibility": {"enable_requests": True, "access_hours": 3},
             "version": {
                 "contents": {
-                    "urn": "urn:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
+                    "urn": "urn:trovi:contents:chameleon:"
+                    "108beeac-564f-4030-b126-ec4d903e680e"
                 },
                 "links": [
                     {
                         "label": "Training data",
-                        "urn": "urn:dataset:globus:"
+                        "urn": "urn:globus:dataset:"
                         "979a1221-8c42-41bf-bb08-4a16ed981447:"
                         "/training_set",
                     },
                     {
                         "label": "Our training image",
-                        "urn": "urn:disk-image:chameleon:CHI@TACC:"
+                        "urn": "urn:trovi:chameleon:disk-image:CHI@TACC:"
                         "fd13fbc0-2d53-4084-b348-3dbd60cdc5e1",
                     },
                 ],
@@ -258,7 +401,7 @@ class TestCreateArtifact(APITestCase):
         )
 
         # TODO test that automatic fields are created properly
-        model = Artifact.objects.get(uuid=response_body["id"])
+        model = Artifact.objects.get(uuid=response_body["uuid"])
         new_artifact["versions"] = [new_artifact.pop("version")]
         self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
 
@@ -267,6 +410,10 @@ class TestCreateArtifact(APITestCase):
         pass
 
     def test_cannot_create_tags(self):
+        # TODO
+        pass
+
+    def test_create_no_write_scope(self):
         # TODO
         pass
 
@@ -282,28 +429,56 @@ class TestCreateArtifact(APITestCase):
 
 class TestUpdateArtifact(APITestCase):
     def test_update_artifact(self):
+        # Cheekily add the test user as an author for Don Quixote,
+        # so that we may write to it
+        artifact_don_quixote.owner_urn = (
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        )
+        artifact_don_quixote.save()
+
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is
         # handled by json-patch
         artifact_don_quixote.refresh_from_db()
         old_donq_as_json = ArtifactSerializer(artifact_don_quixote).data
 
-        patch = [
-            {
-                "op": "replace",
-                "path": "/short_description",
-                "value": "I've been patched!!!",
-            },
-            {
-                "op": "remove",
-                "path": "/reproducibility/access_hours",
-            },
-            {
-                "op": "move",
-                "from": "/long_description",
-                "path": "/title",
-            },
-        ]
+        patch = {
+            "patch": [
+                {
+                    "op": "replace",
+                    "path": "/short_description",
+                    "value": "I've been patched!!!",
+                },
+                {
+                    "op": "remove",
+                    "path": "/reproducibility/enable_requests",
+                },
+                {
+                    "op": "move",
+                    "from": "/long_description",
+                    "path": "/title",
+                },
+                {
+                    "op": "add",
+                    "path": "/authors/1",
+                    "value": {
+                        "full_name": "Petey Patch",
+                        "email": "petey@patchme.io",
+                        "affiliation": "The Patch People",
+                    },
+                },
+                {
+                    "op": "replace",
+                    "path": "/tags",
+                    "value": (
+                        new_tags := [
+                            t.tag
+                            for t in random.choices(ArtifactTag.objects.all(), k=2)
+                        ]
+                    ),
+                },
+            ]
+        }
 
         response = self.client.patch(
             self.update_artifact_path(artifact_don_quixote.uuid),
@@ -315,21 +490,26 @@ class TestUpdateArtifact(APITestCase):
         self.assertIsInstance(response, Response)
         new_donq_as_json = json.loads(response.content)
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=new_donq_as_json)
-        new_donq = DummyArtifact(**new_donq_as_json)
+        new_donq = new_donq_as_json
 
         # Test that the intended fields changed
         diff_msg = f"{old_donq_as_json=} {new_donq_as_json=}"
-        new_description = new_donq.short_description
-        self.assertEqual(new_description, patch[0]["value"], msg=diff_msg)
+        new_description = new_donq["short_description"]
+        self.assertEqual(new_description, patch["patch"][0]["value"], msg=diff_msg)
         self.assertNotEqual(
             new_description, artifact_don_quixote.short_description, msg=diff_msg
         )
 
-        new_access_hours = new_donq.repro_access_hours
-        self.assertIsNone(new_access_hours)
+        self.assertIsNone(new_donq["long_description"], msg=diff_msg)
+        self.assertEqual(new_donq["title"], artifact_don_quixote.long_description)
 
-        self.assertIsNone(new_donq.long_description, msg=diff_msg)
-        self.assertEqual(new_donq.title, artifact_don_quixote.long_description)
+        self.assertListEqual(
+            list(sorted(new_donq_as_json["tags"])), list(sorted(new_tags)), msg=diff_msg
+        )
+
+        new_authors = new_donq["authors"]
+        target_author = patch["patch"][3]["value"]
+        self.assertIn(target_author, new_authors, msg=diff_msg)
 
         # Test that nothing unexpected changed
         new_donq_as_json.pop("updated_at")
@@ -342,6 +522,14 @@ class TestUpdateArtifact(APITestCase):
         old_donq_as_json.pop("reproducibility")
         new_donq_as_json.pop("title")
         old_donq_as_json.pop("title")
+        old_donq_as_json.pop("tags")
+        new_donq_as_json.pop("tags")
+        old_donq_as_json["authors"] = [
+            a for a in old_donq_as_json["authors"] if a != target_author
+        ]
+        new_donq_as_json["authors"] = [
+            a for a in new_donq_as_json["authors"] if a != target_author
+        ]
         self.assertDictEqual(new_donq_as_json, old_donq_as_json)
 
     def test_update_artifact_abilities(self):
@@ -356,22 +544,30 @@ class TestUpdateArtifact(APITestCase):
         # TODO ensure that a delete actually rotates the sharing key
         pass
 
+    def test_update_artifact_no_write_scope(self):
+        # TODO
+        pass
+
+    def test_update_artifact_not_author(self):
+        # TODO
+        pass
+
 
 class TestCreateArtifactVersion(APITestCase):
     example_version = {
         "contents": {
-            "urn": "urn:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
+            "urn": "urn:trovi:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
         },
         "links": [
             {
                 "label": "Training data",
-                "urn": "urn:dataset:globus:"
+                "urn": "urn:globus:dataset:"
                 "979a1221-8c42-41bf-bb08-4a16ed981447:"
                 "/training_set",
             },
             {
                 "label": "Our training image",
-                "urn": "urn:disk-image:chameleon:CHI@TACC:"
+                "urn": "urn:trovi:chameleon:disk-image:CHI@TACC:"
                 "fd13fbc0-2d53-4084-b348-3dbd60cdc5e1",
             },
         ],
@@ -453,6 +649,10 @@ class TestCreateArtifactVersion(APITestCase):
             response_2.status_code, status.HTTP_409_CONFLICT, msg=response_2.content
         )
 
+    def test_create_artifact_version_no_write_scope(self):
+        # TODO
+        pass
+
 
 class TestDeleteArtifactVersion(APITestCase):
     def test_endpoint_works(self):
@@ -465,6 +665,10 @@ class TestDeleteArtifactVersion(APITestCase):
             self.fail(e)
 
     def test_delete_artifact_version(self):
+        artifact_don_quixote.owner_urn = (
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        )
+        artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
                 self.delete_artifact_version_path(
@@ -507,3 +711,11 @@ class TestDeleteArtifactVersion(APITestCase):
         self.assertEqual(
             response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
         )
+
+    def test_delete_artifact_version_no_write_scope(self):
+        # TODO
+        pass
+
+    def test_delete_artifact_version_not_author(self):
+        # TODO
+        pass

@@ -1,18 +1,15 @@
 import logging
-from datetime import datetime
 from typing import Optional
 
-from django.conf import settings
 from jose import jwk, JOSEError
 from jose.backends.base import Key
 from jose.constants import ALGORITHMS
 from keycloak.realm import KeycloakRealm
 from requests import HTTPError
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework_simplejwt.exceptions import InvalidToken
 
 from trovi.auth.providers.base import IdentityProviderClient
-from trovi.auth.tokens import JWT, OAuth2TokenIntrospection
+from trovi.common.tokens import JWT, OAuth2TokenIntrospection
 
 LOG = logging.getLogger(__name__)
 
@@ -52,8 +49,8 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         creds = openid.password_credentials(username, password)
         return creds["access_token"]
 
-    def get_actor_subject(self) -> str:
-        return self.openid.get_url("issuer")
+    def get_subject(self, subject_token: JWT) -> str:
+        return subject_token.additional_claims["preferred_username"]
 
     def validate_subject_token(self, subject_token: JWT) -> JWT:
         for key in self.signing_keys:
@@ -96,30 +93,6 @@ class KeycloakIdentityProvider(IdentityProviderClient):
 
         response["token"] = subject_token
         return OAuth2TokenIntrospection.from_dict(response)
-
-    def exchange_token(
-        self, subject_token: JWT, requested_scope: list[JWT.Scopes] = None
-    ) -> JWT:
-        introspection = self.introspect_token(subject_token)
-        if introspection and not introspection.active:
-            raise InvalidToken("Subject token revoked.")
-        scopes = (
-            requested_scope
-            if requested_scope is not None
-            else [JWT.Scopes.ARTIFACTS_READ]
-        )
-        return JWT(
-            azp=(email := subject_token.additional_claims["email"]),
-            aud=settings.TROVI_FQDN,
-            iss=settings.TROVI_FQDN,
-            iat=(now := int(datetime.utcnow().timestamp())),
-            sub=email,
-            exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
-            scope=scopes,
-            alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
-            key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
-            act={"sub": subject_token.iss},
-        )
 
     def refresh_signing_keys(self) -> list[Key]:
         # Keys are encoded as JWK set (https://datatracker.ietf.org/doc/html/rfc7517)

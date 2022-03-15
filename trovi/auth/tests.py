@@ -9,7 +9,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.reverse import reverse
 
 from trovi.auth import providers
-from trovi.auth.tokens import TokenTypes
+from trovi.common.tokens import TokenTypes
 
 
 class AuthTestCase(TestCase):
@@ -36,7 +36,7 @@ class TestTokenGrant(AuthTestCase):
                 data={
                     "grant_type": "token_exchange",
                     "subject_token": self.dummy_jwt,
-                    "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                    "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
                 },
             )
             self.assertIsNotNone(base_response)
@@ -50,14 +50,13 @@ class TestTokenGrant(AuthTestCase):
             data={
                 "grant_type": "token_exchange",
                 "subject_token": self.dummy_jwt,
-                "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
             },
         )
-        self.assertEqual(base_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(base_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_valid_token(self):
-        for _, provider in providers.get_clients().items():
-            provider_name = provider.get_name()
+        for provider_name, provider in providers._idp_clients.items():
             test_username = os.environ.get(f"{provider_name}_TEST_USER_USERNAME")
             test_password = os.environ.get(f"{provider_name}_TEST_USER_PASSWORD")
             test_client_id = os.environ.get(f"{provider_name}_TEST_CLIENT_ID")
@@ -73,13 +72,13 @@ class TestTokenGrant(AuthTestCase):
                 data={
                     "grant_type": "token_exchange",
                     "subject_token": valid_token,
-                    "subject_token_type": TokenTypes.ACCESS_TOKEN_TYPE.value,
+                    "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
                 },
             )
 
             self.assertEqual(
                 response.status_code,
-                status.HTTP_200_OK,
+                status.HTTP_201_CREATED,
                 msg=json.loads(response.content),
             )
 
@@ -105,11 +104,9 @@ class TestTokenGrant(AuthTestCase):
                 )
             except Exception as e:
                 self.fail(e)
-            self.assertEqual(
-                os.environ.get("CHAMELEON_KEYCLOAK_TEST_USER_USERNAME"), token["azp"]
-            )
-            self.assertEqual(settings.TROVI_FQDN, token["aud"])
-            self.assertEqual(token["azp"], token["sub"])
+            self.assertEqual(test_username, token["sub"])
+            self.assertEqual([settings.TROVI_FQDN], token["aud"])
+            self.assertIn(token["azp"], settings.AUTH_ISSUERS.values())
             self.assertEqual(
                 token["exp"], token["iat"] + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
             )

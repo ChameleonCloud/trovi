@@ -1,61 +1,49 @@
 import operator
 import time
+from datetime import datetime, timedelta
 from functools import lru_cache, wraps, partial
 from threading import Lock
-from time import monotonic_ns
 from typing import Callable, Type, Any
 
 
-class timed_asynchronous_lru_cache:
-    def __init__(
-        self,
-        timeout: int = 300,
-        maxsize: int = 128,
-        typed: bool = False,
-        lock_type: Type[Lock] = Lock,
-    ):
-        """
-        Extension of functools lru_cache with a timeout
+def timed_lru_cache(
+    timeout: int = 300,
+    maxsize: int = 128,
+    typed: bool = False,
+    lock_type: Type[Lock] = Lock,
+):
+    """
+    Extension of functools lru_cache with a timeout
 
-        Parameters:
-        timeout: Timeout in seconds to clear the WHOLE cache, default 5 minutes
-        maxsize: Maximum number of items in the cache
-        typed: Equal values of different types will be considered
-               different entries in the cache
-        lock_type: Class which implements a Lock,
-                   to be instantiated once per wrapped function
+    Parameters:
+    timeout: Timeout in seconds to clear the WHOLE cache, default 5 minutes
+    maxsize: Maximum number of items in the cache
+    typed: Equal values of different types will be considered
+           different entries in the cache
+    lock_type: Class which implements a Lock,
+               to be instantiated once per wrapped function
 
-        Extension of code posted here:
-        https://gist.github.com/Morreski/c1d08a3afa4040815eafd3891e16b945
-        """
+    Extension of code posted here:
+    https://gist.github.com/Morreski/c1d08a3afa4040815eafd3891e16b945
+    """
 
-        self.lock = lock_type()
+    def wrapper(f: Callable):
+        lock = lock_type()
+        f = lru_cache(maxsize=maxsize, typed=typed)(f)
+        f.delta = timedelta(seconds=timeout)
+        f.expiration = datetime.utcnow() + f.delta
 
-        def wrapper_cache(f: Callable):
-            with self.lock:
-                cache = lru_cache(maxsize=maxsize, typed=typed)(f)
-                cache.delta = timeout * 10 ** 9
-                cache.expiration = monotonic_ns() + cache.delta
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            with lock:
+                if (now := datetime.utcnow()) >= f.expiration:
+                    f.cache_clear()
+                    f.expiration = now + f.delta
+                return f(*args, **kwargs)
 
-                @wraps(cache)
-                def wrapped_f(*args, **kwargs):
-                    if monotonic_ns() >= cache.expiration:
-                        cache.cache_clear()
-                        f.expiration = monotonic_ns() + cache.delta
-                    return f(*args, **kwargs)
+        return wrapped
 
-                wrapped_f.cache_info = cache.cache_info
-                wrapped_f.cache_clear = cache.cache_clear
-                return wrapped_f
-
-        self.wrapper_cache = wrapper_cache
-
-    def __call__(self, _func=None):
-        # To allow decorator to be used without arguments
-        if _func is None:
-            return self.wrapper_cache
-        else:
-            return self.wrapper_cache(_func)
+    return wrapper
 
 
 def retry(

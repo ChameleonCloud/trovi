@@ -13,6 +13,8 @@ import secrets
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+from urllib.parse import urlparse
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -40,13 +42,13 @@ SECURE_SSL_REDIRECT = False
 # Tells Django that connections with X-Forwarded-Proto: https are secure
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-TROVI_FQDN = os.environ.get("TROVI_FQDN")
+TROVI_FQDN = os.getenv("TROVI_FQDN", "localhost")
+TROVI_PORT = os.getenv("TROVI_PORT", "8808")
 
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     TROVI_FQDN,
-    # TODO reverse-proxy
 ]
 
 # Artifact storage
@@ -70,6 +72,8 @@ ZENODO_URL = os.getenv("ZENODO_URL", "https://zenodo.org")
 ZENODO_DEFAULT_ACCESS_TOKEN = os.getenv("ZENODO_DEFAULT_ACCESS_TOKEN")
 
 AUTH_TROVI_TOKEN_LIFESPAN_SECONDS = 300
+
+AUTH_TROVI_ADMIN_USERS = set(os.getenv("TROVI_ADMIN_USERS", "").split(","))
 
 ARTIFACT_STORAGE_FILENAME_MAX_LENGTH = 256
 
@@ -116,11 +120,14 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Plugins
     "rest_framework",
-    "rest_framework_simplejwt",
+    "drf_spectacular",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
     "trovi.auth.apps.AuthConfig",
+    "trovi.docs.apps.DocsConfig",
+    "trovi.storage.apps.StorageConfig",
+    "trovi.meta.apps.MetaConfig",
 ]
 
 MIDDLEWARE = [
@@ -162,11 +169,13 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
+    "EXCEPTION_HANDLER": "trovi.common.handlers.trovi_exception_handler",
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        # TODO
+        "trovi.common.authenticators.AlwaysFailAuthentication"
     ],
+    "DEFAULT_SCHEMA_CLASS": "trovi.common.schema.APIViewSetAutoSchema",
 }
 
 
@@ -323,6 +332,13 @@ LOGGING = {
 # Testing
 TEST_RUNNER = "util.test.SampleDataTestRunner"
 
+# Documentation
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Trovi API",
+    "DESCRIPTION": "A collection of shared artifacts.",
+    "VERSION": "0",
+}
+
 # Constraints
 URN_MAX_CHARS = 254
 GITHUB_USERNAME_MAX_CHARS = 40
@@ -344,11 +360,10 @@ AUTH_TROVI_TOKEN_SIGNING_KEY = os.environ.get(
 AUTH_TROVI_TOKEN_SIGNING_ALGORITHM = "HS256"
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS = 5
 AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_SECONDS = 2
-# TODO allow this to be pluggable by third party IdPs
-AUTH_APPROVED_AUTHORIZED_PARTIES = set(
-    os.environ.get("AUTH_APPROVED_AUTHORIZED_PARTIES").split(",")
-)
 AUTH_TOKEN_CONVERSION_CACHE_SIZE = 256
+AUTH_ISSUERS = {
+    urlparse(CHAMELEON_KEYCLOAK_SERVER_URL).netloc: "chameleon",
+}
 
 ARTIFACT_TITLE_MAX_CHARS = 70
 ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70
