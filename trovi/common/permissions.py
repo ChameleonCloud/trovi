@@ -48,7 +48,7 @@ class ArtifactScopedPermission(BaseScopedPermission):
     ) -> bool:
         token = JWT.from_request(request)
         if not token:
-            return False
+            return obj.visibility == Artifact.Visibility.PUBLIC
         if token.is_admin():
             return True
         # If the authenticated user is not the artifact owner,

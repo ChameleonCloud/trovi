@@ -22,7 +22,7 @@ class URNField(models.CharField):
     # Validates that a URN follows the format described by
     # https://datatracker.ietf.org/doc/html/rfc8141
     pattern = re.compile(
-        r"^urn:(?P<NID>[a-z0-9-]{0,31}):(?P<NSS>[a-zA-Z0-9()+,\-.:=@;$_!*'%/?#]+)$",
+        r"^urn:([a-z0-9-]{0,31}):([a-zA-Z0-9()+,\-.:=@;$_!*'%/?#]+)$",
         flags=re.IGNORECASE,
     )
 

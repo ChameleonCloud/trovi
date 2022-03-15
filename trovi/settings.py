@@ -28,7 +28,7 @@ SECRET_KEY = os.getenv(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_ENV", "DEBUG") == "DEBUG"
+DEBUG = os.environ.get("DJANGO_ENV", "DEBUG").upper() == "DEBUG"
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO)
 
 # Security settings
@@ -126,9 +126,12 @@ INSTALLED_APPS = [
     "trovi.api.apps.ApiConfig",
     "trovi.auth.apps.AuthConfig",
     "trovi.docs.apps.DocsConfig",
-    "trovi.storage.apps.StorageConfig",
     "trovi.meta.apps.MetaConfig",
+    "trovi.storage.apps.StorageConfig",
 ]
+
+if os.getenv("DJANGO_ENV", "DEBUG").upper() in ("DEBUG", "DEVELOPMENT"):
+    INSTALLED_APPS.append("django_extensions")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -337,6 +340,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Trovi API",
     "DESCRIPTION": "A collection of shared artifacts.",
     "VERSION": "0",
+    "SERVERS": [{"url": f"https://{TROVI_FQDN}"}]
 }
 
 # Constraints

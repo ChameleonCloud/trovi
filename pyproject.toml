@@ -23,6 +23,7 @@ drf-spectacular = "^0.21.1"
 pytest = "^6.2.5"
 flake8 = "^4.0.1"
 Faker = "^13.3.2"
+django-extensions = "^3.1.5"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

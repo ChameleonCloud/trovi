@@ -30,7 +30,7 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
     iss = subject_token.iss
     if not iss:
         raise InvalidToken("Token does not contain required claim 'iss'.")
-    azp = settings.AUTH_ISSUERS[url_to_fqdn(iss)]
+    azp = settings.AUTH_ISSUERS.get(url_to_fqdn(iss))
     if not azp:
         raise InvalidClient("Unknown identity provider")
     client = get_client_by_authorized_party(azp, subject_token)

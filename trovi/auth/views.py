@@ -2,7 +2,6 @@ from rest_framework import generics
 from rest_framework.parsers import JSONParser
 
 from trovi.auth.serializers import TokenGrantRequestSerializer
-from trovi.common.authenticators import AlwaysPassAuthentication
 
 
 class TokenGrant(generics.CreateAPIView):
@@ -13,4 +12,4 @@ class TokenGrant(generics.CreateAPIView):
 
     serializer_class = TokenGrantRequestSerializer
     parser_classes = [JSONParser]
-    authentication_classes = [AlwaysPassAuthentication]
+    authentication_classes = []

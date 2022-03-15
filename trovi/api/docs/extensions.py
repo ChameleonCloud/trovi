@@ -52,6 +52,24 @@ class ArtifactProjectSerializerExtension(OpenApiSerializerExtension):
         }
 
 
+class TokenGrantRequestSerializerExtension(OpenApiSerializerExtension):
+    target_class = TokenGrantRequestSerializer
+    priority = 1
+
+    def map_serializer(
+        self, auto_schema: AutoSchema, direction: Direction
+    ) -> dict[str, JSON]:
+        schema = super(TokenGrantRequestSerializerExtension, self).map_serializer(
+            auto_schema, direction
+        )
+        scope_schema = build_basic_type(OpenApiTypes.STR) | {
+            "description": f"A space separated string consisting of "
+            f"the following scopes: \n{', '.join(JWT.Scopes)}"
+        }
+        schema["properties"]["scope"] = scope_schema
+        return schema
+
+
 class TroviTokenAuthenticationExtension(OpenApiAuthenticationExtension):
     target_class = TroviTokenAuthentication
     name = "Trovi Token Authentication"
@@ -77,21 +95,3 @@ class TroviTokenAuthenticationExtension(OpenApiAuthenticationExtension):
                 }
             },
         }
-
-
-class TokenGrantRequestSerializerExtension(OpenApiSerializerExtension):
-    target_class = TokenGrantRequestSerializer
-    priority = 1
-
-    def map_serializer(
-        self, auto_schema: AutoSchema, direction: Direction
-    ) -> dict[str, JSON]:
-        schema = super(TokenGrantRequestSerializerExtension, self).map_serializer(
-            auto_schema, direction
-        )
-        scope_schema = build_basic_type(OpenApiTypes.STR) | {
-            "description": f"A space separated string consisting of "
-            f"the following scopes: \n{', '.join(JWT.Scopes)}"
-        }
-        schema["properties"]["scope"] = scope_schema
-        return schema

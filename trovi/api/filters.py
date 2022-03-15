@@ -56,7 +56,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
                 required=False,
                 description=self.ordering_description,
                 enum=self.ordering_fields,
-                default=getattr(view, "ordering", "-")[1:],
+                default=getattr(view, "ordering", "-"),
             ),
         ]
 

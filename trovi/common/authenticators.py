@@ -1,7 +1,7 @@
 from typing import Optional
 
 from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import NotFound, AuthenticationFailed, ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
@@ -22,10 +22,7 @@ class TroviTokenAuthentication(BaseAuthentication):
             # The header should be in the format Authorization: bearer <token>
             authz_header = request.headers.get("Authorization", "").split()
             if not authz_header:
-                raise AuthenticationFailed(
-                    "Missing access_token parameter and Authorization header. "
-                    "One is required for authentication."
-                )
+                return None
             if len(authz_header) != 2:
                 raise ValidationError("Malformed Authorization header")
             scheme, access_token = authz_header
@@ -48,8 +45,3 @@ class AlwaysFailAuthentication(BaseAuthentication):
         # Any endpoint which has this authenticator enabled is probably
         # one we don't want anyone to know about
         raise NotFound()
-
-
-class AlwaysPassAuthentication(BaseAuthentication):
-    def authenticate(self, request: Request) -> tuple[None, None]:
-        return None, None

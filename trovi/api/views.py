@@ -191,10 +191,10 @@ class ArtifactViewSet(
     parser_classes = [JSONParser]
     pagination_class = ListArtifactsPagination
     filter_backends = [ListArtifactsVisibilityFilter, ListArtifactsOrderingFilter]
-    ordering = ["-updated_at"]
+    ordering = "updated_at"
     ordering_fields = ["date", "updated_at", "access_count"]
     authentication_classes = [TroviTokenAuthentication]
-    permission_classes = [ArtifactVisibilityPermission, ArtifactScopedPermission]
+    permission_classes = [ArtifactVisibilityPermission & ArtifactScopedPermission]
     lookup_field = "uuid"
     openapi_extensions = [
         ArtifactTagSerializerExtension,
@@ -348,7 +348,6 @@ class ArtifactVersionViewSet(
     serializer_class = ArtifactVersionSerializer
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [
-        ArtifactVersionVisibilityPermission,
-        ArtifactVersionScopedPermission,
+        ArtifactVersionVisibilityPermission & ArtifactVersionScopedPermission
     ]
     lookup_value_regex = "[^/]+"
