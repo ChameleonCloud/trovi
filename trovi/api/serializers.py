@@ -320,7 +320,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Artifact:
         # All nested fields have to be manually created, so that is done here
-        tags = validated_data.pop("tags", [])
+        tags = [t["tag"] for t in validated_data.pop("tags", [])]
         authors = validated_data.pop("authors", [])
         linked_projects = validated_data.pop("linked_projects", [])
         version = validated_data.pop("version", {})
@@ -391,7 +391,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 tag_serializer = ArtifactTagSerializer(data=tags, many=True)
                 tag_serializer.is_valid(raise_exception=True)
                 instance.tags.clear()
-                instance.tags.add(tag_serializer.data)
+                instance.tags.add(*tag_serializer.save())
 
             # Remove any linked projects that are not in the updated list
             if linked_projects is not None:

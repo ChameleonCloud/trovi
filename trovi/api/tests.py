@@ -347,7 +347,7 @@ class TestCreateArtifact(APITestCase):
             "some unit tests for the Trovi CreateArtifact API endpoint. "
             "Yes siree, this sure is a mighty fine endpoint, "
             "if I do say so myself.",
-            "tags": [],
+            "tags": [ArtifactTag.objects.first().tag, ArtifactTag.objects.last().tag],
             "authors": [
                 {
                     "full_name": "Dr. Leon Cloudly",
@@ -467,6 +467,16 @@ class TestUpdateArtifact(APITestCase):
                         "affiliation": "The Patch People",
                     },
                 },
+                {
+                    "op": "replace",
+                    "path": "/tags",
+                    "value": (
+                        new_tags := [
+                            t.tag
+                            for t in random.choices(ArtifactTag.objects.all(), k=2)
+                        ]
+                    ),
+                },
             ]
         }
 
@@ -493,6 +503,10 @@ class TestUpdateArtifact(APITestCase):
         self.assertIsNone(new_donq["long_description"], msg=diff_msg)
         self.assertEqual(new_donq["title"], artifact_don_quixote.long_description)
 
+        self.assertListEqual(
+            list(sorted(new_donq_as_json["tags"])), list(sorted(new_tags)), msg=diff_msg
+        )
+
         new_authors = new_donq["authors"]
         target_author = patch["patch"][3]["value"]
         self.assertIn(target_author, new_authors, msg=diff_msg)
@@ -508,6 +522,8 @@ class TestUpdateArtifact(APITestCase):
         old_donq_as_json.pop("reproducibility")
         new_donq_as_json.pop("title")
         old_donq_as_json.pop("title")
+        old_donq_as_json.pop("tags")
+        new_donq_as_json.pop("tags")
         old_donq_as_json["authors"] = [
             a for a in old_donq_as_json["authors"] if a != target_author
         ]
