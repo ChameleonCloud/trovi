@@ -265,8 +265,8 @@ class ArtifactVersionViewSet(
 
         Request body:
             - contents (required):
-                - urn: a URN "contents:<backend>:<id>" where the ID depends on the
-                  backend:
+                - urn: a URN "urn:trovi:contents:<backend>:<id>" where the ID depends
+                  on the backend:
                     - chameleon: the ID is the object UUID of the artifact's tarball
                       contents in Swift
                     - zenodo: the ID is the DOI assigned by Zenodo

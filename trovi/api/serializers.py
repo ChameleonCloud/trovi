@@ -154,7 +154,7 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
     Represents metadata regarding an artifact version's contents
     """
 
-    urn = URNSerializerField()
+    urn = URNSerializerField(required=True)
 
     def create(self, validated_data: dict[str, JSON]) -> ArtifactVersion:
         self.instance.contents_urn = validated_data["urn"]
@@ -168,8 +168,6 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
         # Since versions cannot be patched, we can skip uniqueness validation
         if self.instance:
             return urn
-        if not urn:
-            raise ValidationError("Missing required field contents.urn")
         if ArtifactVersion.objects.filter(contents_urn__iexact=urn).exists():
             raise ConflictError(f"Version with contents {urn} already exists.")
         # TODO check if this is a valid resource
@@ -458,7 +456,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         Generates a default owner URN based on the requesting user's auth token
         """
         token = JWT.from_request(self.context["request"])
-        return f"urn:{token.azp}:{token.sub}"
+        return f"urn:trovi:{token.azp}:{token.sub}"
 
     def validate_long_description(
         self, long_description: Optional[str]

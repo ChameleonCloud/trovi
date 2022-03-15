@@ -194,7 +194,7 @@ class JWT:
             nss = self.sub
         if not nid:
             raise ValueError("Unknown issuer")
-        return f"urn:{nid}:{nss}"
+        return f"urn:trovi:{nid}:{nss}"
 
     def asdict(self) -> dict:
         """

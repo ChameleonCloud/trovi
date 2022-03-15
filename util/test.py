@@ -92,7 +92,7 @@ def fake_git_ref() -> str:
 
 def fake_contents_urn() -> str:
     return (
-        "urn:"
+        "urn:trovi:contents:"
         + random.choice(
             [
                 lambda: f"chameleon:{fake.uuid4()}",
@@ -105,11 +105,11 @@ def fake_contents_urn() -> str:
 
 
 def fake_user_urn() -> str:
-    return f"urn:chameleon:{fake_email()}"
+    return f"urn:trovi:chameleon:{fake_email()}"
 
 
 def fake_project_urn() -> str:
-    return f"urn:chameleon:CHI-{fake.unique.random_int(1, 999999)}"
+    return f"urn:trovi:chameleon:CHI-{fake.unique.random_int(1, 999999)}"
 
 
 def fake_link_urn() -> str:
@@ -117,13 +117,13 @@ def fake_link_urn() -> str:
         "urn:"
         + random.choice(
             [
-                lambda: f"disk-image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
+                lambda: f"trovi:chameleon:disk-image:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}",
                 # TODO unsure of how fabric data should be formatted
                 # lambda: f"disk-image:fabric:{fake.slug()}:{fake.uuid4()}",
-                lambda: f"dataset:globus:{fake.uuid4()}:{fake.uri_path()}",
-                lambda: f"dataset:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}:"
+                lambda: f"globus:dataset:{fake.uuid4()}:{fake.uri_path()}",
+                lambda: f"trovi:chameleon:dataset:CHI@{random.choice(CHI_SITES)}:{fake.uuid4()}:"
                 f"{fake.uri_path()}",
-                lambda: f"dataset:zenodo:{fake.doi()}:{fake.uri_path()}",
+                lambda: f"trovi:dataset:zenodo:{fake.doi()}:{fake.uri_path()}",
             ]
         )()
     )
@@ -153,18 +153,18 @@ artifact_don_quixote = Artifact(
     title="Evaluating Windmill-Based Threat Models",
     short_description="Are they, or aren't they, actually giants?",
     long_description="foo",
-    owner_urn="urn:chameleon:donquixote@rosinante.io",
+    owner_urn="urn:trovi:chameleon:donquixote@rosinante.io",
     visibility=Artifact.Visibility.PUBLIC,
     is_reproducible=True,
     repro_access_hours=3,
 )
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid4()}",
+    contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",
 )
 version_don_quixote_2 = ArtifactVersion(
     artifact=artifact_don_quixote,
-    contents_urn=f"urn:chameleon:{uuid4()}",
+    contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",
 )
 author_don_quixote_don = ArtifactAuthor(
     artifact=artifact_don_quixote,
@@ -181,26 +181,26 @@ author_don_quixote_sancho = ArtifactAuthor(
 event_don_quixote_launch1 = ArtifactEvent(
     artifact_version=version_don_quixote_1,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch2 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch3 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
 )
 link_don_quixote_dataset = ArtifactLink(
     artifact_version=version_don_quixote_1,
-    urn="urn:dataset:globus:9a7c09d3-80e7-466c-9325-423f4358db96:/data",
+    urn="urn:globus:dataset:9a7c09d3-80e7-466c-9325-423f4358db96:/data",
     label="Windmill Data",
 )
 link_don_quixote_image = ArtifactLink(
     artifact_version=version_don_quixote_2,
-    urn="urn:disk-image:chameleon:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
+    urn="urn:trovi:chameleon:disk-image:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
     label="Image of DuchessOS",
 )
 don_quixote = [

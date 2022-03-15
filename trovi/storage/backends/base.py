@@ -71,7 +71,7 @@ class StorageBackend(io.BufferedIOBase, ABC):
         """
         if not self.content_id:
             raise FileNotFoundError
-        return f"urn:contents:{self.name}:{self.content_id}"
+        return f"urn:trovi:contents:{self.name}:{self.content_id}"
 
     def writable(self) -> bool:
         """

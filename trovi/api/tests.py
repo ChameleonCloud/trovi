@@ -26,7 +26,6 @@ from trovi.models import (
     Artifact,
     ArtifactTag,
     ArtifactVersion,
-    ArtifactAuthor,
 )
 from util.test import (
     artifact_don_quixote,
@@ -363,24 +362,25 @@ class TestCreateArtifact(APITestCase):
             ],
             "visibility": "public",
             # "linked_projects": [  TODO eventually, users will be allowed to set this
-            #     "urn:chameleon:CH-1111",
-            #     "urn:chameleon:CH-2222",
+            #     "urn:trovi:chameleon:CH-1111",
+            #     "urn:trovi:chameleon:CH-2222",
             # ],
             "reproducibility": {"enable_requests": True, "access_hours": 3},
             "version": {
                 "contents": {
-                    "urn": "urn:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
+                    "urn": "urn:trovi:contents:chameleon:"
+                    "108beeac-564f-4030-b126-ec4d903e680e"
                 },
                 "links": [
                     {
                         "label": "Training data",
-                        "urn": "urn:dataset:globus:"
+                        "urn": "urn:globus:dataset:"
                         "979a1221-8c42-41bf-bb08-4a16ed981447:"
                         "/training_set",
                     },
                     {
                         "label": "Our training image",
-                        "urn": "urn:disk-image:chameleon:CHI@TACC:"
+                        "urn": "urn:trovi:chameleon:disk-image:CHI@TACC:"
                         "fd13fbc0-2d53-4084-b348-3dbd60cdc5e1",
                     },
                 ],
@@ -432,7 +432,7 @@ class TestUpdateArtifact(APITestCase):
         # Cheekily add the test user as an author for Don Quixote,
         # so that we may write to it
         artifact_don_quixote.owner_urn = (
-            f"urn:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         )
         artifact_don_quixote.save()
 
@@ -540,18 +540,18 @@ class TestUpdateArtifact(APITestCase):
 class TestCreateArtifactVersion(APITestCase):
     example_version = {
         "contents": {
-            "urn": "urn:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
+            "urn": "urn:trovi:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
         },
         "links": [
             {
                 "label": "Training data",
-                "urn": "urn:dataset:globus:"
+                "urn": "urn:globus:dataset:"
                 "979a1221-8c42-41bf-bb08-4a16ed981447:"
                 "/training_set",
             },
             {
                 "label": "Our training image",
-                "urn": "urn:disk-image:chameleon:CHI@TACC:"
+                "urn": "urn:trovi:chameleon:disk-image:CHI@TACC:"
                 "fd13fbc0-2d53-4084-b348-3dbd60cdc5e1",
             },
         ],
@@ -650,7 +650,7 @@ class TestDeleteArtifactVersion(APITestCase):
 
     def test_delete_artifact_version(self):
         artifact_don_quixote.owner_urn = (
-            f"urn:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         )
         artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):

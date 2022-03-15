@@ -34,7 +34,7 @@ class StorageContentsSerializer(serializers.Serializer):
         OpenApiExample(
             name="Chameleon Swift",
             value={
-                "contents": f"urn:chameleon:{(example_uuid := uuid4())}",
+                "contents": f"urn:trovi:contents:chameleon:{(example_uuid := uuid4())}",
                 "access_methods": [
                     HttpDownloadLink(
                         exp=(example_exp := datetime(year=2049, month=7, day=6)),
