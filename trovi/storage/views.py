@@ -67,7 +67,7 @@ class StorageViewSet(
     Implements all endpoints at /contents
 
     StoreContents: (self.create)
-        POST /contents?tbackend=<repository>
+        POST /contents?backend=<repository>
 
         Upload a tarfile to store as contents for an ArtifactVersion.
 

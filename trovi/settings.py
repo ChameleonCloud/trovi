@@ -169,6 +169,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
+    "EXCEPTION_HANDLER": "trovi.common.handlers.trovi_exception_handler",
     "DATETIME_FORMAT": DATETIME_FORMAT,
     "ORDERING_PARAM": "sort_by",
     "DEFAULT_AUTHENTICATION_CLASSES": [

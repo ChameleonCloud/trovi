@@ -41,7 +41,7 @@ class TestCreateTag(APITestCase):
             self.fail(str(e))
 
     def test_permission(self):
-        # Confirm that writing tags is only possible
+        # Confirm that writing tags is only possible by an admin
         new_tag = {"tag": "ABCDEFG"}
         response = self.client.post(
             self.authenticate_url(TAGS_PATH, [JWT.Scopes.ARTIFACTS_WRITE]),

@@ -21,8 +21,14 @@ class ArtifactPatchMixin:
     """
 
     class walker(defaultdict):
+        """
+        This is a helper class which simply modifies defaultdict's default factory to
+        accept the key as a parameter. This way, the key can be tested for desired
+        properties while we are walking the paths in the patch.
+        """
+
         def __missing__(self, key: Any) -> Any:
-            dict.__setitem__(self, key, self.default_factory(key))
+            self[key] = self.default_factory(key)
             return self[key]
 
     error_id = None
@@ -158,10 +164,11 @@ class ArtifactPatch(jsonpatch.JsonPatch):
         if in_place:
             return new_artifact
 
-        updated_fields = {}
-        for field in obj.keys():
-            if obj.get(field) != new_artifact.get(field):
-                updated_fields[field] = new_artifact.get(field)
+        updated_fields = {
+            field: new_value
+            for field, value in obj.items()
+            if (new_value := new_artifact.get(field)) != value
+        }
 
         return updated_fields
 

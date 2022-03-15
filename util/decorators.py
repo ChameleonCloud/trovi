@@ -6,7 +6,7 @@ from threading import Lock
 from typing import Callable, Type, Any
 
 
-def timed_asynchronous_lru_cache(
+def timed_lru_cache(
     timeout: int = 300,
     maxsize: int = 128,
     typed: bool = False,

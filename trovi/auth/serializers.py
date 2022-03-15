@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from trovi.auth import providers
-from trovi.common.exceptions import InvalidToken
+from trovi.common.exceptions import InvalidClient
 from trovi.common.tokens import JWT, TokenTypes
 from util.types import JSON
 
@@ -93,17 +93,17 @@ class TokenGrantRequestSerializer(serializers.Serializer):
     scope = serializers.MultipleChoiceField(choices=JWT.Scopes, required=False)
 
     def create(self, validated_data: dict) -> JWT:
+        # Any errors to do with token exchange should be in accordance with
+        # https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
         validated_token = providers.validate_subject_token(
             validated_data["subject_token"]
         )
         provider = providers.get_subject_token_provider(validated_token)
         if not provider:
-            raise InvalidToken(f"Unknown Identity Provider: {validated_token.iss}")
+            raise InvalidClient(f"Unknown Identity Provider: {validated_token.iss}")
 
         requested_scope = validated_data.get("scope")
 
-        # TODO Error response according to
-        #  https://datatracker.ietf.org/doc/html/rfc6749#section-5.2
         trovi_token = provider.exchange_token(validated_token, requested_scope)
 
         return trovi_token

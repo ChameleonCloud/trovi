@@ -6,9 +6,11 @@ from typing import Optional, Any, Collection
 from django.conf import settings
 from jose.backends.base import Key
 
-from trovi.common.exceptions import InvalidToken
+from trovi.common.exceptions import InvalidToken, InvalidScope, InvalidGrant, \
+    InvalidClient
 from trovi.common.tokens import JWT, OAuth2TokenIntrospection
-from util.decorators import timed_asynchronous_lru_cache, retry
+from util.decorators import timed_lru_cache, retry
+from util.url import url_to_fqdn
 
 LOG = logging.getLogger(__name__)
 
@@ -75,19 +77,22 @@ class IdentityProviderClient(ABC):
         are used to authenticate to Trovi. The client should not be Trovi itself.
         """
 
-    @abstractmethod
-    def get_azp_for_trovi_token(self, token: JWT) -> str:
+    def subject_iss_to_trovi_azp(self, token: JWT) -> str:
         """
         Used to link Trovi Tokens back to the token issuer (the IdP)
-        This should be the FQDN of the value that the IdP's token endpoint inserts
-        into the 'iss' claim for its subject tokens.
+        This translates the subject token's issuer FQDN to a string which
+        describes the IdP. This string is used to generate user URNs.
         """
+        azp = settings.AUTH_ISSUERS.get(url_to_fqdn(token.iss))
+        if not azp:
+            raise InvalidClient(f"Unknown token issuer {token.iss}")
+        return azp
 
     @abstractmethod
     def get_subject(self, subject_token: JWT) -> str:
         """
         Used to fill in the "username" (sub) for the Trovi Token. This should be
-        the requesting user's email address.
+        the requesting user's username.
         """
 
     @abstractmethod
@@ -115,19 +120,19 @@ class IdentityProviderClient(ABC):
                 subject_token.to_urn(is_subject_token=True)
                 not in settings.AUTH_TROVI_ADMIN_USERS
             ):
-                raise InvalidToken(
+                raise InvalidScope(
                     "User does not have permission to request admin token"
                 )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):
             introspection = self.introspect_token(subject_token)
             if introspection and not introspection.active:
-                raise InvalidToken("Subject token revoked.")
+                raise InvalidGrant("Subject token revoked.")
 
         now = int(datetime.utcnow().timestamp())
 
         return JWT(
-            azp=self.get_azp_for_trovi_token(subject_token),
+            azp=self.subject_iss_to_trovi_azp(subject_token),
             aud=[settings.TROVI_FQDN],
             iss=settings.TROVI_FQDN,
             iat=now,
@@ -157,7 +162,7 @@ class IdentityProviderClient(ABC):
         """
 
     @property
-    @timed_asynchronous_lru_cache(
+    @timed_lru_cache(
         maxsize=1, timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
     )
     @retry(

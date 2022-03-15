@@ -143,11 +143,12 @@ class ArtifactVersion(models.Model):
         accesses of the deleted version
         """
         try:
-            if instance.artifact:
-                instance.artifact.access_count = (
-                    F("access_count") - instance.access_count
-                )
-                instance.artifact.save(update_fields=["access_count"])
+            with transaction.atomic():
+                if instance.artifact:
+                    instance.artifact.access_count = (
+                        F("access_count") - instance.access_count
+                    )
+                    instance.artifact.save(update_fields=["access_count"])
         except Artifact.DoesNotExist:
             pass
 
@@ -181,15 +182,16 @@ class ArtifactEvent(models.Model):
     def incr_access_count(instance: "ArtifactEvent", created: bool = False, **_):
         if created:
             try:
-                if (
-                    not instance.artifact_version
-                    or not instance.artifact_version.artifact
-                ):
-                    pass
-                if instance.event_type == ArtifactEvent.EventType.LAUNCH:
-                    artifact = instance.artifact_version.artifact
-                    artifact.access_count = F("access_count") + 1
-                    artifact.save(update_fields=["access_count"])
+                with transaction.atomic():
+                    if (
+                        not instance.artifact_version
+                        or not instance.artifact_version.artifact
+                    ):
+                        pass
+                    if instance.event_type == ArtifactEvent.EventType.LAUNCH:
+                        artifact = instance.artifact_version.artifact
+                        artifact.access_count = F("access_count") + 1
+                        artifact.save(update_fields=["access_count"])
             except (Artifact.DoesNotExist, ArtifactVersion.DoesNotExist):
                 pass
 

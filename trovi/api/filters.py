@@ -77,9 +77,9 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
             return queryset
 
         if token:
-            user = token.sub
+            owner_urn = token.to_urn()
         else:
-            user = None
+            owner_urn = None
 
         public = queryset.filter(visibility=Artifact.Visibility.PUBLIC)
         private = queryset.filter(visibility=Artifact.Visibility.PRIVATE)
@@ -88,9 +88,9 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
             shared_with = private.filter(sharing_key=sharing_key)
         else:
             shared_with = Artifact.objects.none()
-        member_of = private.filter(authors__email__iexact=user)
+        owner_of = private.filter(owner_urn=owner_urn)
 
-        return (public | shared_with | member_of).distinct()
+        return (public | shared_with | owner_of).distinct()
 
     def get_schema_operation_parameters(
         self, view: views.View

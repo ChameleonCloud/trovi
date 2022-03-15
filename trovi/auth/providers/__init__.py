@@ -7,7 +7,7 @@ from django.conf import settings
 
 from trovi.auth.providers.base import IdentityProviderClient
 from trovi.auth.providers.keycloak import KeycloakIdentityProvider
-from trovi.common.exceptions import InvalidToken
+from trovi.common.exceptions import InvalidToken, InvalidClient
 from trovi.common.tokens import JWT
 from util.url import url_to_fqdn
 
@@ -32,7 +32,7 @@ def get_subject_token_provider(subject_token: JWT) -> IdentityProviderClient:
         raise InvalidToken("Token does not contain required claim 'iss'.")
     azp = settings.AUTH_ISSUERS[url_to_fqdn(iss)]
     if not azp:
-        raise InvalidToken("Unknown identity provider")
+        raise InvalidClient("Unknown identity provider")
     client = get_client_by_authorized_party(azp, subject_token)
     return client
 
@@ -60,15 +60,15 @@ def get_client_by_name(name: str) -> IdentityProviderClient:
 
 
 def get_client_by_authorized_party(azp: str, token: JWT) -> IdentityProviderClient:
-    # Look up an Identity Provider by the actor subject of a token
+    # Look up an Identity Provider by the authorizing party of a token
     provider = next(
         (
             client
             for client in _idp_clients.values()
-            if client.get_azp_for_trovi_token(token) == azp
+            if client.subject_iss_to_trovi_azp(token) == azp
         ),
         None,
     )
     if not provider:
-        raise InvalidToken(f"Cannot find identity provider for subject {azp}")
+        raise InvalidClient(f"Cannot find identity provider for subject {azp}")
     return provider

@@ -8,7 +8,7 @@ import jwt
 from django.conf import settings
 from rest_framework.request import Request
 
-from trovi.common.exceptions import InvalidToken
+from trovi.common.exceptions import InvalidToken, InvalidClient, InvalidGrant
 from util.url import url_to_fqdn
 
 LONGEST_EXPIRATION = datetime.datetime.max.timestamp()
@@ -103,13 +103,9 @@ class JWT:
     @classmethod
     def from_request(cls, request: Request) -> Optional["JWT"]:
         token = request.auth
-        if token:
-            # You may be asking, "Why not just use `isinstance` here?"
-            # To you, I say "Read this, and weep":
-            # https://stackoverflow.com/a/10582820
-            if token.__class__.__name__ != "JWT":
-                raise ValueError(f"Unknown token type: {type(token)}")
-        return token
+        if token and isinstance(token, JWT):
+            return token
+        raise ValueError(f"Unknown token type: {type(token)}")
 
     @classmethod
     def from_dict(cls, kwargs: dict) -> "JWT":
@@ -152,7 +148,25 @@ class JWT:
                 key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
                 audience=[settings.TROVI_FQDN],
             )
-        except jwt.InvalidTokenError as e:
+        except jwt.InvalidSignatureError as e:
+            raise InvalidGrant(e)
+        except jwt.ExpiredSignatureError as e:
+            raise InvalidGrant(e)
+        except (jwt.DecodeError, jwt.InvalidTokenError) as e:
+            raise InvalidToken(e)
+        except jwt.InvalidAlgorithmError as e:
+            raise InvalidClient(e)
+        except jwt.InvalidAudienceError as e:
+            raise InvalidGrant(e)
+        except jwt.InvalidIssuerError as e:
+            raise InvalidGrant(e)
+        except jwt.InvalidIssuedAtError as e:
+            raise InvalidToken(e)
+        except jwt.ImmatureSignatureError as e:
+            raise InvalidToken(e)
+        except jwt.InvalidKeyError as e:
+            raise InvalidClient(e)
+        except jwt.MissingRequiredClaimError as e:
             raise InvalidToken(e)
 
         token["jws"] = jws
@@ -262,4 +276,4 @@ class OAuth2TokenIntrospection:
                 additional_claims=additional_claims, **cleaned
             )
         except Exception:
-            raise InvalidToken
+            raise InvalidClient("OAuth 2.0 token introspection failed")

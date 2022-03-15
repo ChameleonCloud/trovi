@@ -170,12 +170,10 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
             return urn
         if not urn:
             raise ValidationError("Missing required field contents.urn")
-        try:
-            # TODO check if this is a valid resource
-            ArtifactVersion.objects.get(contents_urn__iexact=urn)
-        except ArtifactVersion.DoesNotExist:
-            return urn
-        raise ConflictError(f"Version with contents {urn} already exists.")
+        if ArtifactVersion.objects.filter(contents_urn__iexact=urn).exists():
+            raise ConflictError(f"Version with contents {urn} already exists.")
+        # TODO check if this is a valid resource
+        return urn
 
 
 @extend_schema_serializer(exclude_fields=["id", "artifact", "contents_urn"])
