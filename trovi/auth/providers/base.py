@@ -6,8 +6,11 @@ from typing import Optional, Any, Collection
 from django.conf import settings
 from jose.backends.base import Key
 
-from trovi.common.exceptions import InvalidToken, InvalidScope, InvalidGrant, \
-    InvalidClient
+from trovi.common.exceptions import (
+    InvalidScope,
+    InvalidGrant,
+    InvalidClient,
+)
 from trovi.common.tokens import JWT, OAuth2TokenIntrospection
 from util.decorators import timed_lru_cache, retry
 from util.url import url_to_fqdn
@@ -162,9 +165,7 @@ class IdentityProviderClient(ABC):
         """
 
     @property
-    @timed_lru_cache(
-        maxsize=1, timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
-    )
+    @timed_lru_cache(maxsize=1, timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
     @retry(
         n=settings.AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS,
         cond=lambda keys: isinstance(keys, list)
