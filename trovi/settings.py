@@ -130,9 +130,6 @@ INSTALLED_APPS = [
     "trovi.storage.apps.StorageConfig",
 ]
 
-if os.getenv("DJANGO_ENV", "DEBUG").upper() in ("DEBUG", "DEVELOPMENT"):
-    INSTALLED_APPS.append("django_extensions")
-
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
