@@ -73,10 +73,9 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
         sharing_key = request.query_params.get("sharing_key")
         token = JWT.from_request(request)
 
-        if token.is_admin():
-            return queryset
-
         if token:
+            if token.is_admin():
+                return queryset
             owner_urn = token.to_urn()
         else:
             owner_urn = None

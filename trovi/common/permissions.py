@@ -23,10 +23,12 @@ class BaseScopedPermission(permissions.BasePermission):
     )
 
     def has_permission(self, request: Request, view: views.View) -> bool:
+        required_scopes = self.action_scope_map.get(request.method)
         token = JWT.from_request(request)
+        if not token:
+            return required_scopes == {JWT.Scopes.ARTIFACTS_READ}
         if token.is_admin():
             return True
-        required_scopes = self.action_scope_map.get(request.method)
         if required_scopes is None:
             raise KeyError(
                 f"Required scopes not set for action {request.method} "
@@ -66,10 +68,11 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
+        is_public = obj.visibility == Artifact.Visibility.PUBLIC
         token = JWT.from_request(request)
         if not token:
-            return False
-        if token.is_admin() or obj.visibility == Artifact.Visibility.PUBLIC:
+            return is_public
+        if token.is_admin() or is_public:
             return True
         sharing_key = request.query_params.get("sharing_key")
         if sharing_key:
@@ -115,7 +118,7 @@ class BaseMetadataPermission(permissions.BasePermission):
             return True
         else:
             token = JWT.from_request(request)
-            return token.is_admin()
+            return token and token.is_admin()
 
 
 class IsAuthenticatedWithTroviToken(permissions.BasePermission):

@@ -103,7 +103,9 @@ class JWT:
     @classmethod
     def from_request(cls, request: Request) -> Optional["JWT"]:
         token = request.auth
-        if token and isinstance(token, JWT):
+        if token is None:
+            return None
+        if isinstance(token, JWT):
             return token
         raise ValueError(f"Unknown token type: {type(token)}")
 

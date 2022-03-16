@@ -294,6 +294,22 @@ class TestListArtifacts(APITestCase):
         # TODO
         pass
 
+    def test_public_artifacts(self):
+        response = self.client.get(reverse(ListArtifact))
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+        artifacts = as_json["artifacts"]
+
+        public = [
+            str(artifact.uuid)
+            for artifact in Artifact.objects.filter(
+                visibility=Artifact.Visibility.PUBLIC
+            ).order_by("-updated_at")
+        ]
+
+        self.assertListEqual(public, [a["uuid"] for a in artifacts])
+
 
 class TestListArtifactsEmpty(TestListArtifacts):
     @classmethod
