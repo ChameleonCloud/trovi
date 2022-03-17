@@ -66,6 +66,8 @@ class ArtifactPatchMixin:
             "authors": self.walker(
                 lambda a: self._int_key_only(a, self._artifact_author_description)
             ),
+            # linked_projects is mutable, but only current owners can modify it
+            # this is enforced by the ArtifactSerializer
             "linked_projects": self.walker(self._int_key_only),
             "reproducibility": {"enable_requests": None, "access_hours": None},
             # owner_urn is mutable, but only current owners can modify it
@@ -92,40 +94,48 @@ class ArtifactRemoveOperation(jsonpatch.RemoveOperation, ArtifactPatchMixin):
     def apply(self, obj: JSONObject) -> JSONObject:
         if self.pointer.parts != ["sharing_key"]:
             if not self.valid_mutable_path(self.operation, self.pointer.parts):
-                return obj
+                raise ValidationError(f"{self.pointer.path} cannot be removed")
         return super(ArtifactRemoveOperation, self).apply(obj)
 
 
 class ArtifactAddOperation(jsonpatch.AddOperation, ArtifactPatchMixin):
     def apply(self, obj: JSONObject) -> JSONObject:
         if not self.valid_mutable_path(self.operation, self.pointer.parts):
-            return obj
+            raise ValidationError(f"{self.pointer.path} cannot be modified")
         return super(ArtifactAddOperation, self).apply(obj)
 
 
 class ArtifactReplaceOperation(jsonpatch.ReplaceOperation, ArtifactPatchMixin):
     def apply(self, obj: JSONObject) -> JSONObject:
         if not self.valid_mutable_path(self.operation, self.pointer.parts):
-            return obj
+            raise jsonpatch.JsonPatchException(
+                f"{self.pointer.path} cannot be modified"
+            )
         return super(ArtifactReplaceOperation, self).apply(obj)
 
 
 class ArtifactMoveOperation(jsonpatch.MoveOperation, ArtifactPatchMixin):
     def apply(self, obj: JSONObject) -> JSONObject:
         if not self.valid_mutable_path(self.operation, self.pointer.parts):
-            return obj
+            raise jsonpatch.JsonPatchException(
+                f"{self.pointer.path} cannot be modified"
+            )
         from_path = self.operation.get("from")
         if from_path:
             from_ptr = self.pointer_cls(from_path)
             if not self.valid_mutable_path(self.operation, from_ptr.parts):
-                return obj
+                raise jsonpatch.JsonPatchException(
+                    f"{self.pointer.path} cannot be removed"
+                )
         return super(ArtifactMoveOperation, self).apply(obj)
 
 
 class ArtifactCopyOperation(jsonpatch.CopyOperation, ArtifactPatchMixin):
     def apply(self, obj: JSONObject) -> JSONObject:
         if not self.valid_mutable_path(self.operation, self.pointer.parts):
-            return obj
+            raise jsonpatch.JsonPatchException(
+                f"{self.pointer.path} cannot be modified"
+            )
         return super(ArtifactCopyOperation, self).apply(obj)
 
 

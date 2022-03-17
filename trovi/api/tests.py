@@ -92,7 +92,11 @@ class APITestCase(TestCase):
     def update_artifact_path(self, artifact_uuid: str):
         return self.authenticate_url(
             reverse(UpdateArtifact, args=[artifact_uuid]),
-            scopes=[JWT.Scopes.ARTIFACTS_READ, JWT.Scopes.ARTIFACTS_WRITE],
+            scopes=[
+                JWT.Scopes.ARTIFACTS_READ,
+                JWT.Scopes.ARTIFACTS_WRITE,
+                JWT.Scopes.TROVI_ADMIN,
+            ],
         )
 
     def create_artifact_version_path(self, artifact_uuid: str):
@@ -493,6 +497,11 @@ class TestUpdateArtifact(APITestCase):
                         ]
                     ),
                 },
+                {
+                    "op": "add",
+                    "path": "/linked_projects/-",
+                    "value": "urn:trovi:chameleon:CH-99999",
+                },
             ]
         }
 
@@ -526,6 +535,12 @@ class TestUpdateArtifact(APITestCase):
         new_authors = new_donq["authors"]
         target_author = patch["patch"][3]["value"]
         self.assertIn(target_author, new_authors, msg=diff_msg)
+        self.assertEqual(new_authors[1], target_author, msg=diff_msg)
+
+        new_projects = new_donq["linked_projects"]
+        target_project = patch["patch"][5]["value"]
+        self.assertIn(target_project, new_projects, msg=diff_msg)
+        self.assertEqual(new_projects[-1], target_project, msg=diff_msg)
 
         # Test that nothing unexpected changed
         new_donq_as_json.pop("updated_at")
@@ -545,6 +560,12 @@ class TestUpdateArtifact(APITestCase):
         ]
         new_donq_as_json["authors"] = [
             a for a in new_donq_as_json["authors"] if a != target_author
+        ]
+        old_donq_as_json["linked_projects"] = [
+            p for p in old_donq_as_json["linked_projects"] if p != target_project
+        ]
+        new_donq_as_json["linked_projects"] = [
+            p for p in new_donq_as_json["linked_projects"] if p != target_project
         ]
         self.assertDictEqual(new_donq_as_json, old_donq_as_json)
 

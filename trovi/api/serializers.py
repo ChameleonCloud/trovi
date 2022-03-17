@@ -393,19 +393,15 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.tags.clear()
                 instance.tags.add(*tag_serializer.save())
 
-            # Remove any linked projects that are not in the updated list
             if linked_projects is not None:
-                for project in instance.linked_projects.all():
-                    if project.urn not in linked_projects:
-                        instance.linked_projects.remove(project)
-                    else:
-                        linked_projects.remove(project.urn)
+                instance.linked_projects.clear()
                 # Add new/updated projects to the relationship
                 project_serializer = ArtifactProjectSerializer(
                     data=linked_projects, many=True
                 )
                 project_serializer.is_valid(raise_exception=True)
-                project_serializer.save()
+                for project in project_serializer.save():
+                    project.artifacts.add(instance)
 
             # Handle reproducibility changes
             if reproducibility is not None:
