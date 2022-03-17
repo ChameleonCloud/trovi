@@ -99,8 +99,6 @@ class TokenGrantRequestSerializer(serializers.Serializer):
             validated_data["subject_token"]
         )
         provider = providers.get_subject_token_provider(validated_token)
-        if not provider:
-            raise InvalidClient(f"Unknown Identity Provider: {validated_token.iss}")
 
         requested_scope = validated_data.get("scope")
 
