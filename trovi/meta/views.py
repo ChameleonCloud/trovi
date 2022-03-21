@@ -18,7 +18,7 @@ class ArtifactTagsView(
     queryset = ArtifactTag.objects.all()
     serializer_class = ArtifactTagSerializerWritable
     parser_classes = [JSONParser]
-    ordering_fields = ["tag"]
+    ordering = "tag"
     filter_backends = [filters.OrderingFilter]
     pagination_class = ListTagsPagination
     authentication_classes = [TroviTokenAuthentication]
