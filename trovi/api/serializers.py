@@ -204,7 +204,7 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         If we were to use this in the way update methods are typically used, we would
         need to add the metric from the version to the amount in the request,
         and then subtract them here to determine how many events need to be created.
-        This is not a huge deal, but it's unecessary work that is confusing.
+        This is not a huge deal, but it's unnecessary work that is confusing.
         """
         access_count = validated_data.pop("access_count", None)
         origin = validated_data["origin"]
