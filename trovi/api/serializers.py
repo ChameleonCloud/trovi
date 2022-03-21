@@ -216,7 +216,7 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
                 event_origin=origin,
                 artifact_version=instance,
             )
-            instance.refresh_from_db()
+        instance.refresh_from_db()
         return instance
 
     def create(self, validated_data):
