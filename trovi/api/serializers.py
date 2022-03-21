@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 import cmarkgfm as commonmark
 from django.conf import settings
@@ -9,8 +9,11 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
 from trovi.api.patches import ArtifactPatch
-from trovi.common.exceptions import ConflictError
-from trovi.common.serializers import JsonPatchOperationSerializer, URNSerializerField
+from trovi.common.exceptions import ConflictError, InvalidToken
+from trovi.common.serializers import (
+    JsonPatchOperationSerializer,
+    URNSerializerField,
+)
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from trovi.models import (
@@ -20,6 +23,7 @@ from trovi.models import (
     ArtifactProject,
     ArtifactVersion,
     ArtifactLink,
+    ArtifactEvent,
 )
 from util.types import JSON
 
@@ -173,6 +177,77 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
         # TODO check if this is a valid resource
         return urn
 
+    def to_representation(self, instance: ArtifactVersion) -> dict[str, JSON]:
+        return {"urn": instance.contents_urn}
+
+
+class ArtifactVersionMetricsSerializer(serializers.Serializer):
+    """
+    Describes an artifact version's metrics, which are related to events
+    """
+
+    # Translates to a launch event
+    access_count = serializers.IntegerField(
+        min_value=1, max_value=1000, allow_null=False, required=False
+    )
+    # The Trovi token of the user who initiated the event(s)
+    origin = URNSerializerField(write_only=True, required=True)
+
+    def update(
+        self, instance: ArtifactVersion, validated_data: dict[str, Any]
+    ) -> ArtifactVersion:
+        """
+        This serializer's update method is a touch different from other serializers.
+        Rather than receive all the updated info, it will receive the amount by which
+        to increment the metrics. The reason for this is because of how the metrics
+        endpoint is designed, and that ArtifactEvents need to be created in bulk.
+        If we were to use this in the way update methods are typically used, we would
+        need to add the metric from the version to the amount in the request,
+        and then subtract them here to determine how many events need to be created.
+        This is not a huge deal, but it's unecessary work that is confusing.
+        """
+        access_count = validated_data.pop("access_count", None)
+        origin = validated_data["origin"]
+        # We don't call bulk_create here, because it doesn't run any save signals
+        # even though it persists the models to the database
+        for _ in range(access_count or 0):
+            ArtifactEvent.objects.create(
+                event_type=ArtifactEvent.EventType.LAUNCH,
+                event_origin=origin,
+                artifact_version=instance,
+            )
+            instance.refresh_from_db()
+        return instance
+
+    def create(self, validated_data):
+        raise NotImplementedError("Initial metrics are set automatically")
+
+    def to_representation(self, instance: ArtifactVersion) -> dict[str, JSON]:
+        return {"access_count": instance.access_count}
+
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        """
+        Performs JWT validation of the origin user and returns that user's URN
+        This is done in here because DRF calls its own validators before ours :(
+        """
+        # We have to do a tiny bit of validation of the origin token here because
+        # DRF calls its own validators before ours. So, we have to decode and turn it
+        # into a URN before the serializer's validation step is run.
+        # The token's signature is validated by the endpoint permissions, so
+        # it does not need to repeat that step here.
+        origin = data.get("origin")
+        if not origin or type(origin) is not str:
+            raise ValidationError({"origin": "Must be a valid JWT string"})
+
+        try:
+            origin_token = JWT.from_jws(origin, validate=False)
+        except InvalidToken as e:
+            exc_type = type(e)
+            raise exc_type(detail={"origin": e.detail}, code=e.status_code) from e
+
+        data["origin"] = origin_token.to_urn()
+        return super(ArtifactVersionMetricsSerializer, self).to_internal_value(data)
+
 
 @extend_schema_serializer(exclude_fields=["id", "artifact", "contents_urn"])
 class ArtifactVersionSerializer(serializers.ModelSerializer):
@@ -186,6 +261,7 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
 
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
+    metrics = ArtifactVersionMetricsSerializer(read_only=True)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
@@ -217,13 +293,8 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
         return {
             "slug": instance.slug,
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
-            "contents": {
-                # TODO check if this is a valid resource
-                "urn": instance.contents_urn,
-            },
-            "metrics": {
-                "access_count": instance.access_count,
-            },
+            "contents": ArtifactVersionContentsSerializer(instance).data,
+            "metrics": ArtifactVersionMetricsSerializer(instance).data,
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
         }
 
@@ -342,8 +413,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 author_serializer.is_valid(raise_exception=True)
                 author_serializer.save()
             if linked_projects:
-                # This will retrieve the project with the matching URN,
-                # or create a new one if it doesn't yet exist
                 project_serializer = ArtifactProjectSerializer(
                     data=linked_projects, many=True
                 )

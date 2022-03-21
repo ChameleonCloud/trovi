@@ -24,3 +24,4 @@ UpdateArtifact = "artifact-detail"
 
 CreateArtifactVersion = "artifact-version-list"
 DeleteArtifactVersion = "artifact-version-detail"
+IncrArtifactVersionMetrics = "artifact-version-metrics"

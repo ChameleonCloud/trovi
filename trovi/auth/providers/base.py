@@ -118,13 +118,15 @@ class IdentityProviderClient(ABC):
         scopes = requested_scope or [JWT.Scopes.ARTIFACTS_READ]
 
         # Tokens which request admin scope must be in a list of approved users
-        if any(scope == JWT.Scopes.TROVI_ADMIN for scope in scopes):
-            if (
-                subject_token.to_urn(is_subject_token=True)
-                not in settings.AUTH_TROVI_ADMIN_USERS
-            ):
+        if (
+            JWT.Scopes.TROVI_ADMIN in scopes
+            or JWT.Scopes.ARTIFACTS_WRITE_METRICS in scopes
+        ):
+            token_urn = subject_token.to_urn(is_subject_token=True)
+            if token_urn not in settings.AUTH_TROVI_ADMIN_USERS:
                 raise InvalidScope(
-                    "User does not have permission to request admin token"
+                    f"User {token_urn} does not have permission "
+                    f"to use requested scope: '{requested_scope}'"
                 )
         # Tokens which request *:write scopes must be validated online
         if any(scope.is_write_scope() for scope in scopes):

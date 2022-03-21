@@ -54,7 +54,11 @@ class JWT:
         TROVI_ADMIN = "trovi:admin"
 
         def is_write_scope(self) -> bool:
-            return self.value.endswith(":write") or self.value == self.TROVI_ADMIN
+            return self.value in (
+                self.ARTIFACTS_WRITE,
+                self.ARTIFACTS_WRITE_METRICS,
+                self.TROVI_ADMIN,
+            )
 
         def __eq__(self, other: Any) -> bool:
             if type(other) is str:

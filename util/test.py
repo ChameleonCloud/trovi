@@ -333,15 +333,16 @@ class SampleDataTestRunner(DiscoverRunner):
     def setup_databases(self, **kwargs) -> list[Any]:
         names = super(SampleDataTestRunner, self).setup_databases(**kwargs)
         print("Generating test data...")
-        all_models = don_quixote + sum(
-            [generate_fake_artifact() for _ in range(100)], start=[]
-        )
+        all_models = sum([generate_fake_artifact() for _ in range(100)], start=[])
         try:
             with transaction.atomic():
+                for model in don_quixote:
+                    model.save()
                 for model in all_models:
                     model.save()
-            with transaction.atomic():
-                generate_many_to_many(Artifact.objects.all())
+                generate_many_to_many(
+                    Artifact.objects.exclude(uuid=artifact_don_quixote.uuid)
+                )
         except IntegrityError as e:
             assert False, str(e)
         print("Finished.")
