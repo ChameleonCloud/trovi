@@ -206,11 +206,11 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         and then subtract them here to determine how many events need to be created.
         This is not a huge deal, but it's unnecessary work that is confusing.
         """
-        access_count = validated_data.pop("access_count", 1)
+        access_count = validated_data.pop("access_count", None)
         origin = validated_data["origin"]
         # We don't call bulk_create here, because it doesn't run any save signals
         # even though it persists the models to the database
-        for _ in range(access_count):
+        for _ in range(access_count or 0):
             ArtifactEvent.objects.create(
                 event_type=ArtifactEvent.EventType.LAUNCH,
                 event_origin=origin,
