@@ -753,6 +753,10 @@ class TestDeleteArtifactVersion(APITestCase):
         # TODO
         pass
 
-    def test_delete_artifact_version_not_author(self):
+    def test_delete_artifact_version_not_owner(self):
         # TODO
+        pass
+
+    def test_delete_artifact_version_has_doi(self):
+        # TODO artifact versions should fail to delete if they have an associated DOI
         pass

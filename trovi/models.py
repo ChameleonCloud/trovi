@@ -108,6 +108,15 @@ class ArtifactVersion(models.Model):
         """
         return self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH).count()
 
+    def has_doi(self) -> bool:
+        """
+        Determines if this version has a DOI (Digital Object Identifier), in which
+        case it must be treated specially (cannot be deleted)
+        """
+        # A Zenodo URN should look like "urn:trovi:zenodo:<doi>"
+        urn_parts = self.contents_urn.split(":")
+        return len(urn_parts) == 4 and urn_parts[3] == "zenodo"
+
     @staticmethod
     def generate_slug(instance: "ArtifactVersion", created: bool = False, **_):
         """
