@@ -7,7 +7,6 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from trovi.auth import providers
-from trovi.common.exceptions import InvalidClient
 from trovi.common.tokens import JWT, TokenTypes
 from util.types import JSON
 
