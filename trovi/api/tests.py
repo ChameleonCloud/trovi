@@ -344,9 +344,25 @@ class TestGetArtifact(APITestCase):
         # TODO
         pass
 
-    def test_sharing_key(self):
+    def test_get_private_artifact_with_sharing_key(self):
         # TODO
         pass
+
+    def test_sharing_key_in_response(self):
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        as_json = response.json()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+        self.assertNotIn("sharing_key", as_json)
+
+        artifact_don_quixote.owner_urn = (
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        )
+        artifact_don_quixote.save(update_fields=["owner_urn"])
+
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        as_json = response.json()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+        self.assertIn("sharing_key", as_json)
 
 
 class TestCreateArtifact(APITestCase):
@@ -540,7 +556,6 @@ class TestUpdateArtifact(APITestCase):
         new_projects = new_donq["linked_projects"]
         target_project = patch["patch"][5]["value"]
         self.assertIn(target_project, new_projects, msg=diff_msg)
-        self.assertEqual(new_projects[-1], target_project, msg=diff_msg)
 
         # Test that nothing unexpected changed
         new_donq_as_json.pop("updated_at")
@@ -555,6 +570,7 @@ class TestUpdateArtifact(APITestCase):
         old_donq_as_json.pop("title")
         old_donq_as_json.pop("tags")
         new_donq_as_json.pop("tags")
+        new_donq_as_json.pop("sharing_key", None)
         old_donq_as_json["authors"] = [
             a for a in old_donq_as_json["authors"] if a != target_author
         ]
@@ -562,10 +578,14 @@ class TestUpdateArtifact(APITestCase):
             a for a in new_donq_as_json["authors"] if a != target_author
         ]
         old_donq_as_json["linked_projects"] = [
-            p for p in old_donq_as_json["linked_projects"] if p != target_project
+            p
+            for p in sorted(old_donq_as_json["linked_projects"])
+            if p != target_project
         ]
         new_donq_as_json["linked_projects"] = [
-            p for p in new_donq_as_json["linked_projects"] if p != target_project
+            p
+            for p in sorted(new_donq_as_json["linked_projects"])
+            if p != target_project
         ]
         self.assertDictEqual(new_donq_as_json, old_donq_as_json)
 
