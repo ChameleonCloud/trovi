@@ -115,7 +115,7 @@ class ArtifactVersion(models.Model):
         """
         # A Zenodo URN should look like "urn:trovi:zenodo:<doi>"
         urn_parts = self.contents_urn.split(":")
-        return len(urn_parts) == 4 and urn_parts[3] == "zenodo"
+        return len(urn_parts) == 4 and urn_parts[2] == "zenodo"
 
     @staticmethod
     def generate_slug(instance: "ArtifactVersion", created: bool = False, **_):
