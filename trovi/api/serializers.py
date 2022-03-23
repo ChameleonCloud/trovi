@@ -34,26 +34,6 @@ serializers.ModelSerializer.serializer_field_mapping.update(
 )
 
 
-def artifact_to_json(instance: Artifact) -> dict[str, JSON]:
-    return {
-        "uuid": str(instance.uuid),
-        "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
-        "updated_at": instance.updated_at.strftime(settings.DATETIME_FORMAT),
-        "title": instance.title,
-        "short_description": instance.short_description,
-        "long_description": instance.long_description,
-        "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
-        "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
-        "owner_urn": instance.owner_urn,
-        "visibility": instance.visibility,
-        "linked_projects": ArtifactProjectSerializer(
-            instance.linked_projects.all(), many=True
-        ).data,
-        "reproducibility": ArtifactReproducibilitySerializer(instance).data,
-        "versions": ArtifactVersionSerializer(instance.versions.all(), many=True).data,
-    }
-
-
 class ArtifactTagSerializer(serializers.ModelSerializer):
     """
     A tag which categorizes an artifact
@@ -372,6 +352,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         model = Artifact
         exclude = [
             "sharing_key",
+            "access_count",
             "is_reproducible",
             "repro_access_hours",
             "repro_requests",
@@ -387,7 +368,28 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
-        return artifact_to_json(instance)
+        artifact_json = {
+            "uuid": str(instance.uuid),
+            "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
+            "updated_at": instance.updated_at.strftime(settings.DATETIME_FORMAT),
+            "title": instance.title,
+            "short_description": instance.short_description,
+            "long_description": instance.long_description,
+            "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
+            "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
+            "owner_urn": instance.owner_urn,
+            "visibility": instance.visibility,
+            "linked_projects": ArtifactProjectSerializer(
+                instance.linked_projects.all(), many=True
+            ).data,
+            "reproducibility": ArtifactReproducibilitySerializer(instance).data,
+            "versions": ArtifactVersionSerializer(
+                instance.versions.all(), many=True
+            ).data,
+        }
+        if self.get_requesting_user_urn() == instance.owner_urn:
+            artifact_json["sharing_key"] = instance.sharing_key
+        return artifact_json
 
     def create(self, validated_data: dict) -> Artifact:
         # All nested fields have to be manually created, so that is done here
@@ -490,12 +492,14 @@ class ArtifactSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data: dict) -> dict:
         # If this is a new Artifact, its default owner is the user who is creating it
         if not self.instance:
-            data.setdefault("owner_urn", self.get_token_owner_urn())
+            data.setdefault("owner_urn", self.get_requesting_user_urn())
 
         return super(ArtifactSerializer, self).to_internal_value(data)
 
     def validate_owner_urn(self, owner_urn: str) -> str:
-        token_urn = self.get_token_owner_urn()
+        token_urn = self.get_requesting_user_urn()
+        if not token_urn:
+            raise PermissionDenied("Setting the owner_urn requires authentication.")
         if JWT.Scopes.TROVI_ADMIN in JWT.from_request(self.context["request"]).scope:
             return owner_urn
         elif self.instance and self.instance.owner_urn != token_urn:
@@ -516,14 +520,17 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "Only Trovi admins are allowed to modify an artifact's linked projects."
         )
 
-    def get_token_owner_urn(self) -> str:
+    def get_requesting_user_urn(self) -> Optional[str]:
         """
         Generates a default owner URN based on the requesting user's auth token
         """
-        token = JWT.from_request(self.context["request"])
+        request = self.context.get("request")
+        if not request:
+            return None
+        token = JWT.from_request(request)
         if not token:
-            raise PermissionDenied("This action requires authentication")
-        return f"urn:trovi:{token.azp}:{token.sub}"
+            return None
+        return token.to_urn()
 
     def validate_long_description(
         self, long_description: Optional[str]
@@ -562,4 +569,5 @@ class ArtifactPatchSerializer(serializers.Serializer):
 
     @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
-        return artifact_to_json(instance)
+        serializer = ArtifactSerializer(context=self.context)
+        return serializer.to_representation(instance)

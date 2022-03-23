@@ -100,6 +100,8 @@ class ArtifactVersionScopedPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
+        if request.method.upper() == "DELETE" and obj.has_doi():
+            return False
         artifact_scope = ArtifactScopedPermission()
         return artifact_scope.has_object_permission(request, view, obj.artifact)
 
