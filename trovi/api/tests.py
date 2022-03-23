@@ -3,6 +3,7 @@ import os
 import random
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
 from django.test import TestCase
@@ -19,6 +20,7 @@ from trovi.api.urls import (
     UpdateArtifact,
     CreateArtifactVersion,
     DeleteArtifactVersion,
+    IncrArtifactVersionMetrics,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
@@ -27,6 +29,7 @@ from trovi.models import (
     ArtifactTag,
     ArtifactVersion,
 )
+from util.decorators import timed_lru_cache
 from util.test import (
     artifact_don_quixote,
     version_don_quixote_1,
@@ -38,8 +41,8 @@ class APITestCase(TestCase):
     renderer = JSONRenderer()
     maxDiff = None
 
-    def get_test_token(self, scopes: list[JWT.Scopes] = None) -> str:
-        # TODO have each test run once per provider
+    @timed_lru_cache(timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
+    def get_test_token(self, scope: str = None) -> str:
         provider_name = "CHAMELEON_KEYCLOAK"
         keycloak = get_client_by_name(provider_name)
         test_username = os.getenv(f"{provider_name}_TEST_USER_USERNAME")
@@ -51,7 +54,7 @@ class APITestCase(TestCase):
             test_username, test_password, test_client_id, test_client_secret
         )
 
-        requesting_scopes = scopes if scopes else [JWT.Scopes.ARTIFACTS_READ]
+        requesting_scope = scope if scope else JWT.Scopes.ARTIFACTS_READ
 
         response = self.client.post(
             reverse("TokenGrant"),
@@ -60,7 +63,7 @@ class APITestCase(TestCase):
                 "grant_type": "token_exchange",
                 "subject_token": valid_token,
                 "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
-                "scope": " ".join(map(lambda s: s.value, requesting_scopes)),
+                "scope": requesting_scope,
             },
         )
 
@@ -72,10 +75,11 @@ class APITestCase(TestCase):
         return response.json()["access_token"]
 
     def authenticate_url(self, url: str, scopes: list[JWT.Scopes] = None) -> str:
+        scopes = scopes or [JWT.Scopes.ARTIFACTS_READ]
         return (
             url
             + ("?" if "?" not in url else "&")
-            + f"access_token={self.get_test_token(scopes=scopes)}"
+            + f"access_token={self.get_test_token(scope=' '.join(scopes))}"
         )
 
     def list_artifact_path(self):
@@ -114,6 +118,19 @@ class APITestCase(TestCase):
         return self.authenticate_url(
             reverse(DeleteArtifactVersion, args=[artifact_uuid, version_slug]),
             scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def incr_artifact_version_metrics_path(
+        self, artifact_uuid: str, version_slug: str, metric: str, amount: int = None
+    ):
+        if amount:
+            amount_arg = f"&amount={amount}"
+        else:
+            amount_arg = ""
+        return self.authenticate_url(
+            f"{reverse(IncrArtifactVersionMetrics, args=[artifact_uuid, version_slug])}"
+            f"?metric={metric}&origin={self.get_test_token()}{amount_arg}",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE_METRICS],
         )
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
@@ -779,4 +796,54 @@ class TestDeleteArtifactVersion(APITestCase):
 
     def test_delete_artifact_version_has_doi(self):
         # TODO artifact versions should fail to delete if they have an associated DOI
+        pass
+
+
+class TestIncrArtifactVersionMetrics(APITestCase):
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.put(
+                self.incr_artifact_version_metrics_path(
+                    str(artifact_don_quixote.uuid), "foo", "access_count"
+                )
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)
+
+    def do_access_count_test(self, amount: int = None):
+        version_don_quixote_1.refresh_from_db()
+        artifact_don_quixote.refresh_from_db()
+        target_version_access_count = version_don_quixote_1.access_count + (amount or 1)
+        target_artifact_access_count = artifact_don_quixote.access_count + (amount or 1)
+        base_response = self.client.put(
+            self.incr_artifact_version_metrics_path(
+                str(artifact_don_quixote.uuid),
+                version_don_quixote_1.slug,
+                "access_count",
+                amount=amount,
+            )
+        )
+
+        self.assertEqual(base_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        version_don_quixote_1.refresh_from_db()
+        artifact_don_quixote.refresh_from_db()
+        self.assertEqual(
+            target_version_access_count,
+            version_don_quixote_1.access_count,
+            msg=f"{amount=}",
+        )
+        self.assertEqual(
+            target_artifact_access_count,
+            artifact_don_quixote.access_count,
+            msg=f"{amount=}",
+        )
+
+    def test_increment_access_count(self):
+        self.do_access_count_test()
+        self.do_access_count_test(amount=5)
+
+    def test_increment_metrics_permissions(self):
+        # TODO
         pass

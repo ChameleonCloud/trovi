@@ -6,7 +6,8 @@ from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
-from rest_framework import viewsets, mixins
+from rest_framework import viewsets, mixins, status
+from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
@@ -30,6 +31,7 @@ from trovi.api.serializers import (
     ArtifactVersionSerializer,
     ArtifactPatchSerializer,
     ArtifactSerializer,
+    ArtifactVersionMetricsSerializer,
 )
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
@@ -37,6 +39,9 @@ from trovi.common.permissions import (
     ArtifactScopedPermission,
     ArtifactVersionVisibilityPermission,
     ArtifactVersionScopedPermission,
+    ArtifactVersionMetricsScopedPermission,
+    AdminPermission,
+    ArtifactVersionMetricsVisibilityPermission,
 )
 from trovi.models import Artifact, ArtifactVersion
 
@@ -194,7 +199,9 @@ class ArtifactViewSet(
     ordering = "updated_at"
     ordering_fields = ["date", "updated_at", "access_count"]
     authentication_classes = [TroviTokenAuthentication]
-    permission_classes = [ArtifactVisibilityPermission & ArtifactScopedPermission]
+    permission_classes = [
+        (ArtifactVisibilityPermission & ArtifactScopedPermission) | AdminPermission
+    ]
     lookup_field = "uuid"
     openapi_extensions = [
         ArtifactTagSerializerExtension,
@@ -348,6 +355,50 @@ class ArtifactVersionViewSet(
     serializer_class = ArtifactVersionSerializer
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [
-        ArtifactVersionVisibilityPermission & ArtifactVersionScopedPermission
+        (ArtifactVersionVisibilityPermission & ArtifactVersionScopedPermission)
+        | AdminPermission,
     ]
     lookup_value_regex = "[^/]+"
+
+    # metrics endpoints are defined here, as they are attached to artifact versions
+    # and don't represent an additional model. This also allows us to create the
+    # URL path as it was designed.
+    @transaction.atomic
+    @action(
+        methods=["put"],
+        detail=False,
+        url_name="metrics",
+        url_path=f"(?P<{lookup_field}>{lookup_value_regex})/metrics",
+        # These override the class's variables
+        patch_serializer_class=ArtifactVersionMetricsSerializer,
+        serializer_class=ArtifactVersionMetricsSerializer,
+        permission_classes=[
+            (
+                ArtifactVersionMetricsScopedPermission
+                & ArtifactVersionMetricsVisibilityPermission
+            )
+            | AdminPermission
+        ],
+    )
+    def metrics(
+        self, request: Request, parent_lookup_artifact: str, slug__iexact: str
+    ) -> Response:
+        """
+        PUT /artifacts/<uuid>/versions/<slug>/metrics?metric=<metric_name>
+        Increment the metric defined by "metric_name" for the given ArtifactVersion.
+
+        Required scopes: artifact:write_metric (separate from :write because it is needed
+        for launch actions, which don't modify artifact contents but must update metrics)
+
+        Response: 204 No Content
+        """
+        metric = request.query_params.get("metric")
+        amount = request.query_params.get("amount", 1)
+        origin = request.query_params.get("origin")
+        version = self.get_object()
+        serializer = self.get_serializer(
+            version, data={metric: amount, "origin": origin}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)

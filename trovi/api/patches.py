@@ -66,7 +66,7 @@ class ArtifactPatchMixin:
             "authors": self.walker(
                 lambda a: self._int_key_only(a, self._artifact_author_description)
             ),
-            # linked_projects is mutable, but only current owners can modify it
+            # linked_projects is mutable, but only admins can modify it
             # this is enforced by the ArtifactSerializer
             "linked_projects": self.walker(self._int_key_only),
             "reproducibility": {"enable_requests": None, "access_hours": None},

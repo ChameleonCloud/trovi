@@ -1,3 +1,5 @@
+from typing import Any
+
 from requests.structures import CaseInsensitiveDict
 from rest_framework import permissions, views
 from rest_framework.request import Request
@@ -27,8 +29,6 @@ class BaseScopedPermission(permissions.BasePermission):
         token = JWT.from_request(request)
         if not token:
             return required_scopes == {JWT.Scopes.ARTIFACTS_READ}
-        if token.is_admin():
-            return True
         if required_scopes is None:
             raise KeyError(
                 f"Required scopes not set for action {request.method} "
@@ -51,8 +51,6 @@ class ArtifactScopedPermission(BaseScopedPermission):
         token = JWT.from_request(request)
         if not token:
             return obj.visibility == Artifact.Visibility.PUBLIC
-        if token.is_admin():
-            return True
         # If the authenticated user is not the artifact owner,
         # they may not write to the artifact
         if token.to_urn() != obj.owner_urn:
@@ -70,10 +68,8 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
     ) -> bool:
         is_public = obj.visibility == Artifact.Visibility.PUBLIC
         token = JWT.from_request(request)
-        if not token:
+        if not token or is_public:
             return is_public
-        if token.is_admin() or is_public:
-            return True
         sharing_key = request.query_params.get("sharing_key")
         if sharing_key:
             return sharing_key == obj.sharing_key
@@ -83,7 +79,7 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
             return token.to_urn() == obj.owner_urn
 
 
-class ArtifactVersionVisibilityPermission(ArtifactVisibilityPermission):
+class ArtifactVersionVisibilityPermission(permissions.BasePermission):
     """
     Determines if a user has permission to view an ArtifactVersion
     """
@@ -95,7 +91,7 @@ class ArtifactVersionVisibilityPermission(ArtifactVisibilityPermission):
         return artifact_visibility.has_object_permission(request, view, obj.artifact)
 
 
-class ArtifactVersionScopedPermission(ArtifactScopedPermission):
+class ArtifactVersionScopedPermission(permissions.BasePermission):
     """
     Determines if the user's authorization scope permits them to interact with the
     ArtifactVersion in the way they desire.
@@ -110,6 +106,44 @@ class ArtifactVersionScopedPermission(ArtifactScopedPermission):
         return artifact_scope.has_object_permission(request, view, obj.artifact)
 
 
+class ArtifactVersionMetricsVisibilityPermission(permissions.BasePermission):
+    """
+    Determines if a USER has permission to increment artifact metrics.
+    """
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactVersion
+    ) -> bool:
+        """
+        Confirms that the origin user has permission to update
+        an artifact version's metrics
+        """
+        if obj.artifact.visibility == Artifact.Visibility.PUBLIC:
+            return True
+        sharing_key = request.query_params.get("sharing_key")
+        if sharing_key and sharing_key == obj.artifact.sharing_key:
+            return True
+        origin_jws = request.query_params.get("origin")
+        if not origin_jws:
+            return False
+        origin_token = JWT.from_jws(origin_jws)
+        return origin_token.to_urn() == obj.artifact.owner_urn
+
+
+class ArtifactVersionMetricsScopedPermission(permissions.BasePermission):
+    """
+    Determines if a SERVICE has permission to increment artifact metrics.
+    """
+
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        """
+        The only users with permission to change metrics are admins. Only admins
+        are allowed to obtain the trovi:admin or artifacts:write_metrics scopes
+        """
+        token = JWT.from_request(request)
+        return JWT.Scopes.ARTIFACTS_WRITE_METRICS in token.scope
+
+
 class BaseMetadataPermission(permissions.BasePermission):
     """
     Base permissions for viewing API metadata
@@ -117,12 +151,24 @@ class BaseMetadataPermission(permissions.BasePermission):
 
     def has_permission(self, request: Request, view: views.View) -> bool:
         if request.method.upper() == "GET":
+            # Listing metadata is public
             return True
         else:
-            token = JWT.from_request(request)
-            return token and token.is_admin()
+            admin_permission = AdminPermission()
+            return admin_permission.has_permission(request, view)
 
 
 class IsAuthenticatedWithTroviToken(permissions.BasePermission):
     def has_permission(self, request: Request, view: views.View) -> bool:
         return JWT.from_request(request) is not None
+
+
+class AdminPermission(permissions.BasePermission):
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: Any
+    ) -> bool:
+        return self.has_permission(request, view)
+
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        token = JWT.from_request(request)
+        return token and token.is_admin()
