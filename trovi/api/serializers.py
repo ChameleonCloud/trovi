@@ -509,8 +509,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
                     data=linked_projects, many=True, context=self.context
                 )
                 project_serializer.is_valid(raise_exception=True)
-                for project in project_serializer.save():
-                    project.artifacts.add(instance)
+                instance.linked_projects.clear()
+                instance.linked_projects.add(*project_serializer.save())
 
             # Handle reproducibility changes
             if reproducibility is not None:
