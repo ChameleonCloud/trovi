@@ -236,7 +236,7 @@ def generate_fake_artifact() -> list[models.Model]:
             artifact=artifact,
             contents_urn=fake_contents_urn(),
         )
-        for _ in range(0, random.randint(1, 20))
+        for _ in range(0, random.randint(1, 10))
     ]
     artifact_authors = [
         ArtifactAuthor(
@@ -258,7 +258,7 @@ def generate_fake_artifact() -> list[models.Model]:
             if fake.boolean(chance_of_getting_true=90)
             else fake_user_urn(),
         )
-        for _ in range(random.randint(0, 400))
+        for _ in range(random.randint(0, 40))
     ]
 
     def _verified() -> dict[str, Union[bool, Optional[datetime.datetime]]]:
@@ -305,12 +305,12 @@ def generate_many_to_many(artifacts: Iterable[Artifact]):
         ArtifactTag.objects.create(
             tag=fake.text(max_nb_chars=settings.ARTIFACT_TAG_MAX_CHARS)
         )
-        for _ in range(random.randint(0, 100))
+        for _ in range(random.randint(5, 20))
     ]
 
     projects = [
         ArtifactProject.objects.create(urn=fake_project_urn())
-        for _ in range(random.randint(1, 1000))
+        for _ in range(random.randint(1, 10))
     ]
 
     # Randomly weigh the attributes to simulate some being more popular than others

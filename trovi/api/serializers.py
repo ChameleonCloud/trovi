@@ -5,6 +5,7 @@ import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
 from drf_spectacular.utils import extend_schema_serializer
+from jsonpatch import JsonPatch
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
@@ -13,6 +14,9 @@ from trovi.common.exceptions import ConflictError, InvalidToken
 from trovi.common.serializers import (
     JsonPatchOperationSerializer,
     URNSerializerField,
+    allow_force,
+    strict_schema,
+    _is_valid_force_request,
 )
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
@@ -41,7 +45,7 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactTag
-        fields = "__all__"
+        fields = []
 
     def create(self, validated_data: dict[str, str]) -> ArtifactTag:
         tag = validated_data["tag"]
@@ -61,10 +65,12 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
 class ArtifactTagSerializerWritable(serializers.ModelSerializer):
     class Meta:
         model = ArtifactTag
-        fields = ["tag"]
+        exclude = ["id"]
 
 
 @extend_schema_serializer(exclude_fields=["id", "artifact"])
+@allow_force
+@strict_schema
 class ArtifactAuthorSerializer(serializers.ModelSerializer):
     """
     Description of a single artifact author
@@ -72,7 +78,7 @@ class ArtifactAuthorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactAuthor
-        fields = "__all__"
+        exclude = ["id"]
 
     def to_representation(self, instance: ArtifactAuthor) -> dict:
         return {
@@ -89,7 +95,7 @@ class ArtifactProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactProject
-        fields = "__all__"
+        fields = []
 
     def to_representation(self, instance: ArtifactProject) -> str:
         return instance.urn
@@ -103,9 +109,11 @@ class ArtifactProjectSerializer(serializers.ModelSerializer):
         this class overrides the ``create`` method to return an existing project that
         matches the unique provided URN, or create one if it doesn't exist.
         """
-        project, _ = self.Meta.model.objects.get_or_create(
-            urn__iexact=validated_data["urn"], defaults={"urn": validated_data["urn"]}
-        )
+        with transaction.atomic():
+            project, _ = self.Meta.model.objects.get_or_create(
+                urn__iexact=validated_data["urn"],
+                defaults={"urn": validated_data["urn"]},
+            )
         return project
 
     def validate_urn(self, urn: str) -> str:
@@ -113,6 +121,9 @@ class ArtifactProjectSerializer(serializers.ModelSerializer):
         return urn
 
 
+@extend_schema_serializer(exclude_fields=["artifact_version"])
+@allow_force
+@strict_schema
 class ArtifactLinkSerializer(serializers.ModelSerializer):
     """
     Describes an external link relevant to an artifact version
@@ -120,7 +131,7 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactLink
-        exclude = ["artifact_version", "id", "verified_at"]
+        exclude = ["id", "verified_at"]
 
     verified = serializers.BooleanField(default=False, read_only=True)
 
@@ -133,6 +144,8 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
         }
 
 
+@allow_force
+@strict_schema
 class ArtifactVersionContentsSerializer(serializers.Serializer):
     """
     Represents metadata regarding an artifact version's contents
@@ -142,7 +155,8 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
 
     def create(self, validated_data: dict[str, JSON]) -> ArtifactVersion:
         self.instance.contents_urn = validated_data["urn"]
-        self.instance.save()
+        with transaction.atomic():
+            self.instance.save()
         return self.instance
 
     def update(self, _, validated_data: dict[str, JSON]) -> ArtifactVersion:
@@ -161,6 +175,8 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
         return {"urn": instance.contents_urn}
 
 
+@allow_force
+@strict_schema
 class ArtifactVersionMetricsSerializer(serializers.Serializer):
     """
     Describes an artifact version's metrics, which are related to events
@@ -190,12 +206,13 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         origin = validated_data["origin"]
         # We don't call bulk_create here, because it doesn't run any save signals
         # even though it persists the models to the database
-        for _ in range(access_count or 0):
-            ArtifactEvent.objects.create(
-                event_type=ArtifactEvent.EventType.LAUNCH,
-                event_origin=origin,
-                artifact_version=instance,
-            )
+        with transaction.atomic():
+            for _ in range(access_count or 0):
+                ArtifactEvent.objects.create(
+                    event_type=ArtifactEvent.EventType.LAUNCH,
+                    event_origin=origin,
+                    artifact_version=instance,
+                )
         instance.refresh_from_db()
         return instance
 
@@ -229,7 +246,9 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         return super(ArtifactVersionMetricsSerializer, self).to_internal_value(data)
 
 
-@extend_schema_serializer(exclude_fields=["id", "artifact", "contents_urn"])
+@extend_schema_serializer(exclude_fields=["artifact"])
+@allow_force
+@strict_schema
 class ArtifactVersionSerializer(serializers.ModelSerializer):
     """
     Describes a single version of an artifact
@@ -237,8 +256,10 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactVersion
-        fields = "__all__"
+        exclude = ["id", "contents_urn"]
 
+    slug = serializers.SlugField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
     metrics = ArtifactVersionMetricsSerializer(read_only=True)
@@ -255,14 +276,14 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
                 raise e
 
             if links:
-                for link in links:
-                    link["artifact_version"] = version.id
-                link_serializer = ArtifactLinkSerializer(data=links, many=True)
+                link_serializer = ArtifactLinkSerializer(
+                    data=links, many=True, context=self.context
+                )
                 link_serializer.is_valid(raise_exception=True)
                 version.links.add(*link_serializer.save())
 
             contents_serializer = ArtifactVersionContentsSerializer(
-                data=contents, instance=version
+                data=contents, instance=version, context=self.context
             )
             contents_serializer.is_valid(raise_exception=True)
             contents_serializer.save()
@@ -300,6 +321,8 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
             raise e
 
 
+@allow_force
+@strict_schema
 class ArtifactReproducibilitySerializer(serializers.Serializer):
     """
     Contains reproducibility metadata for an artifact
@@ -332,7 +355,8 @@ class ArtifactReproducibilitySerializer(serializers.Serializer):
 
         instance.repro_access_hours = access_hours
         instance.is_reproducible = is_reproducible
-        instance.save(update_fields=["repro_access_hours", "is_reproducible"])
+        with transaction.atomic():
+            instance.save(update_fields=["repro_access_hours", "is_reproducible"])
         return instance
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
@@ -343,6 +367,8 @@ class ArtifactReproducibilitySerializer(serializers.Serializer):
         }
 
 
+@allow_force
+@strict_schema
 class ArtifactSerializer(serializers.ModelSerializer):
     """
     Represents a single artifact
@@ -357,6 +383,10 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "repro_access_hours",
             "repro_requests",
         ]
+
+    uuid = serializers.UUIDField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
     # Related fields used for validating on writes
     tags = ArtifactTagSerializer(many=True, required=False)
@@ -405,31 +435,32 @@ class ArtifactSerializer(serializers.ModelSerializer):
             # New relationships have to be created here,
             # with the new Artifact's ID manually shoved in
             if tags:
-                tag_serializer = ArtifactTagSerializer(data=tags, many=True)
+                tag_serializer = ArtifactTagSerializer(
+                    data=tags, many=True, context=self.context
+                )
                 tag_serializer.is_valid(raise_exception=True)
                 artifact.tags.add(*tag_serializer.save())
             if authors:
-                for author in authors:
-                    author["artifact"] = artifact.uuid
-                author_serializer = ArtifactAuthorSerializer(data=authors, many=True)
+                author_serializer = ArtifactAuthorSerializer(
+                    data=authors, many=True, context=self.context
+                )
                 author_serializer.is_valid(raise_exception=True)
-                author_serializer.save()
+                artifact.authors.add(*author_serializer.save())
             if linked_projects:
                 project_serializer = ArtifactProjectSerializer(
-                    data=linked_projects, many=True
+                    data=linked_projects, many=True, context=self.context
                 )
                 project_serializer.is_valid(raise_exception=True)
                 artifact.linked_projects.add(*project_serializer.save())
             if version:
-                version["artifact"] = artifact.uuid
                 version_serializer = ArtifactVersionSerializer(
                     data=version, context=self.context
                 )
                 version_serializer.is_valid(raise_exception=True)
-                version_serializer.save()
+                artifact.versions.add(version_serializer.save())
             if reproducibility:
                 reproducibility_serializer = ArtifactReproducibilitySerializer(
-                    data=reproducibility, instance=artifact
+                    data=reproducibility, instance=artifact, context=self.context
                 )
                 reproducibility_serializer.is_valid(raise_exception=True)
                 artifact = reproducibility_serializer.save()
@@ -437,6 +468,13 @@ class ArtifactSerializer(serializers.ModelSerializer):
         return artifact
 
     def update(self, instance: Artifact, validated_data: dict) -> Artifact:
+        # Special exception for forced updates
+        # DRF bypasses the Django DB-level validation (WHY), so if an admin attempts
+        # to update the Artifact's primary key, all the related fields break
+        if "uuid" in validated_data:
+            raise ValidationError(
+                "Cannot edit Artifact UUID. Primary keys are immutable"
+            )
         # All nested fields have to be manually updated, so that is done here
         authors = validated_data.pop("authors", None)
         linked_projects = validated_data.pop("linked_projects", None)
@@ -452,14 +490,16 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 # Since authors are ManyToOne, and it's hard to tell what is an update
                 # vs removal, we just rewrite all the authors
                 instance.authors.clear()
-                for author in authors:
-                    author["artifact"] = instance.uuid
-                author_serializer = ArtifactAuthorSerializer(data=authors, many=True)
+                author_serializer = ArtifactAuthorSerializer(
+                    data=authors, many=True, context=self.context
+                )
                 author_serializer.is_valid(raise_exception=True)
-                author_serializer.save()
+                instance.authors.add(*author_serializer.save())
 
             if tags is not None:
-                tag_serializer = ArtifactTagSerializer(data=tags, many=True)
+                tag_serializer = ArtifactTagSerializer(
+                    data=tags, many=True, context=self.context
+                )
                 tag_serializer.is_valid(raise_exception=True)
                 instance.tags.clear()
                 instance.tags.add(*tag_serializer.save())
@@ -468,7 +508,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_projects.clear()
                 # Add new/updated projects to the relationship
                 project_serializer = ArtifactProjectSerializer(
-                    data=linked_projects, many=True
+                    data=linked_projects, many=True, context=self.context
                 )
                 project_serializer.is_valid(raise_exception=True)
                 for project in project_serializer.save():
@@ -477,7 +517,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             # Handle reproducibility changes
             if reproducibility is not None:
                 repro_serializer = ArtifactReproducibilitySerializer(
-                    data=reproducibility, instance=instance
+                    data=reproducibility, instance=instance, context=self.context
                 )
                 repro_serializer.is_valid(raise_exception=True)
                 repro_serializer.save()
@@ -544,6 +584,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
         return long_description
 
 
+@allow_force
+@strict_schema
 class ArtifactPatchSerializer(serializers.Serializer):
     """
     Serializes an Artifact Update (JSON Patch) request and converts it into a
@@ -554,7 +596,9 @@ class ArtifactPatchSerializer(serializers.Serializer):
     patch = JsonPatchOperationSerializer(many=True, required=True, write_only=True)
 
     def update(self, instance: Artifact, validated_data: dict[str, JSON]) -> Artifact:
-        patch = ArtifactPatch(validated_data["patch"])
+        patch = ArtifactPatch(
+            validated_data["patch"], forced=_is_valid_force_request(self)
+        )
         diff = patch.apply(ArtifactSerializer(instance).data)
         artifact_serializer = ArtifactSerializer(
             instance, data=diff, partial=True, context=self.context
@@ -571,3 +615,7 @@ class ArtifactPatchSerializer(serializers.Serializer):
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         serializer = ArtifactSerializer(context=self.context)
         return serializer.to_representation(instance)
+
+    @property
+    def context(self):
+        return super(ArtifactPatchSerializer, self).context | {"patch": True}

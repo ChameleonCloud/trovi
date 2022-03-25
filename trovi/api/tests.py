@@ -6,7 +6,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
@@ -88,10 +89,11 @@ class APITestCase(TestCase):
     def get_artifact_path(self, artifact_uuid: str):
         return self.authenticate_url(reverse(GetArtifact, args=[artifact_uuid]))
 
-    def create_artifact_path(self):
-        return self.authenticate_url(
-            reverse(CreateArtifact), scopes=[JWT.Scopes.ARTIFACTS_WRITE]
-        )
+    def create_artifact_path(self, is_admin=False):
+        scope = [JWT.Scopes.ARTIFACTS_WRITE]
+        if is_admin:
+            scope.append(JWT.Scopes.TROVI_ADMIN)
+        return self.authenticate_url(reverse(CreateArtifact), scopes=scope)
 
     def update_artifact_path(self, artifact_uuid: str):
         return self.authenticate_url(
@@ -392,8 +394,8 @@ class TestCreateArtifact(APITestCase):
         ArtifactTag.objects.create(tag=cls.allowed_tag1)
         ArtifactTag.objects.create(tag=cls.allowed_tag2)
 
-    def test_create_artifact_all_params(self):
-        new_artifact = {
+    def get_new_artifact(self):
+        return {
             "title": "Testing CreateObject",
             "short_description": "Testing out the CreateArtifact API Endpoint.",
             "long_description": "Well, it sure is a fine day out here to create "
@@ -440,6 +442,8 @@ class TestCreateArtifact(APITestCase):
             },
         }
 
+    def test_create_artifact_all_params(self):
+        new_artifact = self.get_new_artifact()
         response = self.client.post(
             self.create_artifact_path(),
             content_type="application/json",
@@ -479,23 +483,49 @@ class TestCreateArtifact(APITestCase):
         #  of present/missing fields
         pass
 
+    @override_settings(ARTIFACT_ALLOW_ADMIN_FORCED_WRITES=True)
+    def test_force(self):
+        new_artifact = self.get_new_artifact()
+        new_uuid = "dbc7b853-e7b9-4897-ad01-67606dd4c499"
+        created_at = timezone.datetime(
+            year=2049, month=7, day=6, tzinfo=timezone.get_current_timezone()
+        ).strftime(settings.DATETIME_FORMAT)
+        new_artifact["uuid"] = new_uuid
+        new_artifact["created_at"] = created_at
+
+        response = self.client.post(
+            self.create_artifact_path(),
+            content_type="application/json",
+            data=new_artifact,
+        )
+
+        # Initially calling this without the force flag should fail
+        self.assertIsNotNone(response)
+        as_json = response.json()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, msg=as_json)
+
+        # Add the force flag and it should succeed
+        response = self.client.post(
+            self.create_artifact_path(is_admin=True) + "&force",
+            content_type="application/json",
+            data=new_artifact,
+        )
+
+        self.assertIsNotNone(response)
+        as_json = response.json()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, msg=as_json)
+
+        qs = Artifact.objects.filter(uuid=new_uuid)
+        self.assertTrue(qs.exists())
+        self.assertEqual(qs.count(), 1)
+        model = qs.first()
+        new_artifact["versions"] = [new_artifact.pop("version")]
+        self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
+
 
 class TestUpdateArtifact(APITestCase):
-    def test_update_artifact(self):
-        # Cheekily add the test user as an author for Don Quixote,
-        # so that we may write to it
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
-        artifact_don_quixote.save()
-
-        # Ensures that the update endpoint is functioning
-        # Extensive testing is not needed here, as most of the logic is
-        # handled by json-patch
-        artifact_don_quixote.refresh_from_db()
-        old_donq_as_json = ArtifactSerializer(artifact_don_quixote).data
-
-        patch = {
+    def get_patch(self) -> dict:
+        return {
             "patch": [
                 {
                     "op": "replace",
@@ -523,12 +553,9 @@ class TestUpdateArtifact(APITestCase):
                 {
                     "op": "replace",
                     "path": "/tags",
-                    "value": (
-                        new_tags := [
-                            t.tag
-                            for t in random.choices(ArtifactTag.objects.all(), k=2)
-                        ]
-                    ),
+                    "value": [
+                        t.tag for t in random.choices(ArtifactTag.objects.all(), k=2)
+                    ],
                 },
                 {
                     "op": "add",
@@ -538,8 +565,43 @@ class TestUpdateArtifact(APITestCase):
             ]
         }
 
+    def test_update_artifact(self, forced: bool = False):
+        artifact_don_quixote.refresh_from_db()
+        # Cheekily add the test user as an author for Don Quixote,
+        # so that we may write to it
+        artifact_don_quixote.owner_urn = (
+            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        )
+        artifact_don_quixote.save()
+
+        # Ensures that the update endpoint is functioning
+        # Extensive testing is not needed here, as most of the logic is
+        # handled by json-patch
+        artifact_don_quixote.refresh_from_db()
+        old_donq_as_json = ArtifactSerializer(artifact_don_quixote).data
+
+        patch = self.get_patch()
+
+        if forced:
+            new_timestamp = timezone.datetime(
+                year=2049, month=7, day=6, tzinfo=timezone.get_current_timezone()
+            ).strftime(settings.DATETIME_FORMAT)
+            patch["patch"].append(
+                {"op": "replace", "path": "/created_at", "value": new_timestamp}
+            )
+            # Assure write fails without ?force
+            response = self.client.patch(
+                self.update_artifact_path(artifact_don_quixote.uuid),
+                content_type="application/json",
+                data=patch,
+            )
+            self.assertEqual(
+                response.status_code, status.HTTP_400_BAD_REQUEST, msg=response.json()
+            )
+
         response = self.client.patch(
-            self.update_artifact_path(artifact_don_quixote.uuid),
+            self.update_artifact_path(artifact_don_quixote.uuid)
+            + ("&force" if forced else ""),
             content_type="application/json",
             data=patch,
         )
@@ -561,6 +623,7 @@ class TestUpdateArtifact(APITestCase):
         self.assertIsNone(new_donq["long_description"], msg=diff_msg)
         self.assertEqual(new_donq["title"], artifact_don_quixote.long_description)
 
+        new_tags = patch["patch"][4]["value"]
         self.assertListEqual(
             list(sorted(new_donq_as_json["tags"])), list(sorted(new_tags)), msg=diff_msg
         )
@@ -573,6 +636,9 @@ class TestUpdateArtifact(APITestCase):
         new_projects = new_donq["linked_projects"]
         target_project = patch["patch"][5]["value"]
         self.assertIn(target_project, new_projects, msg=diff_msg)
+
+        if forced:
+            self.assertEqual(new_donq["created_at"], new_timestamp, msg=diff_msg)
 
         # Test that nothing unexpected changed
         new_donq_as_json.pop("updated_at")
@@ -604,6 +670,9 @@ class TestUpdateArtifact(APITestCase):
             for p in sorted(new_donq_as_json["linked_projects"])
             if p != target_project
         ]
+        if forced:
+            old_donq_as_json.pop("created_at")
+            new_donq_as_json.pop("created_at")
         self.assertDictEqual(new_donq_as_json, old_donq_as_json)
 
     def test_update_artifact_abilities(self):
@@ -622,9 +691,13 @@ class TestUpdateArtifact(APITestCase):
         # TODO
         pass
 
-    def test_update_artifact_not_author(self):
+    def test_update_artifact_not_owner(self):
         # TODO
         pass
+
+    @override_settings(ARTIFACT_ALLOW_ADMIN_FORCED_WRITES=True)
+    def test_update_artifact_force(self):
+        self.test_update_artifact(forced=True)
 
 
 class TestCreateArtifactVersion(APITestCase):

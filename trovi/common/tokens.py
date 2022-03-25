@@ -140,7 +140,6 @@ class JWT:
             raise InvalidToken
 
     @classmethod
-    @lru_cache(maxsize=settings.AUTH_TOKEN_CONVERSION_CACHE_SIZE)
     def from_jws(cls, jws: str, validate: bool = True) -> "JWT":
         """
         Creates a JWT from a JWS.
