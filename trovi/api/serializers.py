@@ -431,8 +431,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             artifact = super(ArtifactSerializer, self).create(validated_data)
 
-            # New relationships have to be created here,
-            # with the new Artifact's ID manually shoved in
+            # New relationships have to be created here
             if tags:
                 tag_serializer = ArtifactTagSerializer(
                     data=tags, many=True, context=self.context
