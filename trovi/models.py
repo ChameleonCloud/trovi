@@ -9,7 +9,9 @@ from django.db import models, transaction
 from django.db.models import F
 from django.db.models.functions import Lower
 from django.db.models.signals import post_save, post_delete
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from trovi.fields import URNField
 
@@ -46,8 +48,10 @@ class Artifact(models.Model):
     )
 
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+    created_at = models.DateTimeField(
+        default=timezone.now, editable=False, db_index=True
+    )
+    updated_at = models.DateTimeField(auto_now=True, editable=False, db_index=True)
 
     # Author who owns this Artifact
     owner_urn = URNField(max_length=settings.URN_MAX_CHARS)
@@ -83,6 +87,18 @@ class Artifact(models.Model):
         validators=[validate_sharing_key],
     )
 
+    def save(self, *args, **kwargs) -> "Artifact":
+        # For forced updates, the datetime is received as a string.
+        # This ensures a datetime is stored
+        if isinstance(self.created_at, str):
+            try:
+                self.created_at = timezone.datetime.strptime(
+                    self.created_at, settings.DATETIME_FORMAT
+                ).astimezone(timezone.get_current_timezone())
+            except ValueError as e:
+                raise DRFValidationError(str(e)) from e
+        return super(Artifact, self).save(*args, **kwargs)
+
 
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
@@ -95,7 +111,7 @@ class ArtifactVersion(models.Model):
     artifact = models.ForeignKey(
         Artifact, models.CASCADE, related_name="versions", null=True
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
     contents_urn = URNField(max_length=settings.URN_MAX_CHARS, null=True)
 
     slug = models.SlugField(max_length=settings.SLUG_MAX_CHARS, editable=False)
@@ -160,6 +176,18 @@ class ArtifactVersion(models.Model):
                     instance.artifact.save(update_fields=["access_count"])
         except Artifact.DoesNotExist:
             pass
+
+    def save(self, *args, **kwargs) -> "ArtifactVersion":
+        # For forced updates, the datetime is received as a string.
+        # This ensures a datetime is stored
+        if isinstance(self.created_at, str):
+            try:
+                self.created_at = timezone.datetime.strptime(
+                    self.created_at, settings.DATETIME_FORMAT
+                ).astimezone(timezone.get_current_timezone())
+            except ValueError as e:
+                raise DRFValidationError(str(e)) from e
+        return super(ArtifactVersion, self).save(*args, **kwargs)
 
 
 class ArtifactEvent(models.Model):

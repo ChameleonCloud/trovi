@@ -162,6 +162,7 @@ WSGI_APPLICATION = "trovi.wsgi.application"
 
 
 DATETIME_FORMAT = "%Y-%m-%dT%H:%M%Z"
+USE_TZ = True
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [],
@@ -171,6 +172,8 @@ REST_FRAMEWORK = {
     ],
     "EXCEPTION_HANDLER": "trovi.common.handlers.trovi_exception_handler",
     "DATETIME_FORMAT": DATETIME_FORMAT,
+    "DATETIME_INPUT_FORMATS": [DATETIME_FORMAT],
+    "USE_TZ": USE_TZ,
     "ORDERING_PARAM": "sort_by",
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "trovi.common.authenticators.AlwaysFailAuthentication"
@@ -337,7 +340,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Trovi API",
     "DESCRIPTION": "A collection of shared artifacts.",
     "VERSION": "0",
-    "SERVERS": [{"url": f"https://{TROVI_FQDN}"}]
+    "SERVERS": [{"url": f"https://{TROVI_FQDN}"}],
 }
 
 # Constraints
@@ -365,6 +368,13 @@ AUTH_TOKEN_CONVERSION_CACHE_SIZE = 256
 AUTH_ISSUERS = {
     urlparse(CHAMELEON_KEYCLOAK_SERVER_URL).netloc: "chameleon",
 }
+
+# Allows admins to write artifacts via the API without any validation.
+# Useful for correcting mistakes, or niche use cases such as data migration.
+# HIGHLY RECOMMEND LEAVING THIS OFF unless absolutely required.
+ARTIFACT_ALLOW_ADMIN_FORCED_WRITES = (
+    os.getenv("TROVI_ARTIFACT_ALLOW_ADMIN_FORCED_WRITES", "false").lower() == "true"
+)
 
 ARTIFACT_TITLE_MAX_CHARS = 70
 ARTIFACT_SHORT_DESCRIPTION_MAX_CHARS = 70

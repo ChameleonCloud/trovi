@@ -9,7 +9,6 @@ from typing import Any
 import jsonpatch
 from rest_framework.exceptions import ValidationError
 
-from trovi.models import ArtifactAuthor
 from util.types import JSONObject, JSON
 
 patch_errors = defaultdict(list)
@@ -34,7 +33,9 @@ class ArtifactPatchMixin:
     error_id = None
     INVALID_PATH = "I'm an invalid path because paths are only ever dict or None"
     _artifact_author_description = {
-        str(f): None for f in ArtifactAuthor._meta.get_fields()
+        "full_name": None,
+        "email": None,
+        "affiliation": None,
     }
 
     def _int_key_only(self, desired_key: Any, value: Any = None) -> Any:
@@ -58,23 +59,26 @@ class ArtifactPatchMixin:
         # Describes paths within an Artifact obj that are allowed to be modified.
         # All valid paths will be handled by the JSON Patch library itself,
         # since invalid paths will not appear in the object.
-        walk = {
-            "title": None,
-            "short_description": None,
-            "long_description": None,
-            "tags": self.walker(self._int_key_only),
-            "authors": self.walker(
-                lambda a: self._int_key_only(a, self._artifact_author_description)
-            ),
-            # linked_projects is mutable, but only admins can modify it
-            # this is enforced by the ArtifactSerializer
-            "linked_projects": self.walker(self._int_key_only),
-            "reproducibility": {"enable_requests": None, "access_hours": None},
-            # owner_urn is mutable, but only current owners can modify it
-            # this is enforced by the ArtifactSerializer
-            "owner_urn": None,
-            "visibility": None,
-        }
+        walk = defaultdict(
+            (lambda: self.INVALID_PATH),
+            {
+                "title": None,
+                "short_description": None,
+                "long_description": None,
+                "tags": self.walker(self._int_key_only),
+                "authors": self.walker(
+                    lambda a: self._int_key_only(a, self._artifact_author_description)
+                ),
+                # linked_projects is mutable, but only admins can modify it
+                # this is enforced by the ArtifactSerializer
+                "linked_projects": self.walker(self._int_key_only),
+                "reproducibility": {"enable_requests": None, "access_hours": None},
+                # owner_urn is mutable, but only current owners can modify it
+                # this is enforced by the ArtifactSerializer
+                "owner_urn": None,
+                "visibility": None,
+            },
+        )
         error = (
             f"Write operation '{operation['op']}' does not have "
             f"valid mutable path: {path}"
@@ -140,16 +144,30 @@ class ArtifactCopyOperation(jsonpatch.CopyOperation, ArtifactPatchMixin):
 
 
 class ArtifactPatch(jsonpatch.JsonPatch):
+    """
+    Provides overrides for JsonPatch such that the object output is a diff
+    of the original object after being patched,
+    rather than the default behavior for jsonpatch which outputs
+    the entire original object with changes made.
+    """
 
-    operations = MappingProxyType(
-        {
-            "remove": ArtifactRemoveOperation,
-            "add": ArtifactAddOperation,
-            "replace": ArtifactReplaceOperation,
-            "move": ArtifactMoveOperation,
-            "copy": ArtifactCopyOperation,
-        }
-    )
+    def __init__(self, *args, forced: bool = True, **kwargs):
+        if forced:
+            # If forced updates are enabled, we don't do any path validation.
+            # Everything is mutable, nothing is forbidden
+            self.operations = super(ArtifactPatch, self).operations
+        else:
+            self.operations = MappingProxyType(
+                {
+                    "remove": ArtifactRemoveOperation,
+                    "add": ArtifactAddOperation,
+                    "replace": ArtifactReplaceOperation,
+                    "move": ArtifactMoveOperation,
+                    "copy": ArtifactCopyOperation,
+                }
+            )
+
+        super(ArtifactPatch, self).__init__(*args, **kwargs)
 
     def apply(self, obj: dict[str, JSON], in_place: bool = False) -> dict[str, JSON]:
         """

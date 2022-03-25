@@ -1,11 +1,13 @@
-from typing import Type, Any
+from typing import Type, Any, Callable
 
+from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from jsonpatch import JsonPatch
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 
+from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from util.types import JSON
 
@@ -101,3 +103,104 @@ class JsonPatchOperationSerializer(serializers.Serializer):
             raise ValidationError("sharing_key is not readable via patch/put.")
 
         return super(JsonPatchOperationSerializer, self).validate(attrs)
+
+
+def _is_valid_force_request(self: serializers.Serializer) -> bool:
+    """
+    Determines if a request wants to force an update. Ensures that the request is valid,
+    and caches the result in the serializer's context.
+    """
+    if (already_forced := self.context.get("force")) is not None:
+        return already_forced
+    request = self.context.get("request")
+    if not request:
+        raise ValueError(
+            "allow_force is only intended to be used on incoming API requests."
+        )
+    # If forced writes are enabled, and the user has requested one
+    if (
+        settings.ARTIFACT_ALLOW_ADMIN_FORCED_WRITES
+        and request.query_params.get("force") is not None
+    ):
+        token = JWT.from_request(request)
+        if not token:
+            raise PermissionDenied("Unauthenticated user attempted to use ?force flag.")
+        if token.is_admin():
+            self.context.setdefault("force", True)
+            return True
+        else:
+            raise PermissionDenied("Non-Admin users cannot use the ?force flag.")
+    else:
+        # The user has not requested a forced update
+        self.context.setdefault("force", False)
+        return False
+
+
+def _validate_strict_schema(to_internal_value: Callable) -> Callable:
+    """
+    Decorator which causes serializers to reject any requests which have any fields
+    in them which are not strictly writable
+    """
+
+    def wrapper(self: serializers.Serializer, data: dict[str, JSON]) -> dict[str, JSON]:
+        unknown = set(data) - set(field.field_name for field in self._writable_fields)
+        if _is_valid_force_request(self):
+            internal = to_internal_value(self, data)
+            # to_internal_value will remove all non-writable fields,
+            # so we have to jam them back in
+            internal.update({field: data[field] for field in unknown})
+            return internal
+        # We ignore this check for patches because of how JSON patch resolves
+        # nested objects
+        if unknown and not self.context.get("patch"):
+            raise ValidationError(
+                {
+                    "Attempted to write invalid field(s)": list(unknown),
+                    "in": self.field_name or ".",
+                }
+            )
+        return to_internal_value(self, data)
+
+    return wrapper
+
+
+def _bypass_validation(is_valid: Callable) -> Callable:
+    """
+    Decorator which allows validation bypass via a ?force URL parameter
+
+    Only bypasses API validation. Database validation still occurs. This is by design.
+    """
+
+    def wrapper(self: serializers.Serializer, **kwargs) -> bool:
+        if _is_valid_force_request(self):
+            # If this is a valid force request, bypass validation entirely
+            self._validated_data = self.to_internal_value(self.initial_data)
+            self._errors = {}
+            return True
+        else:
+            # If the user has not requested a force write, call is_valid as normal
+            return is_valid(self, **kwargs)
+
+    return wrapper
+
+
+def allow_force(
+    serializer: Type[serializers.Serializer],
+) -> Type[serializers.Serializer]:
+    """
+    Shortcut class decorator which wraps
+    a serializer's is_valid method with a force bypass.
+    """
+    serializer.is_valid = _bypass_validation(serializer.is_valid)
+    return serializer
+
+
+def strict_schema(
+    serializer: Type[serializers.Serializer],
+) -> Type[serializers.Serializer]:
+    """
+    Shortcut class decorator which wraps a serializer's .to_internal_value method with
+    a strict schema enforcer
+    """
+    serializer.to_internal_value = _validate_strict_schema(serializer.to_internal_value)
+    return serializer

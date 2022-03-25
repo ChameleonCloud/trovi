@@ -7,6 +7,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from trovi.auth import providers
+from trovi.common.serializers import strict_schema
 from trovi.common.tokens import JWT, TokenTypes
 from util.types import JSON
 
@@ -61,6 +62,7 @@ from util.types import JSON
         ),
     ]
 )
+@strict_schema
 class TokenGrantRequestSerializer(serializers.Serializer):
     """
     (De)serializes grant requests in to JWT objects, including implicit validation
