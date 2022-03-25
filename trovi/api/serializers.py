@@ -5,7 +5,6 @@ import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
 from drf_spectacular.utils import extend_schema_serializer
-from jsonpatch import JsonPatch
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 
