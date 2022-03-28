@@ -44,7 +44,7 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ArtifactTag
-        fields = []
+        fields = ["tag"]
 
     def create(self, validated_data: dict[str, str]) -> ArtifactTag:
         tag = validated_data["tag"]
@@ -64,7 +64,7 @@ class ArtifactTagSerializer(serializers.ModelSerializer):
 class ArtifactTagSerializerWritable(serializers.ModelSerializer):
     class Meta:
         model = ArtifactTag
-        exclude = ["id"]
+        fields = ["tag"]
 
 
 @extend_schema_serializer(exclude_fields=["id", "artifact"])
@@ -174,6 +174,7 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
         return {"urn": instance.contents_urn}
 
 
+@extend_schema_serializer(exclude_fields=["origin"])
 @allow_force
 @strict_schema
 class ArtifactVersionMetricsSerializer(serializers.Serializer):

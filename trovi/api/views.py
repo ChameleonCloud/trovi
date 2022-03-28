@@ -5,7 +5,11 @@ from django.db import transaction, models
 from django.db.models import QuerySet
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_view,
+    OpenApiParameter,
+)
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
@@ -253,6 +257,40 @@ parent_artifact_parameter = OpenApiParameter(
         ],
         description="Deletes a given Version of an Artifact.",
     ),
+    metrics=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="origin",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                allow_blank=False,
+                description="The Trovi token "
+                "of the user who triggered the metric update",
+            ),
+            OpenApiParameter(
+                name="metric",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                allow_blank=False,
+                enum=["access_count"],
+                description="The metric which will be incremented",
+            ),
+            OpenApiParameter(
+                name="amount",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                default=1,
+                description="The amount by which the selected metric "
+                "will be incremented",
+            ),
+        ],
+        description="Increments a particular metric for an artifact version",
+        request=None,
+        responses={status.HTTP_204_NO_CONTENT: None},
+    ),
 )
 @method_decorator(transaction.atomic, name="destroy")
 class ArtifactVersionViewSet(
@@ -387,8 +425,9 @@ class ArtifactVersionViewSet(
         PUT /artifacts/<uuid>/versions/<slug>/metrics?metric=<metric_name>
         Increment the metric defined by "metric_name" for the given ArtifactVersion.
 
-        Required scopes: artifact:write_metric (separate from :write because it is needed
-        for launch actions, which don't modify artifact contents but must update metrics)
+        Required scopes: artifact:write_metric (separate from :write because
+        it is needed for launch actions, which don't modify artifact contents
+        but must update metrics)
 
         Response: 204 No Content
         """
