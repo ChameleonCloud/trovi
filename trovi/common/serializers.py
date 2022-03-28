@@ -45,8 +45,8 @@ class JsonPatchOperationSerializer(serializers.Serializer):
         required=True,
         write_only=True,
     )
-    from_ = JsonPointerField(write_only=True, required=False, max_length=20)
-    path = JsonPointerField(write_only=True, required=False, max_length=20)
+    from_ = JsonPointerField(write_only=True, required=False, max_length=50)
+    path = JsonPointerField(write_only=True, required=False, max_length=50)
     value = AnyField(write_only=True, required=False)
 
     op_arguments_map = {
