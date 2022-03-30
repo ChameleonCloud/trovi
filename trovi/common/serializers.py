@@ -143,6 +143,9 @@ def _validate_strict_schema(to_internal_value: Callable) -> Callable:
     """
 
     def wrapper(self: serializers.Serializer, data: dict[str, JSON]) -> dict[str, JSON]:
+        if not isinstance(data, dict):
+            # DRF validators should catch this later and throw the appropriate error
+            return data
         unknown = set(data) - set(field.field_name for field in self._writable_fields)
         if _is_valid_force_request(self):
             internal = to_internal_value(self, data)

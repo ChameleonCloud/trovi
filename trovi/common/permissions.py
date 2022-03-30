@@ -49,11 +49,13 @@ class ArtifactScopedPermission(BaseScopedPermission):
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
-        if not token:
-            return obj.visibility == Artifact.Visibility.PUBLIC
+        if token:
+            token_urn = token.to_urn()
+        else:
+            token_urn = None
         # If the authenticated user is not the artifact owner,
         # they may not write to the artifact
-        if token.to_urn() != obj.owner_urn:
+        if token_urn != obj.owner_urn:
             return not any(scope.is_write_scope() for scope in token.scope)
         return True
 
@@ -66,10 +68,10 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
-        is_public = obj.visibility == Artifact.Visibility.PUBLIC
+        is_public = obj.is_public()
         token = JWT.from_request(request)
         if not token or is_public:
-            return is_public
+            return is_public or obj.has_doi()
         sharing_key = request.query_params.get("sharing_key")
         if sharing_key:
             return sharing_key == obj.sharing_key
@@ -88,7 +90,10 @@ class ArtifactVersionVisibilityPermission(permissions.BasePermission):
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
         artifact_visibility = ArtifactVisibilityPermission()
-        return artifact_visibility.has_object_permission(request, view, obj.artifact)
+        return (
+            artifact_visibility.has_object_permission(request, view, obj.artifact)
+            or obj.has_doi()
+        )
 
 
 class ArtifactVersionScopedPermission(permissions.BasePermission):
@@ -142,6 +147,18 @@ class ArtifactVersionMetricsScopedPermission(permissions.BasePermission):
         """
         token = JWT.from_request(request)
         return JWT.Scopes.ARTIFACTS_WRITE_METRICS in token.scope
+
+
+class ArtifactVersionOwnershipPermission(permissions.BasePermission):
+    """
+    Determines if a user is the owner of the parent artifact of an artifact version
+    """
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactVersion
+    ) -> bool:
+        token = JWT.from_request(request)
+        return token.to_urn() == obj.artifact.owner_urn
 
 
 class BaseMetadataPermission(permissions.BasePermission):

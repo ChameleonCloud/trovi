@@ -22,6 +22,7 @@ from trovi.api.urls import (
     CreateArtifactVersion,
     DeleteArtifactVersion,
     IncrArtifactVersionMetrics,
+    MigrateArtifactVersion,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
@@ -133,6 +134,11 @@ class APITestCase(TestCase):
             f"{reverse(IncrArtifactVersionMetrics, args=[artifact_uuid, version_slug])}"
             f"?metric={metric}&origin={self.get_test_token()}{amount_arg}",
             scopes=[JWT.Scopes.ARTIFACTS_WRITE_METRICS],
+        )
+
+    def migrate_artifact_version_path(self, artifact_uuid: str, version_slug: str):
+        return self.authenticate_url(
+            reverse(MigrateArtifactVersion, args=[artifact_uuid, version_slug])
         )
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
@@ -373,9 +379,7 @@ class TestGetArtifact(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
         self.assertNotIn("sharing_key", as_json)
 
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save(update_fields=["owner_urn"])
 
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
@@ -569,9 +573,7 @@ class TestUpdateArtifact(APITestCase):
         artifact_don_quixote.refresh_from_db()
         # Cheekily add the test user as an author for Don Quixote,
         # so that we may write to it
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save()
 
         # Ensures that the update endpoint is functioning
@@ -812,9 +814,7 @@ class TestDeleteArtifactVersion(APITestCase):
             self.fail(e)
 
     def test_delete_artifact_version(self):
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
@@ -920,3 +920,17 @@ class TestIncrArtifactVersionMetrics(APITestCase):
     def test_increment_metrics_permissions(self):
         # TODO
         pass
+
+
+class TestMigrateArtifactVersion(APITestCase):
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.post(
+                self.migrate_artifact_version_path(
+                    str(artifact_don_quixote.uuid),
+                    version_don_quixote_1.slug,
+                )
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)

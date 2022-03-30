@@ -6,10 +6,23 @@ from django.conf import settings
 from django.db import transaction, IntegrityError
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
+from rest_framework.exceptions import (
+    ValidationError,
+    PermissionDenied,
+    NotFound,
+    MethodNotAllowed,
+)
 
 from trovi.api.patches import ArtifactPatch
+from trovi.api.tasks import (
+    artifact_version_migration_executor,
+    migrate_artifact_version,
+)
 from trovi.common.exceptions import ConflictError, InvalidToken
+from trovi.common.permissions import (
+    ArtifactVersionVisibilityPermission,
+    AdminPermission,
+)
 from trovi.common.serializers import (
     JsonPatchOperationSerializer,
     URNSerializerField,
@@ -27,7 +40,9 @@ from trovi.models import (
     ArtifactVersion,
     ArtifactLink,
     ArtifactEvent,
+    ArtifactVersionMigration,
 )
+from trovi.storage.backends import get_backend
 from util.types import JSON
 
 LOG = logging.getLogger(__name__)
@@ -131,8 +146,7 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtifactLink
         exclude = ["id", "verified_at"]
-
-    verified = serializers.BooleanField(default=False, read_only=True)
+        read_only_fields = ["verified"]
 
     def to_representation(self, instance: ArtifactLink) -> dict:
         return {
@@ -257,9 +271,8 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArtifactVersion
         exclude = ["id", "contents_urn"]
+        read_only_fields = ["slug", "created_at"]
 
-    slug = serializers.SlugField(read_only=True)
-    created_at = serializers.DateTimeField(read_only=True)
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
     metrics = ArtifactVersionMetricsSerializer(read_only=True)
@@ -299,7 +312,7 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
         }
 
-    def to_internal_value(self, data):
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
         # On CreateArtifactVersion requests, the Artifact UUID is attached to
         # the view by the router, so we need to extract it from there. On
         # CreateArtifact requests, the Artifact UUID should already be inserted
@@ -383,10 +396,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "repro_access_hours",
             "repro_requests",
         ]
-
-    uuid = serializers.UUIDField(read_only=True)
-    created_at = serializers.DateTimeField(read_only=True)
-    updated_at = serializers.DateTimeField(read_only=True)
+        read_only_fields = ["uuid", "created_at", "updated_at"]
 
     # Related fields used for validating on writes
     tags = ArtifactTagSerializer(many=True, required=False)
@@ -398,6 +408,15 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
+        request = self.context["request"]
+        view = self.context["view"]
+        permissions = (ArtifactVersionVisibilityPermission | AdminPermission)()
+        versions = [
+            v
+            for v in instance.versions.all()
+            if permissions.has_object_permission(request, view, v)
+        ]
+
         artifact_json = {
             "uuid": str(instance.uuid),
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
@@ -413,9 +432,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_projects.all(), many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
-            "versions": ArtifactVersionSerializer(
-                instance.versions.all(), many=True
-            ).data,
+            "versions": ArtifactVersionSerializer(versions, many=True).data,
         }
         if self.get_requesting_user_urn() == instance.owner_urn:
             artifact_json["sharing_key"] = instance.sharing_key
@@ -618,3 +635,72 @@ class ArtifactPatchSerializer(serializers.Serializer):
     @property
     def context(self):
         return super(ArtifactPatchSerializer, self).context | {"patch": True}
+
+
+class ArtifactVersionMigrationSerializer(serializers.ModelSerializer):
+    """
+    Serializes a MigrateArtifactVersion request and response
+    """
+
+    class Meta:
+        model = ArtifactVersionMigration
+        read_only_fields = ["status", "message", "message_ratio"]
+        extra_kwargs = {"backend": {"write_only": True, "read_only": False}}
+        exclude = [
+            "id",
+            "artifact_version",
+            "source_urn",
+            "destination_urn",
+            "created_at",
+            "started_at",
+            "finished_at",
+        ]
+
+    def update(self, instance: ArtifactVersion, validated_data: dict):
+        raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
+
+    def create(self, validated_data: dict[str, JSON]) -> ArtifactVersionMigration:
+        artifact = Artifact.objects.get(uuid=validated_data["artifact"])
+        version = artifact.versions.get(slug=validated_data["version"])
+
+        if version.migrations.filter(
+            status=ArtifactVersionMigration.MigrationStatus.IN_PROGRESS
+        ).exists():
+            raise MethodNotAllowed(
+                f"Artifact version {artifact.uuid}/{version.slug} "
+                f"already has a migration in progress."
+            )
+
+        migration = version.migrations.create(
+            backend=validated_data["backend"],
+            message="Submitted.",
+            source_urn=version.contents_urn,
+        )
+        artifact_version_migration_executor.submit(
+            lambda: migrate_artifact_version(migration)
+        )
+        return migration
+
+    def validate_backend(self, backend: str) -> str:
+        get_backend(backend.lower())
+        return backend.lower()
+
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        view = self.context["view"]
+        data.setdefault("artifact", view.kwargs.get("parent_lookup_artifact"))
+        data.setdefault("version", view.kwargs.get("parent_lookup_version"))
+
+        try:
+            return super(ArtifactVersionMigrationSerializer, self).to_internal_value(
+                data
+            )
+        except ValidationError as e:
+            # This is to trap Validation errors thrown from non-existent models.
+            # By default, this will return a 400 error. We want to return 404 instead.
+            if artifact_error := e.detail.get("artifact"):
+                if any(detail.code == "does_not_exist" for detail in artifact_error):
+                    raise NotFound(e.detail)
+            if version_error := e.detail.get("version"):
+                if any(detail.code == "does_not_exist" for detail in version_error):
+                    raise NotFound(e.detail)
+            raise e

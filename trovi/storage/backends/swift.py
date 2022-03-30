@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
 import uuid
@@ -27,6 +29,8 @@ class SwiftBackend(StorageBackend):
     MAX_SEGMENTS = 1000
 
     _keystone_adapter = None
+
+    _bytes_read = 0
 
     def __init__(
         self,
@@ -158,6 +162,26 @@ class SwiftBackend(StorageBackend):
             )
 
         return len(buffer)
+
+    def read(self, __size: int | None = ...) -> bytes:
+        start = self._bytes_read
+        end = min(start + __size, len(self))
+        response = self.keystone.get(
+            self.segment_url,
+            headers={
+                "content-type": "application/octet-stream",
+                "range": f"bytes={start}-{end}",
+            },
+        )
+
+        if response.status_code != status.HTTP_200_OK:
+            raise IOError(
+                f"Failed to read from offset {start} for content {self.to_urn()}"
+            )
+
+        self._bytes_read = end
+
+        return response.content
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
         path = self.object_url

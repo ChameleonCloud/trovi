@@ -4,15 +4,20 @@ from typing import Hashable
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
+from trovi.models import ArtifactVersion
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.backends.swift import SwiftBackend
+from trovi.storage.backends.zenodo import ZenodoBackend
 
 # Maps backend names to
 artifact_locks = defaultdict(set)
 
 
 def get_backend(
-    name: str, content_type: str = None, content_id: Hashable = None
+    name: str,
+    content_type: str = None,
+    content_id: Hashable = None,
+    version: ArtifactVersion = None,
 ) -> StorageBackend:
     """
     Retrieves a file descriptor to an artifact in remote storage. The UUID should
@@ -34,6 +39,10 @@ def get_backend(
             container=settings.CHAMELEON_SWIFT_CONTAINER,
             region_name=settings.CHAMELEON_SWIFT_REGION_NAME,
             content_id=content_id,
+        )
+    if name == "zenodo":
+        return ZenodoBackend(
+            name, version, content_type=content_type, content_id=content_id
         )
     else:
         raise ValidationError(f"Unknown storage backend: {name}")
