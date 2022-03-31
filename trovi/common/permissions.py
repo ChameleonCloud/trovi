@@ -83,12 +83,11 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
         if not token or is_public:
             return is_public or obj.has_doi()
         sharing_key = request.query_params.get("sharing_key")
-        if sharing_key:
-            return sharing_key == obj.sharing_key
-        else:
-            # If the authenticated user owns the Artifact,
-            # then they may access the Artifact
-            return token.to_urn() == obj.owner_urn
+        if sharing_key and sharing_key == obj.sharing_key:
+            return True
+        # If the authenticated user owns the Artifact,
+        # then they may access the Artifact
+        return token.to_urn() == obj.owner_urn
 
 
 class ArtifactVersionVisibilityPermission(permissions.BasePermission):
