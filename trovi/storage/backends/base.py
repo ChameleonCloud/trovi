@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import collections
 import io
 import logging
 import threading
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Hashable, Optional
@@ -151,7 +153,7 @@ class StorageBackend(io.BufferedIOBase, ABC):
 
     @property
     def closed(self) -> bool:
-        if self._closed is None:
+        if not self._closed:
             self._closed = self.update_closed_status()
         return self._closed
 
@@ -238,3 +240,29 @@ class StorageBackend(io.BufferedIOBase, ABC):
         remote cannot be resolved.
         """
         return None
+
+
+class ContentsProxy:
+    def __init__(self):
+        # we need something that we can read from one end and write to another,
+        # a deque suffices.
+        self._deque = collections.deque()
+        self._closed = False
+
+    def write(self, data: ReadableBuffer) -> int:
+        self._deque.appendleft(data)
+        return len(data)
+
+    def close(self):
+        self._closed = True
+
+    def closed(self) -> bool:
+        return self._closed
+
+    def gen(self) -> bytes:
+        # Ensure we flush the deque after close by waiting until it's empty
+        while not self._closed or len(self._deque):
+            if len(self._deque):
+                yield self._deque.pop()
+            else:
+                time.sleep(0.1)

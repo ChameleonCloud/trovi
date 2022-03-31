@@ -19,10 +19,6 @@ from trovi.api.tasks import (
     migrate_artifact_version,
 )
 from trovi.common.exceptions import ConflictError, InvalidToken
-from trovi.common.permissions import (
-    ArtifactVersionVisibilityPermission,
-    AdminPermission,
-)
 from trovi.common.serializers import (
     JsonPatchOperationSerializer,
     URNSerializerField,
@@ -42,7 +38,6 @@ from trovi.models import (
     ArtifactEvent,
     ArtifactVersionMigration,
 )
-from trovi.storage.backends import get_backend
 from util.types import JSON
 
 LOG = logging.getLogger(__name__)
@@ -660,8 +655,11 @@ class ArtifactVersionMigrationSerializer(serializers.ModelSerializer):
         raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
 
     def create(self, validated_data: dict[str, JSON]) -> ArtifactVersionMigration:
-        artifact = Artifact.objects.get(uuid=validated_data["artifact"])
-        version = artifact.versions.get(slug=validated_data["version"])
+        view = self.context["view"]
+        parent_artifact = view.kwargs.get("parent_lookup_artifact")
+        parent_version = view.kwargs.get("parent_lookup_version")
+        artifact = Artifact.objects.get(uuid=parent_artifact)
+        version = artifact.versions.get(slug=parent_version)
 
         if version.migrations.filter(
             status=ArtifactVersionMigration.MigrationStatus.IN_PROGRESS
@@ -682,25 +680,6 @@ class ArtifactVersionMigrationSerializer(serializers.ModelSerializer):
         return migration
 
     def validate_backend(self, backend: str) -> str:
-        get_backend(backend.lower())
+        if not backend.lower() in ["chameleon", "zenodo"]:
+            raise ValidationError(f"Unknown backend {backend}")
         return backend.lower()
-
-    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
-        view = self.context["view"]
-        data.setdefault("artifact", view.kwargs.get("parent_lookup_artifact"))
-        data.setdefault("version", view.kwargs.get("parent_lookup_version"))
-
-        try:
-            return super(ArtifactVersionMigrationSerializer, self).to_internal_value(
-                data
-            )
-        except ValidationError as e:
-            # This is to trap Validation errors thrown from non-existent models.
-            # By default, this will return a 400 error. We want to return 404 instead.
-            if artifact_error := e.detail.get("artifact"):
-                if any(detail.code == "does_not_exist" for detail in artifact_error):
-                    raise NotFound(e.detail)
-            if version_error := e.detail.get("version"):
-                if any(detail.code == "does_not_exist" for detail in version_error):
-                    raise NotFound(e.detail)
-            raise e

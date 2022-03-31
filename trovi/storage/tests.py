@@ -1,4 +1,5 @@
 import io
+import os
 import random
 import tarfile
 from typing import IO
@@ -8,9 +9,11 @@ from requests import Response
 from rest_framework import status
 from rest_framework.reverse import reverse
 
+from models import ArtifactVersionMigration
+from trovi.api.tasks import artifact_version_migration_executor
 from trovi.api.tests import APITestCase
 from trovi.storage.urls import StoreContents, RetrieveContents
-from util.test import version_don_quixote_1, version_don_quixote_2
+from util.test import version_don_quixote_1, version_don_quixote_2, artifact_don_quixote
 
 
 class StorageTestCase(APITestCase):
@@ -157,3 +160,28 @@ class TestRetrieveContents(StorageTestCase):
     def test_invalid_storage_backend(self):
         # TODO
         pass
+
+    def test_migrate_storage(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        artifact_don_quixote.save()
+        response = self.client.post(
+            self.migrate_artifact_version_path(
+                artifact_don_quixote.uuid, version_don_quixote_1.slug
+            ),
+            content_type="application/json",
+            data={"backend": "zenodo"},
+        )
+
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, msg=as_json)
+
+        migration = version_don_quixote_1.migrations.first()
+        migration_status = ArtifactVersionMigration.MigrationStatus
+        self.assertNotEqual(
+            migration.status, migration_status.ERROR
+        )
+        while migration.status != migration_status:
+            self.assertNotEqual(migration.status, migration_status.)
+

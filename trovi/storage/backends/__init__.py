@@ -4,7 +4,7 @@ from typing import Hashable
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
-from trovi.models import ArtifactVersion
+from trovi.models import ArtifactVersion, Artifact
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.backends.swift import SwiftBackend
 from trovi.storage.backends.zenodo import ZenodoBackend
@@ -17,6 +17,7 @@ def get_backend(
     name: str,
     content_type: str = None,
     content_id: Hashable = None,
+    artifact: Artifact = None,
     version: ArtifactVersion = None,
 ) -> StorageBackend:
     """
@@ -41,6 +42,11 @@ def get_backend(
             content_id=content_id,
         )
     if name == "zenodo":
+        if not version:
+            # Create a dummy version so Zenodo has an artifact to access metadata from
+            version = ArtifactVersion(
+                artifact=artifact, contents_urn="urn:trovi:contents:chameleon:dummy"
+            )
         return ZenodoBackend(
             name, version, content_type=content_type, content_id=content_id
         )
