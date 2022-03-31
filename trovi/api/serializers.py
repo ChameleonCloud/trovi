@@ -409,13 +409,13 @@ class ArtifactSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         request = self.context["request"]
-        view = self.context["view"]
-        permissions = (ArtifactVersionVisibilityPermission | AdminPermission)()
-        versions = [
-            v
-            for v in instance.versions.all()
-            if permissions.has_object_permission(request, view, v)
-        ]
+        token = JWT.from_request(request)
+        token_urn = token.to_urn() if token else None
+        is_admin = token.is_admin() if token else False
+        if instance.is_public() or token_urn == instance.owner_urn or is_admin:
+            versions = instance.versions.all()
+        else:
+            versions = [v for v in instance.versions.all() if v.has_doi()]
 
         artifact_json = {
             "uuid": str(instance.uuid),
@@ -615,7 +615,7 @@ class ArtifactPatchSerializer(serializers.Serializer):
         patch = ArtifactPatch(
             validated_data["patch"], forced=_is_valid_force_request(self)
         )
-        diff = patch.apply(ArtifactSerializer(instance).data)
+        diff = patch.apply(ArtifactSerializer(instance, context=self.context).data)
         artifact_serializer = ArtifactSerializer(
             instance, data=diff, partial=True, context=self.context
         )
