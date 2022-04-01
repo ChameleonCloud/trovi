@@ -20,7 +20,7 @@ PyJWT = "^2.3.0"
 drf-spectacular = "^0.21.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
+pytest = "^7.1.1"
 flake8 = "^4.0.1"
 Faker = "^13.3.2"
 
