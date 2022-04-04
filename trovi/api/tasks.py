@@ -140,6 +140,9 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
             finished_at=timezone.now(),
             destination_urn=dest_backend.to_urn(),
         )
+        with transaction.atomic():
+            migration.artifact_version.contents_urn = dest_backend.to_urn()
+            migration.artifact_version.save()
 
         # New threads get their own DB connection which has to be manually closed
         db.connection.close()

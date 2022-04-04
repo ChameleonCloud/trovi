@@ -445,6 +445,18 @@ class ArtifactVersionViewSet(
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        description="Check the status of the most-recently queued "
+        "artifact version content migration",
+    ),
+    create=extend_schema(
+        description="Queue an artifact version's contents to be transferred "
+        "to a different storage backend. "
+        "One migration can be in progress at a time.",
+        responses={status.HTTP_202_ACCEPTED: ArtifactVersionMigrationSerializer},
+    ),
+)
 class MigrateArtifactVersionViewSet(
     NestedViewSetMixin,
     APIViewSet,
@@ -485,4 +497,4 @@ class MigrateArtifactVersionViewSet(
             )
         migration = latest_migrations.first()
         serializer = self.get_serializer(migration)
-        return serializer.data
+        return Response(status=status.HTTP_202_ACCEPTED, data=serializer.data)
