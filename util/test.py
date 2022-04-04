@@ -105,7 +105,7 @@ def fake_contents_urn() -> str:
 
 
 def fake_user_urn() -> str:
-    return f"urn:trovi:chameleon:{fake_email()}"
+    return f"urn:trovi:user:chameleon:{fake_email()}"
 
 
 def fake_project_urn() -> str:
@@ -153,7 +153,7 @@ artifact_don_quixote = Artifact(
     title="Evaluating Windmill-Based Threat Models",
     short_description="Are they, or aren't they, actually giants?",
     long_description="foo",
-    owner_urn="urn:trovi:chameleon:donquixote@rosinante.io",
+    owner_urn="urn:trovi:user:chameleon:donquixote@rosinante.io",
     visibility=Artifact.Visibility.PUBLIC,
     is_reproducible=True,
     repro_access_hours=3,
@@ -181,17 +181,17 @@ author_don_quixote_sancho = ArtifactAuthor(
 event_don_quixote_launch1 = ArtifactEvent(
     artifact_version=version_don_quixote_1,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:user:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch2 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:user:chameleon:dulcinea@toboso.gov",
 )
 event_don_quixote_launch3 = ArtifactEvent(
     artifact_version=version_don_quixote_2,
     event_type=ArtifactEvent.EventType.LAUNCH,
-    event_origin="urn:trovi:chameleon:dulcinea@toboso.gov",
+    event_origin="urn:trovi:user:chameleon:dulcinea@toboso.gov",
 )
 link_don_quixote_dataset = ArtifactLink(
     artifact_version=version_don_quixote_1,

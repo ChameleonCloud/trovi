@@ -99,6 +99,26 @@ class Artifact(models.Model):
                 raise DRFValidationError(str(e)) from e
         return super(Artifact, self).save(*args, **kwargs)
 
+    def is_public(self) -> bool:
+        return self.visibility == Artifact.Visibility.PUBLIC
+
+    def doi_versions(self) -> models.QuerySet:
+        """
+        Returns all versions whose contents are associated with a DOI
+
+        TODO not a great long-term solution. If there is ever a backend which allows
+             user-defined IDs or something like that, this is not a guaranteed
+             correct solution
+        """
+        return self.versions.filter(contents_urn__contains="zenodo")
+
+    def has_doi(self) -> bool:
+        """
+        True if this artifact has at least one version whose contents are associated
+        with a DOI
+        """
+        return self.doi_versions().exists()
+
 
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
@@ -129,9 +149,9 @@ class ArtifactVersion(models.Model):
         Determines if this version has a DOI (Digital Object Identifier), in which
         case it must be treated specially (cannot be deleted)
         """
-        # A Zenodo URN should look like "urn:trovi:zenodo:<doi>"
-        urn_parts = self.contents_urn.split(":")
-        return len(urn_parts) == 4 and urn_parts[2] == "zenodo"
+        # A Zenodo URN should look like "urn:trovi:contents:zenodo:<doi>"
+        urn_parts = self.contents_urn.split(":", maxsplit=4)
+        return len(urn_parts) == 5 and urn_parts[-2] == "zenodo"
 
     @staticmethod
     def generate_slug(instance: "ArtifactVersion", created: bool = False, **_):
@@ -188,6 +208,54 @@ class ArtifactVersion(models.Model):
             except ValueError as e:
                 raise DRFValidationError(str(e)) from e
         return super(ArtifactVersion, self).save(*args, **kwargs)
+
+
+class ArtifactVersionMigration(models.Model):
+    """
+    Holds metadata related to an Artifact Version storage migration
+    """
+
+    class MigrationBackends(models.TextChoices):
+        CHAMELEON = _("chameleon")
+        ZENODO = _("zenodo")
+
+    class MigrationStatus(models.TextChoices):
+        QUEUED = _("queued")
+        IN_PROGRESS = _("in_progress")
+        SUCCESS = _("success")
+        ERROR = _("error")
+
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, models.CASCADE, related_name="migrations"
+    )
+
+    # The current status of the migration
+    status = models.CharField(
+        choices=MigrationStatus.choices,
+        max_length=max(len(c) for c in MigrationStatus.values),
+        default=MigrationStatus.QUEUED,
+    )
+    # A more detailed description of the status
+    message = models.CharField(max_length=140)
+    # The percentage (0..1) completeness of the migration
+    message_ratio = models.FloatField(
+        default=0.0,
+        validators=[validators.MaxValueValidator(1), validators.MinValueValidator(0)],
+    )
+    # The storage backend to which the version will be migrated
+    backend = models.CharField(
+        choices=MigrationBackends.choices,
+        max_length=max(len(c) for c in MigrationBackends.values),
+        editable=False,
+    )
+    # The URN from which the version was migrated
+    source_urn = URNField(max_length=settings.URN_MAX_CHARS, editable=False)
+    # The URN to which the version has been migrated
+    destination_urn = URNField(max_length=settings.URN_MAX_CHARS, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True)
 
 
 class ArtifactEvent(models.Model):

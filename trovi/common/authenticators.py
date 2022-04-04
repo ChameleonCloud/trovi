@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from rest_framework.authentication import BaseAuthentication
@@ -5,6 +6,8 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
+
+LOG = logging.getLogger(__name__)
 
 
 class TroviTokenAuthentication(BaseAuthentication):
@@ -34,7 +37,10 @@ class TroviTokenAuthentication(BaseAuthentication):
         # The token returned from here is attached to the relevant request object
         # The User model is omitted since all user data is embedded in the token
         # Authentication (token verification) is performed when the token is decoded
-        return None, JWT.from_jws(access_token)
+        token = JWT.from_jws(access_token)
+        if token:
+            LOG.debug(f"Authenticated user {token.to_urn()}")
+        return None, token
 
     def authenticate_header(self, _: Request) -> str:
         return "Bearer"

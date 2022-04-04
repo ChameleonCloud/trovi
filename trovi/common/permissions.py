@@ -1,11 +1,15 @@
+import logging
 from typing import Any
 
 from requests.structures import CaseInsensitiveDict
 from rest_framework import permissions, views
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
 from trovi.models import Artifact, ArtifactVersion
+
+LOG = logging.getLogger(__name__)
 
 
 class BaseScopedPermission(permissions.BasePermission):
@@ -27,6 +31,7 @@ class BaseScopedPermission(permissions.BasePermission):
     def has_permission(self, request: Request, view: views.View) -> bool:
         required_scopes = self.action_scope_map.get(request.method)
         token = JWT.from_request(request)
+        LOG.debug(f"Request requires scope: {required_scopes=}")
         if not token:
             return required_scopes == {JWT.Scopes.ARTIFACTS_READ}
         if required_scopes is None:
@@ -49,13 +54,21 @@ class ArtifactScopedPermission(BaseScopedPermission):
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
-        if not token:
-            return obj.visibility == Artifact.Visibility.PUBLIC
-        # If the authenticated user is not the artifact owner,
-        # they may not write to the artifact
-        if token.to_urn() != obj.owner_urn:
-            return not any(scope.is_write_scope() for scope in token.scope)
-        return True
+        if token:
+            token_urn = token.to_urn()
+        else:
+            token_urn = None
+        if token_urn == obj.owner_urn:
+            return True
+        else:
+            # If the authenticated user is not the artifact owner,
+            # they may not write to the artifact
+            LOG.debug(
+                f"Checking if non-owner {token_urn} requests write scope for {obj.uuid}"
+            )
+            required_scope = self.action_scope_map[request.method]
+            # Deny any non-owner users who are requesting writes
+            return not any(scope.is_write_scope() for scope in required_scope)
 
 
 class ArtifactVisibilityPermission(permissions.BasePermission):
@@ -66,17 +79,15 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
-        is_public = obj.visibility == Artifact.Visibility.PUBLIC
         token = JWT.from_request(request)
-        if not token or is_public:
-            return is_public
+        if obj.is_public():
+            return True
         sharing_key = request.query_params.get("sharing_key")
-        if sharing_key:
-            return sharing_key == obj.sharing_key
-        else:
-            # If the authenticated user owns the Artifact,
-            # then they may access the Artifact
-            return token.to_urn() == obj.owner_urn
+        if sharing_key and sharing_key == obj.sharing_key:
+            return True
+        # If the authenticated user owns the Artifact,
+        # then they may access the Artifact
+        return (token and token.to_urn() == obj.owner_urn) or obj.has_doi()
 
 
 class ArtifactVersionVisibilityPermission(permissions.BasePermission):
@@ -87,8 +98,12 @@ class ArtifactVersionVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
-        artifact_visibility = ArtifactVisibilityPermission()
-        return artifact_visibility.has_object_permission(request, view, obj.artifact)
+        if obj.artifact.is_public():
+            return True
+        else:
+            token = JWT.from_request(request)
+            token_urn = token.to_urn() if token else None
+            return obj.has_doi() or token_urn == obj.artifact.owner_urn
 
 
 class ArtifactVersionScopedPermission(permissions.BasePermission):
@@ -127,6 +142,8 @@ class ArtifactVersionMetricsVisibilityPermission(permissions.BasePermission):
         if not origin_jws:
             return False
         origin_token = JWT.from_jws(origin_jws)
+        if not origin_token:
+            raise AuthenticationFailed("Updating metrics requires an origin token")
         return origin_token.to_urn() == obj.artifact.owner_urn
 
 
@@ -142,6 +159,18 @@ class ArtifactVersionMetricsScopedPermission(permissions.BasePermission):
         """
         token = JWT.from_request(request)
         return JWT.Scopes.ARTIFACTS_WRITE_METRICS in token.scope
+
+
+class ArtifactVersionOwnershipPermission(permissions.BasePermission):
+    """
+    Determines if a user is the owner of the parent artifact of an artifact version
+    """
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactVersion
+    ) -> bool:
+        token = JWT.from_request(request)
+        return token and token.to_urn() == obj.artifact.owner_urn
 
 
 class BaseMetadataPermission(permissions.BasePermission):

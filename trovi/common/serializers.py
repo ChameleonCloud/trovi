@@ -45,8 +45,8 @@ class JsonPatchOperationSerializer(serializers.Serializer):
         required=True,
         write_only=True,
     )
-    from_ = JsonPointerField(write_only=True, required=False, max_length=50)
-    path = JsonPointerField(write_only=True, required=False, max_length=50)
+    from_ = JsonPointerField(write_only=True, required=False, max_length=140)
+    path = JsonPointerField(write_only=True, required=False, max_length=140)
     value = AnyField(write_only=True, required=False)
 
     op_arguments_map = {
@@ -143,6 +143,9 @@ def _validate_strict_schema(to_internal_value: Callable) -> Callable:
     """
 
     def wrapper(self: serializers.Serializer, data: dict[str, JSON]) -> dict[str, JSON]:
+        if not isinstance(data, dict):
+            # DRF validators should catch this later and throw the appropriate error
+            return data
         unknown = set(data) - set(field.field_name for field in self._writable_fields)
         if _is_valid_force_request(self):
             internal = to_internal_value(self, data)

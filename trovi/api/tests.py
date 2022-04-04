@@ -6,7 +6,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, SimpleTestCase
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
@@ -22,6 +22,7 @@ from trovi.api.urls import (
     CreateArtifactVersion,
     DeleteArtifactVersion,
     IncrArtifactVersionMetrics,
+    MigrateArtifactVersion,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
@@ -36,11 +37,16 @@ from util.test import (
     version_don_quixote_1,
     version_don_quixote_2,
 )
+from util.types import DummyRequest
 
 
-class APITestCase(TestCase):
+class APITest(SimpleTestCase):
     renderer = JSONRenderer()
     maxDiff = None
+
+    def get_test_context(self):
+        request = DummyRequest(data={}, auth=JWT.from_jws(self.get_test_token()))
+        return {"request": request, "view": None}
 
     @timed_lru_cache(timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
     def get_test_token(self, scope: str = None) -> str:
@@ -135,6 +141,11 @@ class APITestCase(TestCase):
             scopes=[JWT.Scopes.ARTIFACTS_WRITE_METRICS],
         )
 
+    def migrate_artifact_version_path(self, artifact_uuid: str, version_slug: str):
+        return self.authenticate_url(
+            reverse(MigrateArtifactVersion, args=[artifact_uuid, version_slug])
+        )
+
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
         self.assertJSONEqual(
             json.dumps(serializers.ModelSerializer(actual).data),
@@ -144,7 +155,9 @@ class APITestCase(TestCase):
     def assertAPIResponseEqual(self, response: dict, model: serializers.Serializer):
         rendered = self.renderer.render(JsonResponse(model.data).content)
         as_dict = json.loads(json.loads(rendered))
-        self.assertDictContainsSubset(response, as_dict)
+        self.assertDictContainsSubset(
+            response, as_dict, f"{rendered}\n-----------\n{as_dict}"
+        )
 
     def assertDictContainsSubset(self, d1: dict, d2: dict, msg: str = None):
         """
@@ -160,16 +173,16 @@ class APITestCase(TestCase):
             self.assertIn(key, larger)
             large_value = larger[key]
             if isinstance(small_value, dict):
-                self.assertDictContainsSubset(small_value, large_value)
+                self.assertDictContainsSubset(small_value, large_value, msg=msg)
             elif isinstance(small_value, list):
                 small_dict = {i: o for i, o in enumerate(small_value)}
                 large_dict = {i: o for i, o in enumerate(large_value)}
-                self.assertDictContainsSubset(small_dict, large_dict)
+                self.assertDictContainsSubset(small_dict, large_dict, msg=msg)
             else:
-                self.assertEqual(small_value, large_value)
+                self.assertEqual(small_value, large_value, msg=msg)
 
 
-class TestListArtifacts(APITestCase):
+class TestListArtifacts(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.get(self.list_artifact_path())
@@ -198,22 +211,30 @@ class TestListArtifacts(APITestCase):
         response = self.client.get(self.list_artifact_path())
         as_json = json.loads(response.content)
 
-        visible_objects_count = Artifact.objects.filter(
-            visibility=Artifact.Visibility.PUBLIC
-        ).count()
+        public = Artifact.objects.filter(visibility=Artifact.Visibility.PUBLIC)
+        has_doi = Artifact.objects.filter(versions__contents_urn__contains="zenodo")
+        visible_objects_count = public.union(has_doi).count()
         self.assertEqual(visible_objects_count, len(as_json["artifacts"]))
         self.assertEqual(visible_objects_count, as_json["next"]["limit"])
 
     def test_visibility(self):
+        # This test is skipped for the empty tests
+        if Artifact.objects.count() == 0:
+            return
         private_artifacts = {
             str(a.uuid)
             for a in Artifact.objects.filter(visibility=Artifact.Visibility.PRIVATE)
         }
+        # Assure that there is at least one private artifact without a DOI
+        Artifact.objects.get(uuid=next(iter(private_artifacts), None)).versions.filter(
+            contents_urn__contains="zenodo"
+        ).delete()
         response = self.client.get(self.list_artifact_path())
         as_json = json.loads(response.content)
 
         for artifact in as_json["artifacts"]:
-            self.assertNotIn(artifact["uuid"], private_artifacts)
+            if not any("zenodo" in v["contents"]["urn"] for v in artifact["versions"]):
+                self.assertNotIn(artifact["uuid"], private_artifacts)
 
     def test_url_parameters(self):
         def after(url: str) -> str:
@@ -250,20 +271,12 @@ class TestListArtifacts(APITestCase):
                 # the same order. As such, we check against the sorted access_counts
                 # themselves
                 base = list(
-                    sorted(
-                        (
-                            sum(v.access_count for v in a.versions.all())
-                            for a in artifact_models
-                        ),
-                        reverse=True,
-                    )
+                    a.access_count for a in artifact_models.order_by("-access_count")
                 )
-                test = list(
-                    [
-                        sum(v["metrics"]["access_count"] for v in a["versions"])
-                        for a in body["artifacts"]
-                    ]
-                )
+                test = [
+                    Artifact.objects.get(uuid=a["uuid"]).access_count
+                    for a in body["artifacts"]
+                ]
             else:
                 base = []
                 test = [1]
@@ -291,11 +304,14 @@ class TestListArtifacts(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Test sharing key
+        # This test is skipped for the empty list
+        if Artifact.objects.count() == 0:
+            return
         a_private_artifact = Artifact.objects.filter(
             visibility=Artifact.Visibility.PRIVATE
         ).first()
+        a_private_artifact.versions.filter(contents_urn__contains="zenodo").delete()
         if not a_private_artifact:
-            # Create a dummy to generate a sharing key
             a_private_artifact = Artifact()
         for sort_param in ("date", "access_count"):
             response = self.client.get(
@@ -306,9 +322,10 @@ class TestListArtifacts(APITestCase):
             if len(body.get("artifacts", [])) > 0:
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 test_sorted(body, sort_param)
-                privs = [a for a in body["artifacts"] if a["visibility"] == "private"]
-                self.assertEqual(len(privs), 1)
-                self.assertEqual(privs[0]["uuid"], str(a_private_artifact.uuid))
+                privs = {
+                    a["uuid"] for a in body["artifacts"] if a["visibility"] == "private"
+                }
+                self.assertIn(str(a_private_artifact.uuid), privs)
             else:
                 # We don't use 'after' here so there should be no 404
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -322,16 +339,23 @@ class TestListArtifacts(APITestCase):
         as_json = response.json()
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
-        artifacts = as_json["artifacts"]
+        artifacts = set(a["uuid"] for a in as_json["artifacts"])
 
         public = [
             str(artifact.uuid)
             for artifact in Artifact.objects.filter(
                 visibility=Artifact.Visibility.PUBLIC
-            ).order_by("-updated_at")
+            )
         ]
 
-        self.assertListEqual(public, [a["uuid"] for a in artifacts])
+        # Ensures all public artifacts are always listed
+        # DOI artifacts and private artifacts are covered by test_list_length
+        for artifact in public:
+            self.assertIn(
+                artifact,
+                artifacts,
+                msg=f"Public artifact {artifact} not included in response",
+            )
 
 
 class TestListArtifactsEmpty(TestListArtifacts):
@@ -341,15 +365,19 @@ class TestListArtifactsEmpty(TestListArtifacts):
         Artifact.objects.all().delete()
 
 
-class TestGetArtifact(APITestCase):
+class TestGetArtifact(TestCase, APITest):
     def test_get_artifact(self):
+        artifact_don_quixote.refresh_from_db()
         # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
 
-        self.assertAPIResponseEqual(as_json, ArtifactSerializer(artifact_don_quixote))
+        self.assertAPIResponseEqual(
+            as_json,
+            ArtifactSerializer(artifact_don_quixote, context=self.get_test_context()),
+        )
 
     def test_get_private_artifact(self):
         # TODO
@@ -368,14 +396,13 @@ class TestGetArtifact(APITestCase):
         pass
 
     def test_sharing_key_in_response(self):
+        artifact_don_quixote.refresh_from_db()
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = response.json()
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
         self.assertNotIn("sharing_key", as_json)
 
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save(update_fields=["owner_urn"])
 
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
@@ -384,7 +411,7 @@ class TestGetArtifact(APITestCase):
         self.assertIn("sharing_key", as_json)
 
 
-class TestCreateArtifact(APITestCase):
+class TestCreateArtifact(TestCase, APITest):
     allowed_tag1 = "!!CreateArtifactTag1!!"
     allowed_tag2 = "!!CreateArtifactTag2!!"
 
@@ -460,7 +487,9 @@ class TestCreateArtifact(APITestCase):
         # TODO test that automatic fields are created properly
         model = Artifact.objects.get(uuid=response_body["uuid"])
         new_artifact["versions"] = [new_artifact.pop("version")]
-        self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
+        self.assertAPIResponseEqual(
+            new_artifact, ArtifactSerializer(model, context=self.get_test_context())
+        )
 
     def test_request_schema(self):
         # TODO
@@ -520,10 +549,12 @@ class TestCreateArtifact(APITestCase):
         self.assertEqual(qs.count(), 1)
         model = qs.first()
         new_artifact["versions"] = [new_artifact.pop("version")]
-        self.assertAPIResponseEqual(new_artifact, ArtifactSerializer(model))
+        self.assertAPIResponseEqual(
+            new_artifact, ArtifactSerializer(model, context=self.get_test_context())
+        )
 
 
-class TestUpdateArtifact(APITestCase):
+class TestUpdateArtifact(TestCase, APITest):
     def get_patch(self) -> dict:
         return {
             "patch": [
@@ -569,16 +600,16 @@ class TestUpdateArtifact(APITestCase):
         artifact_don_quixote.refresh_from_db()
         # Cheekily add the test user as an author for Don Quixote,
         # so that we may write to it
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save()
 
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is
         # handled by json-patch
         artifact_don_quixote.refresh_from_db()
-        old_donq_as_json = ArtifactSerializer(artifact_don_quixote).data
+        old_donq_as_json = ArtifactSerializer(
+            artifact_don_quixote, context=self.get_test_context()
+        ).data
 
         patch = self.get_patch()
 
@@ -654,6 +685,7 @@ class TestUpdateArtifact(APITestCase):
         old_donq_as_json.pop("tags")
         new_donq_as_json.pop("tags")
         new_donq_as_json.pop("sharing_key", None)
+        old_donq_as_json.pop("sharing_key", None)
         old_donq_as_json["authors"] = [
             a for a in old_donq_as_json["authors"] if a != target_author
         ]
@@ -700,7 +732,7 @@ class TestUpdateArtifact(APITestCase):
         self.test_update_artifact(forced=True)
 
 
-class TestCreateArtifactVersion(APITestCase):
+class TestCreateArtifactVersion(TestCase, APITest):
     example_version = {
         "contents": {
             "urn": "urn:trovi:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
@@ -801,7 +833,7 @@ class TestCreateArtifactVersion(APITestCase):
         pass
 
 
-class TestDeleteArtifactVersion(APITestCase):
+class TestDeleteArtifactVersion(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.delete(
@@ -812,9 +844,7 @@ class TestDeleteArtifactVersion(APITestCase):
             self.fail(e)
 
     def test_delete_artifact_version(self):
-        artifact_don_quixote.owner_urn = (
-            f"urn:trovi:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        )
+        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
@@ -872,7 +902,7 @@ class TestDeleteArtifactVersion(APITestCase):
         pass
 
 
-class TestIncrArtifactVersionMetrics(APITestCase):
+class TestIncrArtifactVersionMetrics(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.put(

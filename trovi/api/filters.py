@@ -89,7 +89,9 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
             shared_with = Artifact.objects.none()
         owner_of = private.filter(owner_urn=owner_urn)
 
-        return (public | shared_with | owner_of).distinct()
+        has_zenodo = queryset.filter(versions__contents_urn__contains="zenodo")
+
+        return (public | shared_with | owner_of | has_zenodo).distinct()
 
     def get_schema_operation_parameters(
         self, view: views.View

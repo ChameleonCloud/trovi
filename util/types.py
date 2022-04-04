@@ -27,7 +27,7 @@ class APISerializable(Protocol):
 APIObject = Dict[str, Union[APISerializable, JSON]]
 
 # Dumb type used to modify request bodies
-DummyRequest = namedtuple("DummyRequest", ["data"])
+DummyRequest = namedtuple("DummyRequest", ["data", "auth"])
 
 ReadOnlyBuffer = bytes
 WriteableBuffer = Union[bytearray, memoryview, mmap.mmap]
