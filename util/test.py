@@ -5,7 +5,6 @@ having to reference dicts with strings repeatedly in tests.
 """
 import datetime
 import logging
-import os
 import random
 from typing import Union, Optional, Iterable, Any
 from uuid import uuid4

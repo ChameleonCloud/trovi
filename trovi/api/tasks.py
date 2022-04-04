@@ -117,7 +117,7 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
                 try:
                     chunk = source_backend.read(settings.FILE_UPLOAD_MAX_MEMORY_SIZE)
                 except IOError:
-                    error_handler.handle_error(f"Error reading from source")
+                    error_handler.handle_error("Error reading from source")
                     return
 
                 try:
