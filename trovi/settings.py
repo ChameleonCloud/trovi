@@ -42,7 +42,7 @@ SECURE_SSL_REDIRECT = False
 # Tells Django that connections with X-Forwarded-Proto: https are secure
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Don't require users to end URLs with a slash
-APPEND_SLASH = True
+APPEND_SLASH = False
 
 TROVI_FQDN = os.getenv("TROVI_FQDN", "localhost")
 TROVI_PORT = os.getenv("TROVI_PORT", "8808")

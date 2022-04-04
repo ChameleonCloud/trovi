@@ -278,24 +278,10 @@ class ZenodoBackend(StorageBackend):
         self.content_id = res_json.get("doi")
 
     def to_record_url(self) -> str:
-        record = self.to_record()
+        record = self.to_record(self.content_id)
         return f"{settings.ZENODO_URL}/record/{record}"
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
-        # Legacy archives will be archive.zip, so we have to determine which is right
-        record_url = self.to_record_url()
-        tar_url = f"{record_url}/files/archive.tar.gz?download=1"
-        zip_url = f"{record_url}/files/archive.zip?download=1"
-
-        # See if the tar archive exists
-        tar_response = requests.head(tar_url)
-        if tar_response.ok:
-            download_url = tar_url
-        else:
-            download_url = zip_url
         return HttpDownloadLink(
-            url=download_url,
-            headers={},
-            method="GET",
-            exp=datetime.max,
+            url=self.to_record_url(), headers={}, method="GET", exp=datetime.max
         )

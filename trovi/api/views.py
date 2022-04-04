@@ -13,7 +13,7 @@ from drf_spectacular.utils import (
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound
-from rest_framework.parsers import JSONParser, FileUploadParser
+from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
@@ -48,7 +48,10 @@ from trovi.common.permissions import (
     AdminPermission,
     ArtifactVersionMetricsVisibilityPermission,
     ArtifactVersionOwnershipPermission,
+<<<<<<< HEAD
     BaseStoragePermission,
+=======
+>>>>>>> 669d32e (Trovi 2.0: MigrateArtifactVersion API and Zenodo backend (#30))
 )
 from trovi.models import Artifact, ArtifactVersion
 from trovi.storage.serializers import StorageRequestSerializer
@@ -446,39 +449,7 @@ class ArtifactVersionViewSet(
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @action(
-        methods=["get"],
-        detail=True,
-        url_name="contents",
-        serializer_class=StorageRequestSerializer,
-        permission_classes=[BaseStoragePermission | AdminPermission],
-        parser_classes=[FileUploadParser],
-    )
-    def contents(
-        self, request: Request, parent_lookup_artifact: str, slug__iexact: str
-    ) -> Response:
-        """
-        Faster proxy for /contents/?urn=<urn>
 
-        Rather than searching by URN, we grab the contents directly from the object
-        """
-        return mixins.RetrieveModelMixin.retrieve(
-            self, request, parent_lookup_artifact, slug__iexact
-        )
-
-
-@extend_schema_view(
-    list=extend_schema(
-        description="Check the status of the most-recently queued "
-        "artifact version content migration",
-    ),
-    create=extend_schema(
-        description="Queue an artifact version's contents to be transferred "
-        "to a different storage backend. "
-        "One migration can be in progress at a time.",
-        responses={status.HTTP_202_ACCEPTED: ArtifactVersionMigrationSerializer},
-    ),
-)
 class MigrateArtifactVersionViewSet(
     NestedViewSetMixin,
     APIViewSet,
@@ -511,7 +482,11 @@ class MigrateArtifactVersionViewSet(
     lookup_value_regex = "[^/]+"
 
     def list(self, request: Request, *args, **kwargs) -> Response:
+<<<<<<< HEAD
         version = self.get_object()
+=======
+        version = self.get_queryset().first()
+>>>>>>> 669d32e (Trovi 2.0: MigrateArtifactVersion API and Zenodo backend (#30))
         latest_migrations = version.migrations.order_by("-created_at")
         if not latest_migrations.exists():
             raise NotFound(
@@ -519,4 +494,8 @@ class MigrateArtifactVersionViewSet(
             )
         migration = latest_migrations.first()
         serializer = self.get_serializer(migration)
+<<<<<<< HEAD
         return Response(status=status.HTTP_202_ACCEPTED, data=serializer.data)
+=======
+        return serializer.data
+>>>>>>> 669d32e (Trovi 2.0: MigrateArtifactVersion API and Zenodo backend (#30))

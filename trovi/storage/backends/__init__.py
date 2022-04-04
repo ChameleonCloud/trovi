@@ -56,5 +56,15 @@ def get_backend(
         )
     if name == "git":
         return GitBackend(name, content_type, content_id)
+    elif name == "zenodo":
+        if not version:
+            # Create a dummy version so Zenodo has an artifact to access metadata from
+            version = ArtifactVersion(
+                artifact=artifact,
+                contents_urn="urn:trovi:contents:chameleon:dummy",
+            )
+        return ZenodoBackend(
+            name, version, content_type=content_type, content_id=content_id
+        )
     else:
         raise ValidationError(f"Unknown storage backend: {name}")
