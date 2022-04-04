@@ -73,7 +73,7 @@ class StorageRequestSerializer(serializers.Serializer):
 
         file = validated_data["file"]
         with backend:
-            backend.write(file)
+            backend.write(file.file.read())
 
         return backend
 

@@ -12,7 +12,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.exceptions import MethodNotAllowed, NotFound
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -36,6 +36,7 @@ from trovi.api.serializers import (
     ArtifactPatchSerializer,
     ArtifactSerializer,
     ArtifactVersionMetricsSerializer,
+    ArtifactVersionMigrationSerializer,
 )
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
@@ -46,6 +47,7 @@ from trovi.common.permissions import (
     ArtifactVersionMetricsScopedPermission,
     AdminPermission,
     ArtifactVersionMetricsVisibilityPermission,
+    ArtifactVersionOwnershipPermission,
 )
 from trovi.models import Artifact, ArtifactVersion
 
@@ -194,7 +196,7 @@ class ArtifactViewSet(
         TODO ?diff returns output in diff format
     """
 
-    queryset = Artifact.objects.all()
+    queryset = Artifact.objects.all().prefetch_related()
     serializer_class = ArtifactSerializer
     patch_serializer_class = ArtifactPatchSerializer
     parser_classes = [JSONParser]
@@ -441,3 +443,46 @@ class ArtifactVersionViewSet(
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MigrateArtifactVersionViewSet(
+    NestedViewSetMixin,
+    APIViewSet,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+):
+    """
+    POST /artifacts/<uuid>/versions/<slug>/migration
+    Migrate an ArtifactVersion's contents to a different Storage Backend.
+
+    Request body:
+    * backend: the name of the Storage Backend to migrate to (e.g., "zenodo")
+
+    Response: 202 Accepted
+    {
+      "status": "queued",
+      "message": "Submitted",
+      "message_ratio": 0.0,
+    }
+    """
+
+    queryset = ArtifactVersion.objects.all()
+    parser_classes = [JSONParser]
+    serializer_class = ArtifactVersionMigrationSerializer
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [
+        (ArtifactVersionOwnershipPermission & ArtifactVersionScopedPermission)
+        | AdminPermission,
+    ]
+    lookup_value_regex = "[^/]+"
+
+    def list(self, request: Request, *args, **kwargs) -> Response:
+        version = self.get_queryset().first()
+        latest_migrations = version.migrations.order_by("-created_at")
+        if not latest_migrations.exists():
+            raise NotFound(
+                f"No existing migrations for {version.artifact.uuid}/{version.slug}"
+            )
+        migration = latest_migrations.first()
+        serializer = self.get_serializer(migration)
+        return serializer.data
