@@ -15,8 +15,8 @@ from rest_framework.exceptions import (
 
 from trovi.api.patches import ArtifactPatch
 from trovi.api.tasks import (
-    artifact_version_migration_executor,
     migrate_artifact_version,
+    artifact_version_migration_executor,
 )
 from trovi.common.exceptions import ConflictError, InvalidToken
 from trovi.common.serializers import (

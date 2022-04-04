@@ -18,7 +18,6 @@ python-keycloak-client = "^0.2.3"
 drf-extensions = "^0.7.1"
 PyJWT = "^2.3.0"
 drf-spectacular = "^0.21.1"
-requests-futures = "^1.0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import collections
 import io
 import logging
-import threading
-import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from typing import Hashable, Optional
 
 from trovi.storage.links.git import GitDownloadLink
@@ -31,21 +27,8 @@ class StorageBackend(io.BufferedIOBase, ABC):
     # Boolean flag to prevent redundant network round trips for closed artifacts
     # None means it hasn't been checked yet.
     _closed = None
-    # The size, in bytes, of the entire artifact
-    # None means it hasn't been checked yet
-    _size = None
-    # The number of segments (fragments, chunks, etc.) that make up the artifact
-    _written_segments = 0
-    # Pointer to the next segment that will be written
-    _next_segment = 0
-    # The maximum number of segments an artifact can have
-    MAX_SEGMENTS = (1 << 64) - 1
 
-    # Maps content identifiers to locks. Contents should only be allowed to be
-    # read or written by one handle at a time.
-    # This variable should _exclusively_ be accessed statically.
-    # TODO this is a memory leak
-    content_locks = defaultdict(threading.Lock)
+    bytes_read = 0
 
     def __init__(
         self,
@@ -65,6 +48,7 @@ class StorageBackend(io.BufferedIOBase, ABC):
         self.name = name
         self.content_id = content_id
         self.content_type = content_type
+        self.buffer = bytes()
 
     def to_urn(self) -> str:
         """
@@ -87,19 +71,19 @@ class StorageBackend(io.BufferedIOBase, ABC):
         return False
 
     def readable(self) -> bool:
-        return not self.closed
+        return not self.closed and self.bytes_read < len(self.buffer)
 
     @abstractmethod
-    def update_size(self) -> int:
+    def update_length(self) -> int:
         """
         Fetches the size, in bytes, of the artifact in storage. If the artifact
         hasn't been stored yet, this should return 0.
         """
 
     def __len__(self) -> int:
-        if self._size is None:
-            self._size = self.update_size()
-        return self._size
+        if not self.buffer:
+            return self.update_length()
+        return len(self.buffer)
 
     def __bool__(self) -> bool:
         return True
@@ -117,9 +101,10 @@ class StorageBackend(io.BufferedIOBase, ABC):
         """
         Performs setup and acquires a lock for the content identifier
         """
-        if not self.content_id:
+        if self.content_id:
+            self.download()
+        else:
             self.content_id = self.generate_content_id()
-        self.__class__.content_locks[self.content_id].acquire()
 
     @abstractmethod
     def cleanup(self):
@@ -136,13 +121,16 @@ class StorageBackend(io.BufferedIOBase, ABC):
         error = None
         try:
             self.cleanup()
-        except Exception as error:
+        except Exception as e:
             LOG.error(f"StorageBackend failed cleanup: {str(error)}")
+            error = e
         finally:
             self._closed = True
-            self.__class__.content_locks[self.content_id].release()
             if error:
                 raise error
+
+        if self.buffer:
+            self.upload()
 
     @abstractmethod
     def update_closed_status(self) -> bool:
@@ -153,8 +141,6 @@ class StorageBackend(io.BufferedIOBase, ABC):
 
     @property
     def closed(self) -> bool:
-        if not self._closed:
-            self._closed = self.update_closed_status()
         return self._closed
 
     def __enter__(self) -> "StorageBackend":
@@ -165,46 +151,31 @@ class StorageBackend(io.BufferedIOBase, ABC):
         self.close()
 
     @abstractmethod
-    def write_segment(self, buffer: ReadableBuffer) -> int:
+    def download(self):
         """
-        Writes a segment to the remote storage. Returns the number of bytes written.
+        Downloads remote bytes into local buffer
         """
+
+    @abstractmethod
+    def upload(self):
+        """
+        Uploads local buffer to remote storage
+        """
+
+    def read(self, __size: int | None = ...) -> bytes:
+        if not self.buffer:
+            self.download()
+        chunk = self.buffer[self.bytes_read : __size]
+        self.bytes_read = min(len(self.buffer), self.bytes_read + __size)
+        return chunk
 
     def write(self, buffer: ReadableBuffer) -> int:
         if not self.writable():
             raise IOError(
                 f"Attempted write to unwritable artifact content: {self.to_urn()}"
             )
-        write_size = self.write_segment(buffer)
-        if self._next_segment == self.MAX_SEGMENTS:
-            raise ValueError(f"Wrote too many segments ({self.to_urn()})")
-        self._next_segment += 1
-        if self._size is None:
-            self._size = 0
-        self._size += write_size
-        self._written_segments += 1
-        return write_size
-
-    def tell(self) -> int:
-        return self._next_segment
-
-    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
-        if not self.seekable():
-            raise LookupError(f"Storage backend {self.name} is not seekable.")
-        if whence == io.SEEK_SET:
-            target = offset
-        elif whence == io.SEEK_CUR:
-            target = self._next_segment + offset
-        elif whence == io.SEEK_END:
-            target = len(self) + offset
-        else:
-            raise ValueError(f"Unknown 'whence' argument: {whence}")
-        if target >= self.MAX_SEGMENTS or target < 0:
-            raise ValueError(
-                f"Tried to seek to invalid position {target} ({self.to_urn()})"
-            )
-        self._next_segment = target
-        return self._next_segment
+        self.buffer += buffer
+        return len(buffer)
 
     def get_links(self) -> list[dict[str, JSON]]:
         """
@@ -240,29 +211,3 @@ class StorageBackend(io.BufferedIOBase, ABC):
         remote cannot be resolved.
         """
         return None
-
-
-class ContentsProxy:
-    def __init__(self):
-        # we need something that we can read from one end and write to another,
-        # a deque suffices.
-        self._deque = collections.deque()
-        self._closed = False
-
-    def write(self, data: ReadableBuffer) -> int:
-        self._deque.appendleft(data)
-        return len(data)
-
-    def close(self):
-        self._closed = True
-
-    def closed(self) -> bool:
-        return self._closed
-
-    def gen(self) -> bytes:
-        # Ensure we flush the deque after close by waiting until it's empty
-        while not self._closed or len(self._deque):
-            if len(self._deque):
-                yield self._deque.pop()
-            else:
-                time.sleep(0.1)

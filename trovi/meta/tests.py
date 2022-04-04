@@ -1,16 +1,17 @@
 import json
 
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.reverse import reverse
 
-from trovi.api.tests import APITestCase
+from trovi.api.tests import APITest
 from trovi.common.tokens import JWT
 from trovi.models import ArtifactTag
 
 TAGS_PATH = reverse("Tags")
 
 
-class TestListTags(APITestCase):
+class TestListTags(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.get(self.authenticate_url(TAGS_PATH))
@@ -32,7 +33,7 @@ class TestListTags(APITestCase):
         )
 
 
-class TestCreateTag(APITestCase):
+class TestCreateTag(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.post(self.authenticate_url(TAGS_PATH))

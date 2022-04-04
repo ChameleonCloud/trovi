@@ -45,7 +45,8 @@ def get_backend(
         if not version:
             # Create a dummy version so Zenodo has an artifact to access metadata from
             version = ArtifactVersion(
-                artifact=artifact, contents_urn="urn:trovi:contents:chameleon:dummy"
+                artifact=artifact,
+                contents_urn="urn:trovi:contents:chameleon:dummy",
             )
         return ZenodoBackend(
             name, version, content_type=content_type, content_id=content_id

@@ -5,17 +5,16 @@ import hmac
 import uuid
 from datetime import datetime
 from typing import Hashable, Any, Mapping, Optional
+from urllib.parse import urljoin
 
 import keystoneauth1.exceptions
 from django.conf import settings
 from keystoneauth1.adapter import Adapter
 from keystoneauth1.identity.v3 import Password
 from keystoneauth1.session import Session
-from rest_framework import status
 
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
-from util.types import ReadableBuffer
 
 
 class SwiftBackend(StorageBackend):
@@ -25,12 +24,7 @@ class SwiftBackend(StorageBackend):
     TODO reaper which finds and deletes all dangling objects
     """
 
-    MAX_SEGMENT_URL_DIGITS = 8
-    MAX_SEGMENTS = 1000
-
     _keystone_adapter = None
-
-    _bytes_read = 0
 
     def __init__(
         self,
@@ -48,7 +42,11 @@ class SwiftBackend(StorageBackend):
         **kwargs,
     ):
         super(SwiftBackend, self).__init__(
-            name, content_type, content_id=content_id, *args, **kwargs
+            name,
+            content_type,
+            content_id=content_id,
+            *args,
+            **kwargs,
         )
         self.keystone_endpoint = keystone_endpoint
         self.username = username
@@ -60,23 +58,23 @@ class SwiftBackend(StorageBackend):
         self.content_id = content_id
         self.adapter_kwargs = kwargs
 
-        self.container_url = f"/{self.container}"
+        self.buffer = bytes()
+
+        self.container_path = f"/{self.container}"
 
     @property
-    def object_url(self) -> str:
+    def object_path(self) -> str:
         if not self.content_id:
             raise ValueError("Cannot make calls for unknown object.")
-        return f"{self.container_url}/{self.content_id}"
+        return f"{self.container_path}/{self.content_id}"
 
     @property
-    def segment_url(self) -> str:
-        return (
-            f"{self.object_url}/{str(self.tell()).zfill(self.MAX_SEGMENT_URL_DIGITS)}"
-        )
+    def object_url(self):
+        return urljoin(self.keystone.get_endpoint(), self.object_path)
 
     def get_object_metadata(self) -> Mapping[str, Any]:
         try:
-            return self.keystone.head(self.object_url).headers
+            return self.keystone.head(self.object_path).headers
         except keystoneauth1.exceptions.NotFound:
             return {}
 
@@ -85,39 +83,18 @@ class SwiftBackend(StorageBackend):
         while True:
             try:
                 new_uuid = uuid.uuid4()
-                self.keystone.head(f"{self.container_url}/{new_uuid}")
+                self.keystone.head(f"{self.container_path}/{new_uuid}")
             except keystoneauth1.exceptions.NotFound:
                 return new_uuid
 
-    def update_size(self) -> int:
+    def update_length(self) -> int:
         if not self.content_id:
             return 0
         metadata = self.get_object_metadata()
         return metadata.get("Content-Length", 0)
 
-    def update_closed_status(self) -> bool:
-        metadata = self.get_object_metadata()
-        return bool(metadata)
-
     def cleanup(self):
-        # Upload the manifest which declares the Dynamic Large Object as complete
-        # TODO on failure, delete unfinished content
-
-        # We don't want to overwrite existing manifests
-        if self.closed:
-            return
-
-        response = self.keystone.put(
-            self.object_url,
-            headers={
-                "X-Object-Manifest": self.object_url,
-                "content-type": self.content_type,
-            },
-            data="",
-        )
-
-        if response.status_code != status.HTTP_201_CREATED:
-            raise IOError(f"Failed to create large object manifest for {self.to_urn()}")
+        pass
 
     @property
     def keystone(self) -> Adapter:
@@ -141,7 +118,7 @@ class SwiftBackend(StorageBackend):
         return self._keystone_adapter
 
     def seekable(self) -> bool:
-        return True
+        return False
 
     def writable(self) -> bool:
         if not self.content_id:
@@ -149,42 +126,34 @@ class SwiftBackend(StorageBackend):
         else:
             return not self.closed
 
-    def write_segment(self, buffer: ReadableBuffer) -> int:
+    def upload(self):
         response = self.keystone.put(
-            self.segment_url,
-            headers={"content-type": "application/octet-stream"},
-            data=buffer,
-        )
-
-        if response.status_code != status.HTTP_201_CREATED:
-            raise IOError(
-                f"Failed to upload segment {self.tell()} for content {self.to_urn()}"
-            )
-
-        return len(buffer)
-
-    def read(self, __size: int | None = ...) -> bytes:
-        start = self._bytes_read
-        end = min(start + __size, len(self))
-        response = self.keystone.get(
-            self.segment_url,
+            self.object_path,
             headers={
                 "content-type": "application/octet-stream",
-                "range": f"bytes={start}-{end}",
+                "content-length": str(len(self.buffer)),
+            },
+            data=self.buffer,
+        )
+
+        if not response.ok:
+            raise IOError(f"Failed to upload to swift {response.status_code}")
+
+    def download(self):
+        response = self.keystone.get(
+            self.object_path,
+            headers={
+                "accept": "application/octet-stream",
             },
         )
 
-        if response.status_code != status.HTTP_200_OK:
-            raise IOError(
-                f"Failed to read from offset {start} for content {self.to_urn()}"
-            )
+        if not response.ok:
+            raise IOError(f"Failed to read content {self.to_urn()}")
 
-        self._bytes_read = end
-
-        return response.content
+        self.buffer = response.content
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
-        path = self.object_url
+        path = self.object_path
         endpoint = self.keystone.get_endpoint()
         account = endpoint[endpoint.index("/v1/") :]
         exp = int(

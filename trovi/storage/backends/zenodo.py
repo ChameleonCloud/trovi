@@ -1,16 +1,19 @@
+from __future__ import annotations
+
 import logging
 import re
 from datetime import datetime
-from typing import Hashable
+from typing import Optional
 
 import requests
 from django.conf import settings
-from requests_futures.sessions import FuturesSession
+from requests import Response
+from rest_framework import status
 from rest_framework.exceptions import ValidationError
 
 from trovi.models import ArtifactVersion
 from trovi.storage.backends import StorageBackend
-from trovi.storage.backends.base import ContentsProxy
+from trovi.storage.links.http import HttpDownloadLink
 from util.types import JSON, ReadableBuffer
 
 LOG = logging.getLogger(__name__)
@@ -68,8 +71,8 @@ class DepositionMetadata:
             title=artifact.title,
             description=artifact.short_description,
             creators=[
-                {"name": a.name, "affiliation": a.affiliation}
-                for a in list(artifact.authors.all())
+                {"name": a.full_name, "affiliation": a.affiliation}
+                for a in artifact.authors.all()
             ],
             upload_type="publication",
             publication_type="workingpaper",
@@ -98,83 +101,73 @@ class ZenodoBackend(StorageBackend):
                 "Cannot upload content to Zenodo "
                 "that is not associated with an artifact"
             )
-        self.contents_proxy = ContentsProxy()
-        self.on_close = lambda: None
-        # Important to use the requests-futures session b/c the requests library
-        # will attempt to consume the entire request body in a blocking operation.
-        # The requests-futures just makes it so every request gets put on
-        # its own thread, so we don't lock the main python thread.
-        self.session = FuturesSession()
         if not self.content_id:
             if version.has_doi():
                 self.content_id = version.contents_urn.split(":")[-1]
 
-    def update_size(self) -> int:
+    def update_length(self) -> int:
         if not self.content_id:
             return 0
-        files = self.get_files(self.content_id)
+        files = self.get_files()
         if not isinstance(files, list):
             raise IOError("Got invalid files from Zenodo")
         return sum(f["filesize"] for f in files)
 
-    def generate_content_id(self) -> Hashable:
-        raise ValueError("No way to do this without publishing")
+    def generate_content_id(self):
+        return None
 
-    def open(self):
+    def download(self):
+        files = self.get_files()
+        print(files)
+
+    def upload(self):
         meta = DepositionMetadata.from_version(self.version)
         if not self.content_id:
-            self.create_deposition(
-                meta,
-                file=self.contents_proxy.gen(),
-            )
+            self.create_deposition(meta, file=self.buffer)
         else:
-            self.new_deposition_version(
-                meta, self.content_id, self.contents_proxy.gen()
-            )
+            self.new_deposition_version(meta, self.content_id, self.buffer)
 
     def cleanup(self):
-        self.on_close()
-        self.contents_proxy.close()
-        self.session.close()
-
-    def update_closed_status(self) -> bool:
-        return self.contents_proxy.closed()
-
-    def write_segment(self, buffer: ReadableBuffer) -> int:
-        return self.contents_proxy.write(buffer)
+        pass
 
     def writable(self) -> bool:
         return not self.closed
 
-    @staticmethod
-    def to_record(doi: str) -> str:
-        if not doi:
+    def to_record(self) -> str:
+        if not self.content_id:
             raise ValueError("No DOI provided")
-        elif not re.match(r"10\.[0-9]+/zenodo\.[0-9]+$", doi):
+        elif not re.match(r"10\.[0-9]+/zenodo\.[0-9]+$", self.content_id):
             raise ValueError("DOI is invalid (wrong format)")
         else:
-            return doi.split(".")[-1]
+            return self.content_id.split(".")[-1]
 
-    def get_files(self, doi: str) -> JSON:
-        record = ZenodoBackend.to_record(doi)
+    def get_files(self) -> JSON:
+        record = self.to_record()
         res_json = self._make_request(self.Endpoint.FILE.format(record), method="GET")
-        LOG.debug(f"Fetched files for {doi}")
+        LOG.debug(f"Fetched files for {self.content_id}")
         return res_json.get("files")
 
-    def _make_request(self, path: str, **kwargs) -> dict[str, JSON]:
+    def _make_request(
+        self, path: str, raw: bool = False, **kwargs
+    ) -> dict[str, JSON] | None | Response:
         headers = kwargs.pop("headers", {"accept": "application/json"})
         if self.access_token:
-            headers["authorization"] = "Bearer {}".format(self.access_token)
+            headers["authorization"] = f"Bearer {self.access_token}"
         res = requests.request(
             method=kwargs.pop("method", "GET"),
-            url="{}/api/{}".format(settings.ZENODO_URL, path),
+            url=f"{settings.ZENODO_URL}/api/{path}",
             headers=headers,
             **kwargs,
         )
         if res.status_code > 299:
             LOG.error(res.text)
         res.raise_for_status()
-        return res.json() if res.status_code != 204 else None
+        if res.status_code == status.HTTP_204_NO_CONTENT:
+            return None
+        if raw:
+            return res
+        else:
+            return res.json()
 
     def create_deposition(
         self, metadata: "DepositionMetadata" = None, file: ReadableBuffer = None
@@ -189,25 +182,21 @@ class ZenodoBackend(StorageBackend):
         if not deposition_id:
             raise ValueError("Malformed response from Zenodo")
 
-        future = self.session.post(
+        self._make_request(
             self.Endpoint.FILE_UPLOAD.format(deposition_id),
+            method="POST",
             files={"file": ("archive.tar.gz", file, "application/tar+gz")},
         )
 
-        def pub():
-            if future.exception():
-                raise IOError("Error uploading file for new deposition")
-            LOG.debug("Uploaded file for record {}".format(deposition_id))
+        LOG.debug("Uploaded file for record {}".format(deposition_id))
 
-            res_json = self._make_request(
-                self.Endpoint.PUBLISH.format(deposition_id),
-                method="POST",
-            )
-            LOG.debug("Published record {}".format(deposition_id))
+        res_json = self._make_request(
+            self.Endpoint.PUBLISH.format(deposition_id),
+            method="POST",
+        )
+        LOG.debug("Published record {}".format(deposition_id))
 
-            self.content_id = res_json.get("doi")
-
-        self.on_close = pub
+        self.content_id = res_json.get("doi")
 
     def new_deposition_version(
         self,
@@ -265,29 +254,34 @@ class ZenodoBackend(StorageBackend):
             LOG.debug("Deleted file {} for record {}".format(f["id"], draft_record))
 
         # Upload file contents
-        future = self.session.post(
+        self._make_request(
             self.Endpoint.FILE_UPLOAD.format(draft_record),
+            method="POST",
             files={
                 "file": (
                     "archive.tar.gz",
-                    self.contents_proxy.gen(),
+                    self.buffer,
                     "application/tar+gz",
                 )
             },
         )
 
-        def pub():
-            if future.exception():
-                raise IOError("Error uploading file for new version")
-            LOG.debug("Uploaded file for record {}".format(draft_record))
+        LOG.debug("Uploaded file for record {}".format(draft_record))
 
-            # Publish draft
-            res_json = self._make_request(
-                self.Endpoint.PUBLISH.format(draft_record),
-                method="POST",
-            )
-            LOG.debug("Published record {}".format(draft_record))
+        # Publish draft
+        res_json = self._make_request(
+            self.Endpoint.PUBLISH.format(draft_record),
+            method="POST",
+        )
+        LOG.debug("Published record {}".format(draft_record))
 
-            self.content_id = res_json.get("doi")
+        self.content_id = res_json.get("doi")
 
-        self.on_close = pub
+    def to_record_url(self) -> str:
+        record = self.to_record(self.content_id)
+        return f"{settings.ZENODO_URL}/record/{record}"
+
+    def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
+        return HttpDownloadLink(
+            url=self.to_record_url(), headers={}, method="GET", exp=datetime.max
+        )

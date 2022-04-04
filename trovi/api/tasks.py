@@ -1,8 +1,10 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from inspect import Traceback
 from typing import Type
 
+from django import db
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -56,6 +58,31 @@ class ArtifactVersionMigrationErrorHandler:
             self.migration.save(update_fields=["status", "message"])
 
 
+def update_migration(
+    migration: ArtifactVersionMigration,
+    status: ArtifactVersionMigration.MigrationStatus = None,
+    message: str = None,
+    message_ratio: float = None,
+    destination_urn: str = None,
+    started_at: datetime = None,
+    finished_at: datetime = None,
+):
+    with transaction.atomic():
+        if status is not None:
+            migration.status = status
+        if message is not None:
+            migration.message = message
+        if message_ratio is not None:
+            migration.message_ratio = message_ratio
+        if destination_urn is not None:
+            migration.destination_urn = destination_urn
+        if started_at:
+            migration.started_at = started_at
+        if finished_at:
+            migration.finished_at = finished_at
+        migration.save()
+
+
 def migrate_artifact_version(migration: ArtifactVersionMigration):
     """
     Performs the task of migrating an artifact version to a different backend.
@@ -69,18 +96,21 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
     source_backend = get_backend(
         source_backend_name, content_id=source_id, version=migration.artifact_version
     )
-    dest_backend = get_backend(dest_backend_name, version=migration.artifact_version)
+    dest_backend = get_backend(
+        dest_backend_name,
+        version=migration.artifact_version,
+    )
     with ArtifactVersionMigrationErrorHandler(migration) as error_handler:
+        dest_backend.open()
+        # We want to throw first via the source backend
+        # so uploads are short-circuited
         with source_backend:
-            n_bytes = len(dest_backend)
-            if n_bytes < 1:
-                error_handler.handle_error("Empty source cannot be migrated.")
-                return
-
-            with transaction.atomic():
-                migration.message = f"Uploading to {dest_backend.name}"
-                migration.started_at = timezone.now()
-                migration.save()
+            n_bytes = len(source_backend)
+            update_migration(
+                migration,
+                message=f"Uploading to {dest_backend.name}",
+                started_at=timezone.now(),
+            )
             bytes_written = 0
 
             while source_backend.readable():
@@ -97,19 +127,22 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
                     return
 
                 bytes_written += write_size
-                with transaction.atomic():
-                    migration.message_ratio = bytes_written / n_bytes
-                    migration.save()
+                update_migration(migration, message_ratio=bytes_written / n_bytes)
+        update_migration(migration, message="Finalizing migration")
+        dest_backend.close()
 
         # Migration has finished
-        with transaction.atomic():
-            migration.status = migration_status.SUCCESS
-            migration.message = f"Uploaded to {dest_backend.to_urn()}"
-            migration.message_ratio = 1.0
-            migration.finished_at = timezone.now()
-            migration.destination_urn = dest_backend.to_urn()
-            migration.save()
-        source_backend.seek(0)
+        update_migration(
+            migration,
+            status=migration_status.SUCCESS,
+            message=f"Uploaded to {dest_backend.to_urn()}",
+            message_ratio=1.0,
+            finished_at=timezone.now(),
+            destination_urn=dest_backend.to_urn(),
+        )
+
+        # New threads get their own DB connection which has to be manually closed
+        db.connection.close()
 
 
 # The functions below handle events that could not execute properly due to a

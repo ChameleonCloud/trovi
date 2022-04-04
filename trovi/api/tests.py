@@ -6,7 +6,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.http import JsonResponse
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, SimpleTestCase
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
@@ -40,7 +40,7 @@ from util.test import (
 from util.types import DummyRequest
 
 
-class APITestCase(TestCase):
+class APITest(SimpleTestCase):
     renderer = JSONRenderer()
     maxDiff = None
 
@@ -182,7 +182,7 @@ class APITestCase(TestCase):
                 self.assertEqual(small_value, large_value, msg=msg)
 
 
-class TestListArtifacts(APITestCase):
+class TestListArtifacts(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.get(self.list_artifact_path())
@@ -365,7 +365,7 @@ class TestListArtifactsEmpty(TestListArtifacts):
         Artifact.objects.all().delete()
 
 
-class TestGetArtifact(APITestCase):
+class TestGetArtifact(TestCase, APITest):
     def test_get_artifact(self):
         artifact_don_quixote.refresh_from_db()
         # TODO verify random data
@@ -411,7 +411,7 @@ class TestGetArtifact(APITestCase):
         self.assertIn("sharing_key", as_json)
 
 
-class TestCreateArtifact(APITestCase):
+class TestCreateArtifact(TestCase, APITest):
     allowed_tag1 = "!!CreateArtifactTag1!!"
     allowed_tag2 = "!!CreateArtifactTag2!!"
 
@@ -554,7 +554,7 @@ class TestCreateArtifact(APITestCase):
         )
 
 
-class TestUpdateArtifact(APITestCase):
+class TestUpdateArtifact(TestCase, APITest):
     def get_patch(self) -> dict:
         return {
             "patch": [
@@ -732,7 +732,7 @@ class TestUpdateArtifact(APITestCase):
         self.test_update_artifact(forced=True)
 
 
-class TestCreateArtifactVersion(APITestCase):
+class TestCreateArtifactVersion(TestCase, APITest):
     example_version = {
         "contents": {
             "urn": "urn:trovi:contents:chameleon:108beeac-564f-4030-b126-ec4d903e680e"
@@ -833,7 +833,7 @@ class TestCreateArtifactVersion(APITestCase):
         pass
 
 
-class TestDeleteArtifactVersion(APITestCase):
+class TestDeleteArtifactVersion(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.delete(
@@ -902,7 +902,7 @@ class TestDeleteArtifactVersion(APITestCase):
         pass
 
 
-class TestIncrArtifactVersionMetrics(APITestCase):
+class TestIncrArtifactVersionMetrics(TestCase, APITest):
     def test_endpoint_works(self):
         try:
             base_response = self.client.put(
@@ -950,17 +950,3 @@ class TestIncrArtifactVersionMetrics(APITestCase):
     def test_increment_metrics_permissions(self):
         # TODO
         pass
-
-
-class TestMigrateArtifactVersion(APITestCase):
-    def test_endpoint_works(self):
-        try:
-            base_response = self.client.post(
-                self.migrate_artifact_version_path(
-                    str(artifact_don_quixote.uuid),
-                    version_don_quixote_1.slug,
-                )
-            )
-            self.assertIsNotNone(base_response)
-        except Exception as e:
-            self.fail(e)
