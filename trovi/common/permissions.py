@@ -3,6 +3,7 @@ from typing import Any
 
 from requests.structures import CaseInsensitiveDict
 from rest_framework import permissions, views
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
@@ -86,7 +87,7 @@ class ArtifactVisibilityPermission(permissions.BasePermission):
             return True
         # If the authenticated user owns the Artifact,
         # then they may access the Artifact
-        return token.to_urn() == obj.owner_urn or obj.has_doi()
+        return (token and token.to_urn() == obj.owner_urn) or obj.has_doi()
 
 
 class ArtifactVersionVisibilityPermission(permissions.BasePermission):
@@ -141,6 +142,8 @@ class ArtifactVersionMetricsVisibilityPermission(permissions.BasePermission):
         if not origin_jws:
             return False
         origin_token = JWT.from_jws(origin_jws)
+        if not origin_token:
+            raise AuthenticationFailed("Updating metrics requires an origin token")
         return origin_token.to_urn() == obj.artifact.owner_urn
 
 
@@ -167,7 +170,7 @@ class ArtifactVersionOwnershipPermission(permissions.BasePermission):
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
         token = JWT.from_request(request)
-        return token.to_urn() == obj.artifact.owner_urn
+        return token and token.to_urn() == obj.artifact.owner_urn
 
 
 class BaseMetadataPermission(permissions.BasePermission):

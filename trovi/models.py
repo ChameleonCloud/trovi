@@ -105,6 +105,10 @@ class Artifact(models.Model):
     def doi_versions(self) -> models.QuerySet:
         """
         Returns all versions whose contents are associated with a DOI
+
+        TODO not a great long-term solution. If there is ever a backend which allows
+             user-defined IDs or something like that, this is not a guaranteed
+             correct solution
         """
         return self.versions.filter(contents_urn__contains="zenodo")
 
@@ -146,7 +150,7 @@ class ArtifactVersion(models.Model):
         case it must be treated specially (cannot be deleted)
         """
         # A Zenodo URN should look like "urn:trovi:contents:zenodo:<doi>"
-        urn_parts = self.contents_urn.split(":")
+        urn_parts = self.contents_urn.split(":", maxsplit=4)
         return len(urn_parts) == 5 and urn_parts[-2] == "zenodo"
 
     @staticmethod

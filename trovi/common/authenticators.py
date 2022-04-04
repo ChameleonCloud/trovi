@@ -38,7 +38,8 @@ class TroviTokenAuthentication(BaseAuthentication):
         # The User model is omitted since all user data is embedded in the token
         # Authentication (token verification) is performed when the token is decoded
         token = JWT.from_jws(access_token)
-        LOG.debug(f"Authenticated user {token.to_urn()}")
+        if token:
+            LOG.debug(f"Authenticated user {token.to_urn()}")
         return None, token
 
     def authenticate_header(self, _: Request) -> str:
