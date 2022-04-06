@@ -49,3 +49,7 @@ migrations: start
 
 requirements-frozen.txt: build
 	docker run --rm $(DOCKER_IMAGE) pip freeze > $@
+
+.PHONY: tests
+tests: .env
+	docker-docker -f ./tests-compose.yml run manage.py test
