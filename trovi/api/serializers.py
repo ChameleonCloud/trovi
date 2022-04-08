@@ -427,7 +427,10 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_projects.all(), many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
-            "versions": ArtifactVersionSerializer(versions, many=True).data,
+            "versions": ArtifactVersionSerializer(
+                sorted(versions, key=lambda v: v.created_at),
+                many=True,
+            ).data,
         }
         if self.get_requesting_user_urn() == instance.owner_urn:
             artifact_json["sharing_key"] = instance.sharing_key
