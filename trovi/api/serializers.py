@@ -428,7 +428,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
             "versions": ArtifactVersionSerializer(
-                sorted(versions, key=lambda v: v.created_at),
+                sorted(versions, key=lambda v: v.created_at, reverse=True),
                 many=True,
             ).data,
         }
