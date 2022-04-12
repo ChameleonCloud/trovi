@@ -112,7 +112,9 @@ class StorageRequestSerializer(serializers.Serializer):
         elif isinstance(instance, ArtifactVersion):
             # RetrieveContents
             urn = instance.contents_urn
-            backend = get_backend((fields := urn.split(":"))[-2], content_id=fields[-1])
+            backend = get_backend(
+                (fields := urn.split(":"))[-2], version=instance, content_id=fields[-1]
+            )
             return {"contents": {"urn": urn}, "access_methods": backend.get_links()}
         else:
             raise ValueError(
