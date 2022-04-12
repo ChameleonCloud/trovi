@@ -51,7 +51,7 @@ from trovi.storage.serializers import StorageRequestSerializer
             OpenApiParameter(
                 name="urn",
                 type=OpenApiTypes.STR,
-                location=OpenApiParameter.PATH,
+                location=OpenApiParameter.QUERY,
                 description="The URN of the archive for which metadata will be fetched.",
             ),
             OpenApiParameter(
