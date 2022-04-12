@@ -54,5 +54,7 @@ def get_backend(
         return ZenodoBackend(
             name, version, content_type=content_type, content_id=content_id
         )
+    if name == "git":
+        return GitBackend(name, content_type, content_id)
     else:
         raise ValidationError(f"Unknown storage backend: {name}")
