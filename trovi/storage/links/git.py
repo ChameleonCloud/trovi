@@ -13,9 +13,11 @@ class GitDownloadLink(ContentDownloadLink):
     # Any environment variables relevant to source before git operations
     env: dict[str, str]
     protocol: str = field(init=False, default="git")
+    ref: str
 
     def to_json(self) -> dict[str, JSON]:
         out = super(GitDownloadLink, self).to_json()
         out["remote"] = out.pop("url")
         out["env"] = self.env
+        out["ref"] = self.ref
         return out
