@@ -173,6 +173,26 @@ class ArtifactVersionOwnershipPermission(permissions.BasePermission):
         return token and token.to_urn() == obj.artifact.owner_urn
 
 
+class BaseStoragePermission(permissions.BasePermission):
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        if request.method.upper() == "POST":
+            # For StoreContents, we only require that the user is authenticated
+            return IsAuthenticatedWithTroviToken().has_permission(request, view)
+        else:
+            # For RetrieveContents, permission is validated by has_object_permission
+            return True
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactVersion
+    ) -> bool:
+        if request.method.upper() == "POST":
+            return True
+        else:
+            return (
+                ArtifactVersionScopedPermission & ArtifactVersionVisibilityPermission
+            )().has_object_permission(request, view, obj)
+
+
 class BaseMetadataPermission(permissions.BasePermission):
     """
     Base permissions for viewing API metadata

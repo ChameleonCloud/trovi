@@ -9,4 +9,4 @@ router.register("", StorageViewSet, basename="contents")
 urlpatterns = router.get_urls()
 
 StoreContents = "contents-list"
-RetrieveContents = "contents-detail"
+RetrieveContents = "contents-list"
