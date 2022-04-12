@@ -278,7 +278,7 @@ class ZenodoBackend(StorageBackend):
         self.content_id = res_json.get("doi")
 
     def to_record_url(self) -> str:
-        record = self.to_record(self.content_id)
+        record = self.to_record()
         return f"{settings.ZENODO_URL}/record/{record}"
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
