@@ -6,10 +6,13 @@ from drf_spectacular.utils import (
     OpenApiExample,
 )
 from rest_framework import viewsets, mixins
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FileUploadParser
+from rest_framework.request import Request
+from rest_framework.response import Response
 
-from trovi.common.permissions import IsAuthenticatedWithTroviToken
 from trovi.common.authenticators import TroviTokenAuthentication
+from trovi.common.permissions import BaseStoragePermission, AdminPermission
 from trovi.models import ArtifactVersion
 from trovi.storage.serializers import StorageRequestSerializer
 
@@ -42,7 +45,7 @@ from trovi.storage.serializers import StorageRequestSerializer
             ),
         ],
     ),
-    retrieve=extend_schema(
+    list=extend_schema(
         description="Retrieve metadata about an artifact archive.",
         parameters=[
             OpenApiParameter(
@@ -61,7 +64,7 @@ from trovi.storage.serializers import StorageRequestSerializer
     ),
 )
 class StorageViewSet(
-    viewsets.GenericViewSet, mixins.CreateModelMixin, mixins.RetrieveModelMixin
+    viewsets.GenericViewSet, mixins.CreateModelMixin, mixins.ListModelMixin
 ):
     """
     Implements all endpoints at /contents
@@ -141,7 +144,18 @@ class StorageViewSet(
     queryset = ArtifactVersion.objects.all()
     parser_classes = [FileUploadParser]
     authentication_classes = [TroviTokenAuthentication]
-    permission_classes = [IsAuthenticatedWithTroviToken]
+    permission_classes = [BaseStoragePermission | AdminPermission]
     serializer_class = StorageRequestSerializer
     lookup_field = "contents_urn__iexact"
     lookup_url_kwarg = "urn"
+
+    def list(self, request: Request, *args, **kwargs) -> Response:
+        # Because of the weird way this method is implemented as a hack to give it the
+        # correct URL path, we have to shove the necessary URL params into self.kwargs
+        # because they are not resolved properly. Pre-processing for .list ignores
+        # the lookup_url_kwarg, since DRF intends only for it to be used for .retrieve
+        urn = request.query_params.get(self.lookup_url_kwarg)
+        if not urn:
+            raise ValidationError("Missing required ?urn parameter")
+        self.kwargs[self.lookup_url_kwarg] = urn
+        return mixins.RetrieveModelMixin.retrieve(self, request, *args, **kwargs)

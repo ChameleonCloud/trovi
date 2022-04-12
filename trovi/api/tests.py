@@ -116,8 +116,8 @@ class APITest(SimpleTestCase):
             reverse(
                 CreateArtifactVersion,
                 args=[artifact_uuid],
-                # This tests that the user cannot overwrite the parent artifact ID
             )
+            # This tests that the user cannot overwrite the parent artifact ID
             + "?parent_lookup_artifact=foo",
             scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )

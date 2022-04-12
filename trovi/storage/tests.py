@@ -4,6 +4,7 @@ import random
 import tarfile
 from typing import IO
 from unittest import skipIf
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from django.conf import settings
@@ -51,7 +52,9 @@ class StorageTest(APITest):
         return self.authenticate_url(f"{reverse(StoreContents)}?backend={backend}")
 
     def retrieve_contents_path(self, urn: str) -> str:
-        return self.authenticate_url(reverse(RetrieveContents, kwargs={"urn": urn}))
+        return self.authenticate_url(
+            f"{reverse(RetrieveContents)}?{urlencode({'urn': urn})}"
+        )
 
     def store_content(
         self,
@@ -151,6 +154,29 @@ class TestRetrieveContents(TestCase, StorageTest):
         self.assertIn("access_methods", json)
         for method in json["access_methods"]:
             self.assertIsInstance(method, dict)
+
+    def test_retrieve_version_contents(self):
+        response = self.client.get(
+            self.authenticate_url(
+                reverse(
+                    "artifact-version-contents",
+                    args=[artifact_don_quixote.uuid, version_don_quixote_1.slug],
+                )
+            )
+        )
+
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+
+        self.assertIn("contents", as_json, msg=as_json)
+        self.assertEqual(
+            as_json["contents"]["urn"], version_don_quixote_1.contents_urn, msg=as_json
+        )
+
+        self.assertIn("access_methods", as_json, msg=as_json)
+        for method in as_json["access_methods"]:
+            self.assertIsInstance(method, dict, msg=as_json)
 
     def test_retrieve_contents_not_found(self):
         # TODO
