@@ -114,7 +114,7 @@ class StorageRequestSerializer(serializers.Serializer):
             # RetrieveContents
             urn = instance.contents_urn
             urn_info = parse_contents_urn(urn)
-            backend = get_backend(urn_info["provider"], content_id=urn_info["id"])
+            backend = get_backend(urn_info["provider"], version=instance, content_id=urn_info["id"])
             return {"contents": {"urn": urn}, "access_methods": backend.get_links()}
         else:
             raise ValueError(
