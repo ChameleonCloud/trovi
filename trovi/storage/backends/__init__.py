@@ -5,6 +5,7 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
 from trovi.storage.backends.base import StorageBackend
+from trovi.storage.backends.git import GitBackend
 from trovi.storage.backends.swift import SwiftBackend
 
 # Maps backend names to
@@ -35,5 +36,7 @@ def get_backend(
             region_name=settings.CHAMELEON_SWIFT_REGION_NAME,
             content_id=content_id,
         )
+    elif name == "git":
+        return GitBackend(name, content_type, content_id)
     else:
         raise ValidationError(f"Unknown storage backend: {name}")
