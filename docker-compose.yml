@@ -15,8 +15,6 @@ services:
       - .:/project
       - ./media:/media
       - static:/static
-    ports:
-      - "127.0.0.1:8890:${TROVI_PORT}"
     entrypoint: ["python3", "manage.py"]
     command: ["runserver", "0.0.0.0:${TROVI_PORT}"]
     depends_on:
