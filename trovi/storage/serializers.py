@@ -16,6 +16,7 @@ from trovi.models import ArtifactVersion
 from trovi.storage.backends import get_backend
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
+from trovi.urn import parse_contents_urn
 
 
 class StorageContentsSerializer(serializers.Serializer):
@@ -112,7 +113,8 @@ class StorageRequestSerializer(serializers.Serializer):
         elif isinstance(instance, ArtifactVersion):
             # RetrieveContents
             urn = instance.contents_urn
-            backend = get_backend((fields := urn.split(":"))[-2], content_id=fields[-1])
+            urn_info = parse_contents_urn(urn)
+            backend = get_backend(urn_info["provider"], content_id=urn_info["id"])
             return {"contents": {"urn": urn}, "access_methods": backend.get_links()}
         else:
             raise ValueError(
