@@ -1,10 +1,8 @@
+from trovi.api.tests import APITest
 from trovi.storage.backends.git import GitBackend
 
-from trovi.api.tests import APITestCase
 
-
-class TestGitBackend(APITestCase):
-
+class TestGitBackend(APITest):
     def setUp(self):
         pass
 
@@ -13,16 +11,16 @@ class TestGitBackend(APITestCase):
         actual = backend.get_links()
         expected = [
             {
-                'headers': {},
-                'method': 'GET',
-                'protocol': 'http',
-                'url': 'https://github.com/chameleoncloud/trovi/archive/HEAD.zip'
+                "headers": {},
+                "method": "GET",
+                "protocol": "http",
+                "url": "https://github.com/chameleoncloud/trovi/archive/HEAD.zip",
             },
             {
-                'env': {},
-                'protocol': 'git',
-                'ref': 'HEAD',
-                'remote': 'https://github.com/chameleoncloud/trovi'
+                "env": {},
+                "protocol": "git",
+                "ref": "HEAD",
+                "remote": "https://github.com/chameleoncloud/trovi",
             },
         ]
         for link in actual:
@@ -34,10 +32,10 @@ class TestGitBackend(APITestCase):
         actual = backend.get_links()
         expected = [
             {
-                'env': {},
-                'protocol': 'git',
-                'ref': 'HEAD',
-                'remote': 'https://opendev.org/openstack/blazar.git'
+                "env": {},
+                "protocol": "git",
+                "ref": "HEAD",
+                "remote": "https://opendev.org/openstack/blazar.git",
             },
         ]
         for link in actual:

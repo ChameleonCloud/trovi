@@ -15,6 +15,7 @@ class GitBackend(StorageBackend):
     """
     Implements storage backend for Git
     """
+
     def __init__(
         self,
         name: str,
@@ -41,7 +42,9 @@ class GitBackend(StorageBackend):
         )
 
         # Temporary download url for github only, and only with HTTP remote
-        if "github.com" not in self.remote_url or not self.remote_url.startswith("http"):
+        if "github.com" not in self.remote_url or not self.remote_url.startswith(
+            "http"
+        ):
             return None
 
         github_base_url = self.remote_url
