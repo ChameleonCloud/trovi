@@ -7,7 +7,9 @@ class TestGitBackend(APITest):
         pass
 
     def test_get_links_github(self):
-        backend = GitBackend("git", "git", "https://github.com/chameleoncloud/trovi@HEAD")
+        backend = GitBackend(
+            "git", "git", "https://github.com/chameleoncloud/trovi@HEAD"
+        )
         actual = backend.get_links()
         expected = [
             {

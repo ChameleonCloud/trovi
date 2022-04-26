@@ -27,12 +27,9 @@ class GitBackend(StorageBackend):
         parts = content_id.rsplit("@")
         parse_result = parse(parts[0])
         if getattr(parse_result, "protocol", None) != "https":
-            raise RuntimeError(
-                "Can't create a git backend from non HTTPS git remote"
-            )
+            raise RuntimeError("Can't create a git backend from non HTTPS git remote")
         self.remote_url = parts[0]
         self.parsed_git_url = parse_result
-
 
         if len(parts) > 1:
             self.ref = parts[1]
@@ -59,7 +56,6 @@ class GitBackend(StorageBackend):
             headers={},
             method="GET",
         )
-
 
     def get_git_remote(self) -> Optional[GitDownloadLink]:
         """
