@@ -16,7 +16,7 @@ from trovi.models import ArtifactVersion
 from trovi.storage.backends import get_backend
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
-from trovi.urn import parse_contents_urn
+from util.urn import parse_contents_urn
 
 
 class StorageContentsSerializer(serializers.Serializer):

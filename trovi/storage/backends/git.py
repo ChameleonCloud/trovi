@@ -3,6 +3,7 @@ from django.conf import settings
 import logging
 from typing import Hashable, Optional
 from urllib.parse import urljoin
+from giturlparse import parse, platforms
 
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
@@ -23,8 +24,16 @@ class GitBackend(StorageBackend):
         content_id: Hashable = None,
     ):
         self.name = name
-        parts = content_id.split("@")
+        parts = content_id.rsplit("@")
+        parse_result = parse(parts[0])
+        if getattr(parse_result, "protocol", None) != "https":
+            raise RuntimeError(
+                "Can't create a git backend from non HTTPS git remote"
+            )
         self.remote_url = parts[0]
+        self.parsed_git_url = parse_result
+
+
         if len(parts) > 1:
             self.ref = parts[1]
         else:
@@ -37,29 +46,20 @@ class GitBackend(StorageBackend):
         return False
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
-        exp = int(
-            datetime.utcnow().timestamp() + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
-        )
-
-        # Temporary download url for github only, and only with HTTP remote
-        if "github.com" not in self.remote_url or not self.remote_url.startswith(
-            "http"
-        ):
+        if self.parsed_git_url.host == "github.com":
+            url = f"https://github.com/{self.parsed_git_url.owner}/{self.parsed_git_url.repo}/archive/{self.ref}.zip"
+        elif self.parsed_git_url.host == "gitlab.com":
+            url = f"https://gitlab.com/{self.parsed_git_url.owner}/{self.parsed_git_url.repo}/-/archive/{self.ref}/{self.parsed_git_url.repo}-{self.ref}.zip"
+        else:
             return None
-
-        github_base_url = self.remote_url
-        if github_base_url.endswith(".git"):
-            github_base_url = github_base_url[:-4]
-        if not github_base_url.endswith("/"):
-            github_base_url += "/"
-        url = urljoin(github_base_url, f"archive/{self.ref}.zip")
 
         return HttpDownloadLink(
             url=url,
-            exp=datetime.fromtimestamp(exp),
+            exp=datetime.max,
             headers={},
             method="GET",
         )
+
 
     def get_git_remote(self) -> Optional[GitDownloadLink]:
         """
@@ -68,13 +68,9 @@ class GitBackend(StorageBackend):
         This method returns None if it is not supported, and raises if the git
         remote cannot be resolved.
         """
-        exp = int(
-            datetime.utcnow().timestamp() + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
-        )
-
         return GitDownloadLink(
             url=self.remote_url,
             ref=self.ref,
-            exp=datetime.fromtimestamp(exp),
+            exp=datetime.max,
             env={},
         )

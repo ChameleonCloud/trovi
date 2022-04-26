@@ -14,7 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from trovi.fields import URNField
-from trovi.urn import parse_contents_urn
+from util.urn import parse_contents_urn
 
 
 def generate_sharing_key() -> str:
