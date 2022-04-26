@@ -10,6 +10,7 @@ from trovi.storage.links.git import GitDownloadLink
 
 LOG = logging.getLogger(__name__)
 
+
 class GitBackend(StorageBackend):
     """
     Implements storage backend for Git

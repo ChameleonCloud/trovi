@@ -20,4 +20,3 @@ def parse_contents_urn(contents_urn):
         "provider": provider,
         "id": contents_id,
     }
-
