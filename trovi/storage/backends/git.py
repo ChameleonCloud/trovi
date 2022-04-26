@@ -1,9 +1,7 @@
 from datetime import datetime
-from django.conf import settings
 import logging
 from typing import Hashable, Optional
-from urllib.parse import urljoin
-from giturlparse import parse, platforms
+from giturlparse import parse
 
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
