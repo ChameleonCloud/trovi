@@ -29,7 +29,9 @@ class GitBackend(StorageBackend):
             # Eventually it would be nice to add SSH and rewrite the remote, but
             # this functionality of `giturlparse` is broken currently.
             if protocol not in ["https", "git"]:
-                raise RuntimeError(f"Can't create a git backend for remote protocl {protocol}")
+                raise RuntimeError(
+                    f"Can't create a git backend for remote protocl {protocol}"
+                )
             self.parsed_git_url = parse_result
         except Exception:
             # giturlparse sometimes just won't parse a URL, especially if it
