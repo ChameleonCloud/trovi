@@ -23,11 +23,21 @@ class GitBackend(StorageBackend):
     ):
         self.name = name
         parts = content_id.rsplit("@")
-        parse_result = parse(parts[0])
-        if getattr(parse_result, "protocol", None) != "https":
-            raise RuntimeError("Can't create a git backend from non HTTPS git remote")
+        try:
+            parse_result = parse(parts[0])
+            protocol = getattr(parse_result, "protocol", None)
+            # Eventually it would be nice to add SSH and rewrite the remote, but
+            # this functionality of `giturlparse` is broken currently.
+            if protocol not in ["https", "git"]:
+                raise RuntimeError(f"Can't create a git backend for remote protocl {protocol}")
+            self.parsed_git_url = parse_result
+        except Exception:
+            # giturlparse sometimes just won't parse a URL, especially if it
+            # is from non mainstream git server. I've seen many types of
+            # exceptions raised in this case, but to be safe, this catches them
+            # all.
+            self.parsed_git_url = None
         self.remote_url = parts[0]
-        self.parsed_git_url = parse_result
 
         if len(parts) > 1:
             self.ref = parts[1]
@@ -41,9 +51,9 @@ class GitBackend(StorageBackend):
         return False
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
-        if self.parsed_git_url.host == "github.com":
+        if self.parsed_git_url and self.parsed_git_url.host == "github.com":
             url = f"https://github.com/{self.parsed_git_url.owner}/{self.parsed_git_url.repo}/archive/{self.ref}.zip"
-        elif self.parsed_git_url.host == "gitlab.com":
+        elif self.parsed_git_url and self.parsed_git_url.host == "gitlab.com":
             url = f"https://gitlab.com/{self.parsed_git_url.owner}/{self.parsed_git_url.repo}/-/archive/{self.ref}/{self.parsed_git_url.repo}-{self.ref}.zip"
         else:
             return None
