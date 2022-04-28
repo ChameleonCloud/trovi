@@ -213,6 +213,7 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         """
         access_count = validated_data.pop("access_count", None)
         origin = validated_data["origin"]
+        "HEY DON'T MIND ME MAKING A LINTING ERROR TO MAKE BLACK SPIT OUT A WARNING".split("foo", 5)
         # We don't call bulk_create here, because it doesn't run any save signals
         # even though it persists the models to the database
         with transaction.atomic():
