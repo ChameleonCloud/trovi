@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 
 from trovi.models import ArtifactVersion, Artifact
 from trovi.storage.backends.base import StorageBackend
+from trovi.storage.backends.git import GitBackend
 from trovi.storage.backends.swift import SwiftBackend
 from trovi.storage.backends.zenodo import ZenodoBackend
 
@@ -51,5 +52,7 @@ def get_backend(
         return ZenodoBackend(
             name, version, content_type=content_type, content_id=content_id
         )
+    if name == "git":
+        return GitBackend(name, content_type, content_id=content_id)
     else:
         raise ValidationError(f"Unknown storage backend: {name}")

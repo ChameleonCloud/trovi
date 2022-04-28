@@ -14,6 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from trovi.fields import URNField
+from util.urn import parse_contents_urn
 
 
 def generate_sharing_key() -> str:
@@ -150,8 +151,8 @@ class ArtifactVersion(models.Model):
         case it must be treated specially (cannot be deleted)
         """
         # A Zenodo URN should look like "urn:trovi:contents:zenodo:<doi>"
-        urn_parts = self.contents_urn.split(":", maxsplit=4)
-        return len(urn_parts) == 5 and urn_parts[-2] == "zenodo"
+        urn_info = parse_contents_urn(self.contents_urn)
+        return urn_info["provider"] == "zenodo"
 
     @staticmethod
     def generate_slug(instance: "ArtifactVersion", created: bool = False, **_):
