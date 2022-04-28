@@ -23,7 +23,7 @@ jobs:
       - name: Check out source repository
         uses: actions/checkout@v2
       - name: Set up Python environment
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
       - uses: reviewdog/action-black@v3.5.0
         with:
           github_token: ${{ secrets.github_token }}
@@ -37,7 +37,7 @@ jobs:
       - name: Check out source repository
         uses: actions/checkout@v2
       - name: Set up Python environment
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
       - name: flake8 Lint
         uses: reviewdog/action-flake8@v3
         with:
