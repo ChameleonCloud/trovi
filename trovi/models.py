@@ -208,6 +208,9 @@ class ArtifactVersion(models.Model):
                 ).astimezone(timezone.get_current_timezone())
             except ValueError as e:
                 raise DRFValidationError(str(e)) from e
+        if self.artifact:
+            self.artifact.updated_at = timezone.now()
+            self.artifact.save()
         return super(ArtifactVersion, self).save(*args, **kwargs)
 
 

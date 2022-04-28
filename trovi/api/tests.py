@@ -765,6 +765,7 @@ class TestCreateArtifactVersion(TestCase, APITest):
 
     def test_create_artifact_version(self):
         artifact_don_quixote.refresh_from_db()
+        old_updated_at = artifact_don_quixote.updated_at
 
         response = self.client.post(
             self.create_artifact_version_path(artifact_don_quixote.uuid),
@@ -776,6 +777,8 @@ class TestCreateArtifactVersion(TestCase, APITest):
             response.status_code, status.HTTP_201_CREATED, msg=response.content
         )
         response_body = response.json()
+        artifact_don_quixote.refresh_from_db()
+        new_updated_at = artifact_don_quixote.updated_at
 
         model = ArtifactVersion.objects.get(
             contents_urn=response_body["contents"]["urn"]
@@ -783,6 +786,11 @@ class TestCreateArtifactVersion(TestCase, APITest):
         self.assertAPIResponseEqual(response_body, ArtifactVersionSerializer(model))
         self.assertEqual(artifact_don_quixote.uuid, model.artifact.uuid)
         self.assertIn(model, artifact_don_quixote.versions.all())
+        self.assertGreater(
+            new_updated_at,
+            old_updated_at,
+            msg="Creating new version did not mark parent artifact as updated.",
+        )
 
     def test_link_to_non_existent_artifact(self):
         fake_uuid = uuid.uuid4()
