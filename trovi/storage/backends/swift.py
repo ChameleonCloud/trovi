@@ -130,8 +130,9 @@ class SwiftBackend(StorageBackend):
         response = self.keystone.put(
             self.object_path,
             headers={
-                "content-type": "application/octet-stream",
+                "content-type": "application/tar+gz",
                 "content-length": str(len(self.buffer)),
+                "content-disposition": f"attachment; filename={self.content_id}.tar.gz",
             },
             data=self.buffer,
         )
