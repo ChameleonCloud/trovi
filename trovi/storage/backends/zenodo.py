@@ -96,11 +96,6 @@ class ZenodoBackend(StorageBackend):
         super(ZenodoBackend, self).__init__(name, *args, **kwargs)
         self.access_token = settings.ZENODO_DEFAULT_ACCESS_TOKEN
         self.version = version
-        if not self.version.artifact:
-            raise ValidationError(
-                "Cannot upload content to Zenodo "
-                "that is not associated with an artifact"
-            )
         if not self.content_id:
             if version.has_doi():
                 self.content_id = version.contents_urn.split(":")[-1]
