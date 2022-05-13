@@ -405,9 +405,15 @@ class ArtifactSerializer(serializers.ModelSerializer):
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         request = self.context["request"]
         token = JWT.from_request(request)
+        sharing_key = request.query_params.get("sharing_key")
         token_urn = token.to_urn() if token else None
         is_admin = token.is_admin() if token else False
-        if instance.is_public() or token_urn == instance.owner_urn or is_admin:
+        if (
+            instance.is_public()
+            or token_urn == instance.owner_urn
+            or is_admin
+            or sharing_key == instance.sharing_key
+        ):
             versions = instance.versions.all()
         else:
             versions = [v for v in instance.versions.all() if v.has_doi()]
