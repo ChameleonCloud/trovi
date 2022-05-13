@@ -98,7 +98,8 @@ class ArtifactVersionVisibilityPermission(permissions.BasePermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
-        if obj.artifact.is_public():
+        sharing_key = request.query_params.get("sharing_key")
+        if obj.artifact.is_public() or sharing_key == obj.artifact.sharing_key:
             return True
         else:
             token = JWT.from_request(request)
