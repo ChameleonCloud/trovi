@@ -45,7 +45,9 @@ class APITest(SimpleTestCase):
     maxDiff = None
 
     def get_test_context(self):
-        request = DummyRequest(data={}, auth=JWT.from_jws(self.get_test_token()))
+        request = DummyRequest(
+            data={}, auth=JWT.from_jws(self.get_test_token()), query_params={}
+        )
         return {"request": request, "view": None}
 
     @timed_lru_cache(timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
