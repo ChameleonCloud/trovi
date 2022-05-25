@@ -16,7 +16,7 @@ keystoneauth1 = "^4.4.0"
 python-jose = "^3.3.0"
 python-keycloak-client = "^0.2.3"
 drf-extensions = "^0.7.1"
-PyJWT = "^2.3.0"
+PyJWT = "^2.4.0"
 drf-spectacular = "^0.22.1"
 giturlparse = "^0.10.0"
 
