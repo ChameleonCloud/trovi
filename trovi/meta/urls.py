@@ -1,10 +1,10 @@
-from django.urls import path
+from django.urls import re_path
 
 from trovi.meta import views
 
 urlpatterns = [
-    path(
-        "tags/",
+    re_path(
+        "^tags/?",
         views.ArtifactTagsView.as_view({"get": "list", "post": "create"}),
         name="Tags",
     ),
