@@ -14,6 +14,13 @@ def trovi_exception_handler(exc: Exception, context: dict) -> Response:
     # to get the standard error response.
     response = exception_handler(exc, context)
 
+    if not response:
+        LOG.exception(exc)
+        return Response(
+            {"detail": "An unknown error occurred."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
     if isinstance(exc, InvalidToken):
         response.data = {
             "error": exc.default_code,
