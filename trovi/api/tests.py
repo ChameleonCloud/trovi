@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import random
@@ -836,6 +837,51 @@ class TestCreateArtifactVersion(TestCase, APITest):
 
         self.assertEqual(
             response_2.status_code, status.HTTP_409_CONFLICT, msg=response_2.content
+        )
+
+    def test_create_artifact_version_slug(self):
+        example_1 = copy.deepcopy(self.example_version)
+        example_1["contents"]["urn"] = f"urn:trovi:contents:chameleon:{uuid.uuid4()}"
+        example_2 = copy.deepcopy(self.example_version)
+        example_2["contents"]["urn"] = f"urn:trovi:contents:chameleon:{uuid.uuid4()}"
+
+        response_1 = self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=example_1,
+        )
+
+        self.assertEqual(
+            response_1.status_code, status.HTTP_201_CREATED, msg=response_1.json()
+        )
+
+        response_2 = self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=example_2,
+        )
+
+        self.assertEqual(
+            response_2.status_code, status.HTTP_201_CREATED, msg=response_2.json()
+        )
+
+        version_1 = ArtifactVersion.objects.get(
+            contents_urn=example_1["contents"]["urn"]
+        )
+
+        version_2 = ArtifactVersion.objects.get(
+            contents_urn=example_2["contents"]["urn"]
+        )
+
+        # Assert that versions created on the same day have an incrementing '.n' suffix
+        self.assertIn(".", version_1.slug)
+        self.assertIn(".", version_2.slug)
+        suffix_1 = version_1.slug.split(".")[-1]
+        suffix_2 = version_2.slug.split(".")[-1]
+        self.assertEqual(
+            int(suffix_2),
+            int(suffix_1) + 1,
+            msg="Versions from the same day do not properly increment suffixes",
         )
 
     def test_create_artifact_version_no_write_scope(self):
