@@ -256,7 +256,7 @@ format-nongpl = ["fqdn", "idna", "isoduration", "jsonpointer (>1.13)", "rfc3339-
 
 [[package]]
 name = "keystoneauth1"
-version = "4.6.0"
+version = "5.0.0"
 description = "Authentication Library for OpenStack Identity"
 category = "main"
 optional = false
@@ -587,7 +587,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "9c477b76d1ffe2d2a27676e0441b0fa2367685fd36d1b60920667a9d32b10783"
+content-hash = "7f6d87de302d39fc84dee8cddb912311a2a732aa7152ddce1c6dff57960ad61b"
 
 [metadata.files]
 asgiref = [
@@ -778,8 +778,8 @@ jsonschema = [
     {file = "jsonschema-4.9.0.tar.gz", hash = "sha256:df10e65c8f3687a48e93d0d348ce0ce5f897b5a28e9bbcbbe8f7c7eaf019e850"},
 ]
 keystoneauth1 = [
-    {file = "keystoneauth1-4.6.0-py3-none-any.whl", hash = "sha256:99c29492c5e53098d6a5779b3213669cfbf5c2193fb6eb95d6f000b7a2b2029b"},
-    {file = "keystoneauth1-4.6.0.tar.gz", hash = "sha256:066f1addd89114cd6a1b9cb3555c8eaa7d013673ee1034bdfe506068804a9e05"},
+    {file = "keystoneauth1-5.0.0-py3-none-any.whl", hash = "sha256:249894b8a9e28df2f4a6001cf217b522c41812b0b20b153535cea56e1b2d6620"},
+    {file = "keystoneauth1-5.0.0.tar.gz", hash = "sha256:6ebb5f044c9dfd263087a328d51d479947d1ddc90c09daf4191df7dc71334323"},
 ]
 mccabe = [
     {file = "mccabe-0.6.1-py2.py3-none-any.whl", hash = "sha256:ab8a6258860da4b6677da4bd2fe5dc2c659cff31b3ee4f7f5d64e79735b80d42"},
