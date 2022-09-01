@@ -22,7 +22,7 @@ giturlparse = "^0.10.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
-flake8 = "^5.0.2"
+flake8 = "^5.0.4"
 Faker = "^14.2.0"
 
 [build-system]
