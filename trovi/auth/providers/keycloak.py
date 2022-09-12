@@ -73,7 +73,7 @@ class KeycloakIdentityProvider(IdentityProviderClient):
         self, subject_token: JWT
     ) -> Optional[OAuth2TokenIntrospection]:
         try:
-            introspection_url = self.openid.get_url("token_introspection_endpoint")
+            introspection_url = self.openid.get_url("introspection_endpoint")
         except KeyError:
             # If IdP doesn't support introspection, return None
             LOG.warning(f"{self.get_name()} does not support introspection.")
