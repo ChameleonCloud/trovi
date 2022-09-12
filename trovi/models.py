@@ -145,6 +145,21 @@ class ArtifactVersion(models.Model):
         """
         return self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH).count()
 
+    @property
+    def unique_access_count(self) -> int:
+        """
+        Shortcut for determining how many unique origins an artifact version
+        has been launched by
+        :return: The number of unique urns for LAUNCH events for this artifact
+        version
+        """
+        return (
+            self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH)
+            .values("event_origin")
+            .distinct()
+            .count()
+        )
+
     def has_doi(self) -> bool:
         """
         Determines if this version has a DOI (Digital Object Identifier), in which

@@ -229,7 +229,10 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         raise NotImplementedError("Initial metrics are set automatically")
 
     def to_representation(self, instance: ArtifactVersion) -> dict[str, JSON]:
-        return {"access_count": instance.access_count}
+        return {
+            "access_count": instance.access_count,
+            "unique_access_count": instance.unique_access_count,
+        }
 
     def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
         """
@@ -253,6 +256,33 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
 
         data["origin"] = origin_token.to_urn()
         return super(ArtifactVersionMetricsSerializer, self).to_internal_value(data)
+
+
+class ArtifactMetricsSerializer(serializers.Serializer):
+    """
+    Describes an artifact level metrics, which are related to events
+    """
+
+    access_count = serializers.IntegerField(read_only=True)
+    unique_access_count = serializers.IntegerField(read_only=True)
+
+    def to_representation(self, instance: Artifact) -> dict[str, JSON]:
+        return {
+            "access_count": instance.access_count,
+            "unique_access_count": ArtifactEvent.objects.filter(
+                artifact_version__artifact=instance,
+                event_type=ArtifactEvent.EventType.LAUNCH,
+            )
+            .values("event_origin")
+            .distinct()
+            .count(),
+        }
+
+    def create(self, validated_data):
+        raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
+
+    def update(self, validated_data):
+        raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
 
 
 @extend_schema_serializer(exclude_fields=["artifact"])
@@ -400,6 +430,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
     reproducibility = ArtifactReproducibilitySerializer(required=False)
     versions = ArtifactVersionSerializer(many=True, read_only=True)
     version = ArtifactVersionSerializer(required=False, write_only=True)
+    metrics = ArtifactMetricsSerializer(read_only=True)
 
     @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
@@ -437,6 +468,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 sorted(versions, key=lambda v: v.created_at, reverse=True),
                 many=True,
             ).data,
+            "metrics": ArtifactMetricsSerializer(instance).data,
         }
         if self.get_requesting_user_urn() == instance.owner_urn:
             artifact_json["sharing_key"] = instance.sharing_key

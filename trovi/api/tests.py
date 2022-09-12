@@ -588,7 +588,7 @@ class TestUpdateArtifact(TestCase, APITest):
                     "op": "replace",
                     "path": "/tags",
                     "value": [
-                        t.tag for t in random.choices(ArtifactTag.objects.all(), k=2)
+                        t.tag for t in random.choices(ArtifactTag.objects.all(), k=1)
                     ],
                 },
                 {
@@ -999,9 +999,33 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
             msg=f"{amount=}",
         )
 
+    def do_unique_access_count_test(self, amount: int = None):
+        version_don_quixote_1.refresh_from_db()
+        artifact_don_quixote.refresh_from_db()
+        target_version_unique_access_count = version_don_quixote_1.unique_access_count
+        base_response = self.client.put(
+            self.incr_artifact_version_metrics_path(
+                str(artifact_don_quixote.uuid),
+                version_don_quixote_1.slug,
+                "access_count",
+                amount=amount,
+            )
+        )
+
+        self.assertEqual(base_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        version_don_quixote_1.refresh_from_db()
+        artifact_don_quixote.refresh_from_db()
+        self.assertEqual(
+            target_version_unique_access_count,
+            version_don_quixote_1.unique_access_count,
+            msg=f"{amount=}",
+        )
+
     def test_increment_access_count(self):
         self.do_access_count_test()
         self.do_access_count_test(amount=5)
+        self.do_unique_access_count_test()
 
     def test_increment_metrics_permissions(self):
         # TODO
