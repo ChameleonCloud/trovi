@@ -160,6 +160,21 @@ class ArtifactVersion(models.Model):
             .count()
         )
 
+    @property
+    def unique_cell_execution_count(self) -> int:
+        """
+        Shortcut for determining how many unique origins an artifact version
+        has had cell executions
+        :return: The number of unique urns for CELL_EXECUTION events for this artifact
+        version
+        """
+        return (
+            self.events.filter(event_type=ArtifactEvent.EventType.CELL_EXECUTION)
+            .values("event_origin")
+            .distinct()
+            .count()
+        )
+
     def has_doi(self) -> bool:
         """
         Determines if this version has a DOI (Digital Object Identifier), in which
@@ -284,6 +299,7 @@ class ArtifactEvent(models.Model):
         LAUNCH = _("launch")
         CITE = _("cite")
         FORK = _("fork")
+        CELL_EXECUTION = _("cell_execution")
 
     # The artifact version this event is for
     artifact_version = models.ForeignKey(
