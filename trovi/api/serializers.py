@@ -195,6 +195,12 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
     access_count = serializers.IntegerField(
         min_value=1, max_value=1000, allow_null=False, required=False
     )
+    unique_access_count = serializers.IntegerField(read_only=True)
+    # Translates to a cell execution event
+    cell_execution_count = serializers.IntegerField(
+        min_value=1, max_value=50000, allow_null=False, required=False, write_only=True
+    )
+    unique_cell_execution_count = serializers.IntegerField(read_only=True)
     # The Trovi token of the user who initiated the event(s)
     origin = URNSerializerField(write_only=True, required=True)
 
@@ -211,18 +217,30 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         and then subtract them here to determine how many events need to be created.
         This is not a huge deal, but it's unnecessary work that is confusing.
         """
-        access_count = validated_data.pop("access_count", None)
+        access_count = validated_data.pop("access_count", 0)
+        cell_execution_count = validated_data.pop("cell_execution_count", 0)
         origin = validated_data["origin"]
+
+        if access_count:
+            event_type = ArtifactEvent.EventType.LAUNCH
+            count = access_count
+        elif cell_execution_count:
+            event_type = ArtifactEvent.EventType.CELL_EXECUTION
+            count = cell_execution_count
+        else:
+            # Because of strict_schema validation, this should be unreachable
+            raise ValueError("Unknown event type")
+
         # We don't call bulk_create here, because it doesn't run any save signals
         # even though it persists the models to the database
         with transaction.atomic():
-            for _ in range(access_count or 0):
-                ArtifactEvent.objects.create(
-                    event_type=ArtifactEvent.EventType.LAUNCH,
+            for _ in range(count):
+                instance.events.create(
+                    event_type=event_type,
                     event_origin=origin,
                     artifact_version=instance,
                 )
-        instance.refresh_from_db()
+
         return instance
 
     def create(self, validated_data):
@@ -232,6 +250,7 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         return {
             "access_count": instance.access_count,
             "unique_access_count": instance.unique_access_count,
+            "unique_cell_execution_count": instance.unique_cell_execution_count,
         }
 
     def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
@@ -265,6 +284,7 @@ class ArtifactMetricsSerializer(serializers.Serializer):
 
     access_count = serializers.IntegerField(read_only=True)
     unique_access_count = serializers.IntegerField(read_only=True)
+    unique_cell_execution_count = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         return {
@@ -272,6 +292,13 @@ class ArtifactMetricsSerializer(serializers.Serializer):
             "unique_access_count": ArtifactEvent.objects.filter(
                 artifact_version__artifact=instance,
                 event_type=ArtifactEvent.EventType.LAUNCH,
+            )
+            .values("event_origin")
+            .distinct()
+            .count(),
+            "unique_cell_execution_count": ArtifactEvent.objects.filter(
+                artifact_version__artifact=instance,
+                event_type=ArtifactEvent.EventType.CELL_EXECUTION,
             )
             .values("event_origin")
             .distinct()

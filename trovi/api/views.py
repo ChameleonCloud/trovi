@@ -278,7 +278,7 @@ parent_artifact_parameter = OpenApiParameter(
                 location=OpenApiParameter.QUERY,
                 required=True,
                 allow_blank=False,
-                enum=["access_count"],
+                enum=["access_count", "cell_execution_count"],
                 description="The metric which will be incremented",
             ),
             OpenApiParameter(
