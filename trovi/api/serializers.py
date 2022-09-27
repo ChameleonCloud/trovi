@@ -195,11 +195,12 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
     access_count = serializers.IntegerField(
         min_value=1, max_value=1000, allow_null=False, required=False
     )
+    unique_access_count = serializers.IntegerField(read_only=True)
+    # Translates to a cell execution event
     cell_execution_count = serializers.IntegerField(
-        min_value=1, max_value=50000, allow_null=False, required=False
+        min_value=1, max_value=50000, allow_null=False, required=False, write_only=True
     )
-    metric_name = serializers.CharField(allow_null=False, required=False)
-    event_type = serializers.CharField(allow_null=False, required=False)
+    unique_cell_execution_count = serializers.IntegerField(read_only=True)
     # The Trovi token of the user who initiated the event(s)
     origin = URNSerializerField(write_only=True, required=True)
 
