@@ -7,7 +7,7 @@ authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 [tool.poetry.dependencies]
 python = "^3.9"
 Django = "^4.1"
-djangorestframework = "^3.12.4"
+djangorestframework = "^3.14.0"
 mysqlclient = "^2.1.1"
 jsonschema = "^4.16.0"
 jsonpatch = "^1.32"
