@@ -7,7 +7,6 @@ import trovi.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0005_remove_default_owner_urn"),
     ]

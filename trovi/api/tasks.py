@@ -26,7 +26,6 @@ class ArtifactVersionMigrationErrorHandler:
     """
 
     def __init__(self, migration: ArtifactVersionMigration):
-
         self.migration = migration
 
     def __enter__(self):
@@ -158,7 +157,6 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
 
 
 def reap_unfinished_migrations():
-
     in_progress = ArtifactVersionMigration.objects.filter(
         status=ArtifactVersionMigration.MigrationStatus.IN_PROGRESS
     )

@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0006_add_artifact_sorting_indexes"),
     ]

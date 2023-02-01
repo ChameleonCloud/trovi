@@ -20,7 +20,6 @@ from util.urn import parse_contents_urn
 
 
 class StorageContentsSerializer(serializers.Serializer):
-
     urn = URNSerializerField(required=True)
 
     def update(self, instance, validated_data):
@@ -55,7 +54,6 @@ class StorageContentsSerializer(serializers.Serializer):
     ]
 )
 class StorageRequestSerializer(serializers.Serializer):
-
     contents = StorageContentsSerializer(read_only=True)
     access_methods = serializers.ListField(
         child=serializers.JSONField(), read_only=True, min_length=1

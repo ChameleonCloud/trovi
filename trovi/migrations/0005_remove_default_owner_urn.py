@@ -6,7 +6,6 @@ import trovi.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0004_alter_artifact_owner_urn"),
     ]

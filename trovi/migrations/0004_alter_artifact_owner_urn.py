@@ -6,7 +6,6 @@ import trovi.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0003_repair_initial_indices"),
     ]

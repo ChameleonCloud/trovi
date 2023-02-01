@@ -71,7 +71,6 @@ class StorageTest(APITest):
 
 
 class TestStoreContents(TestCase, StorageTest):
-
     content_uuids = set()
 
     def test_endpoint_works(self):

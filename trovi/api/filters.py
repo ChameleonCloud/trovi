@@ -33,7 +33,6 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
     ) -> models.QuerySet:
-
         # Annotate the query such that the database understands our sort_by params
         prepared_query = queryset.annotate(date=F("created_at"))
 

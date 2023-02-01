@@ -8,7 +8,6 @@ import trovi.fields
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0008_remove_auto_now_add"),
     ]

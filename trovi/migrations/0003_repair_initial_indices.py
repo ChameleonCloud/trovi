@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("trovi", "0002_add_initial_indexes_and_nullability"),
     ]
