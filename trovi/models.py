@@ -385,6 +385,31 @@ class ArtifactLink(models.Model):
     verified = models.BooleanField(default=False)
 
 
+class ArtifactRole(models.Model):
+    """Describes the role a user has on an Artifact.
+    This defines the user's permissions to interact with the Artifact
+    in various ways."""
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["artifact", "user", "role"],
+                name="artifact_role_unique_constraint",
+            )
+        ]
+
+    class RoleType(models.TextChoices):
+        ADMINISTRATOR = _("administrator")
+        COLLABORATOR = _("collaborator")
+
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="roles")
+    user = URNField(max_length=settings.URN_MAX_CHARS)
+    assigned_by = URNField(max_length=settings.URN_MAX_CHARS)
+    role = models.CharField(
+        choices=RoleType.choices, max_length=max(len(c) for c in RoleType.values)
+    )
+
+
 # Signals
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)
 post_save.connect(ArtifactEvent.incr_access_count, sender=ArtifactEvent)
