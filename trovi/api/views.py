@@ -22,6 +22,8 @@ from trovi.api.filters import (
     ListArtifactsOrderingFilter,
     ListArtifactsVisibilityFilter,
     sharing_key_parameter,
+    ArtifactRoleFilter,
+    ArtifactRoleOrderingFilter,
 )
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.serializers import (
@@ -30,6 +32,7 @@ from trovi.api.serializers import (
     ArtifactSerializer,
     ArtifactVersionMetricsSerializer,
     ArtifactVersionMigrationSerializer,
+    ArtifactRoleSerializer,
 )
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
@@ -43,10 +46,11 @@ from trovi.common.permissions import (
     ParentArtifactEditPermission,
     ArtifactVersionDestroyDOIPermission,
     ArtifactWriteMetricsScopePermission,
+    ArtifactRoleOwnerRolesPermission,
 )
 from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
-from trovi.models import Artifact, ArtifactVersion
+from trovi.models import Artifact, ArtifactVersion, ArtifactRole
 from trovi.storage.serializers import StorageRequestSerializer
 
 
@@ -139,6 +143,99 @@ parent_artifact_parameter = OpenApiParameter(
     allow_blank=False,
     description="The UUID of the Artifact to which the Version belongs.",
 )
+
+
+@extend_schema_view(
+    list=extend_schema(description="List roles on an Artifact"),
+    create=extend_schema(
+        description="Assign a new role to a user on an Artifact",
+        responses={status.HTTP_204_NO_CONTENT: None},
+    ),
+    unassign=extend_schema(
+        description="Unassign a role from a user",
+        parameters=[
+            OpenApiParameter(
+                name="user",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="The URN of the user whose role will be unassigned",
+                pattern=URNField.pattern.pattern,
+            ),
+            OpenApiParameter(
+                name="role",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="The role which will be unassigned",
+                enum=ArtifactRole.RoleType.values,
+            ),
+        ],
+    ),
+)
+@method_decorator(transaction.atomic, name="create")
+class ArtifactRoleViewSet(
+    NestedViewSetMixin,
+    TroviAPIViewSet,
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+):
+    """
+    Implements all endpoints at /artifacts/<uuid>/roles
+    """
+
+    queryset = ArtifactRole.objects.all()
+    parser_classes = [JSONParser]
+    ordering = ["user", "role"]
+    filter_backends = [ArtifactRoleFilter, ArtifactRoleOrderingFilter]
+    serializer_class = ArtifactRoleSerializer
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [ParentArtifactViewPermission]
+    create_permission_classes = [
+        ArtifactWriteScopePermission,
+        ParentArtifactAdminPermission,
+    ]
+    destroy_permission_classes = [
+        ArtifactWriteScopePermission,
+        ParentArtifactAdminPermission,
+        ArtifactRoleOwnerRolesPermission,
+    ]
+    # The inherited ``lookup_url_kwarg`` only supports one kwarg, but we have to use 2.
+    # This variable is unique to this class, and is not understood by REST-Framework
+    lookup_url_kwargs = ["user", "role"]
+    schema = ArtifactRoleViewSetAutoSchema()
+
+    @cache
+    def get_object(self) -> ArtifactRole:
+        """
+        We override get_object, since the lookup requires two lookup kwargs,
+        and REST-Framework only supports 1 by default
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        filter_kwargs = {
+            key: self.request.query_params.get(key) for key in self.lookup_url_kwargs
+        }
+        if len(filter_kwargs) != len(self.lookup_url_kwargs):
+            raise ValidationError(
+                f"Invalid number of lookup parameters. "
+                f"Required: {self.lookup_url_kwargs}"
+            )
+        role = generics.get_object_or_404(queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, role)
+        return role
+
+    def create(self, request: Request, *args, **kwargs) -> Response:
+        super(ArtifactRoleViewSet, self).create(request, *args, **kwargs)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # By default, the destroy action requires the URL to have a path argument
+    # to look up the model. We do this instead to get the URL defined by the spec.
+    # This action also has a manual route overridden by our router.
+    @transaction.atomic
+    def unassign(self, request: Request, *args, **kwargs) -> Response:
+        role = self.get_object()
+        role.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema_view(
