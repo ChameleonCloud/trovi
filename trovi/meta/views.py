@@ -1,16 +1,19 @@
-from rest_framework import filters, viewsets, mixins
+from django.db import transaction
+from django.utils.decorators import method_decorator
+from rest_framework import filters, mixins
 from rest_framework.parsers import JSONParser
 
 from trovi.api.serializers import ArtifactTagSerializerWritable
 from trovi.common.authenticators import TroviTokenAuthentication
-from trovi.common.permissions import BaseMetadataPermission
+from trovi.common.permissions import TroviAdminPermission
+from trovi.common.views import TroviAPIViewSet
 from trovi.meta.paginators import ListTagsPagination
 from trovi.models import ArtifactTag
 
 
-class ArtifactTagsView(
-    viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateModelMixin
-):
+@method_decorator(transaction.atomic, name="list")
+@method_decorator(transaction.atomic, name="create")
+class ArtifactTagsView(TroviAPIViewSet, mixins.ListModelMixin, mixins.CreateModelMixin):
     """
     Simple view for fetching tags. Only admins may upload new tags
     """
@@ -22,4 +25,5 @@ class ArtifactTagsView(
     filter_backends = [filters.OrderingFilter]
     pagination_class = ListTagsPagination
     authentication_classes = [TroviTokenAuthentication]
-    permission_classes = [BaseMetadataPermission]
+    list_permission_classes = []
+    create_permission_classes = [TroviAdminPermission]

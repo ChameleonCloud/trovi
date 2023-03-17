@@ -1,131 +1,170 @@
 import logging
-from typing import Any
+from typing import Any, Optional, Type
 
-from requests.structures import CaseInsensitiveDict
-from rest_framework import permissions, views
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework import permissions, views, generics, status
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact, ArtifactVersion
+from trovi.models import Artifact, ArtifactVersion, ArtifactRole
 
 LOG = logging.getLogger(__name__)
 
 
-class BaseScopedPermission(permissions.BasePermission):
+class TroviPermission(permissions.BasePermission):
+    # This property is not required on BasePermission, but it's used
+    # by the view which owns a Permission to decide the error message
+    # in the response to the user.
+    # The way that DRF AND/OR's Permissions together
+    # ends up just... deleting the message. So, the message should only be set
+    # just before returning False
+    message: Optional[str] = None
+    code: Optional[int] = None
+
+
+class BaseScopePermission(TroviPermission):
     """
     Determines if the user has permission to execute their desired action
     """
 
-    # Maps actions to required authorization scopes
-    action_scope_map = CaseInsensitiveDict(
-        {
-            "POST": {JWT.Scopes.ARTIFACTS_WRITE},
-            "DELETE": {JWT.Scopes.ARTIFACTS_WRITE},
-            "UPDATE": {JWT.Scopes.ARTIFACTS_WRITE, JWT.Scopes.ARTIFACTS_READ},
-            "PATCH": {JWT.Scopes.ARTIFACTS_WRITE, JWT.Scopes.ARTIFACTS_READ},
-            "GET": {JWT.Scopes.ARTIFACTS_READ},
-        }
-    )
+    required_scopes: set[JWT.Scopes] = None
 
     def has_permission(self, request: Request, view: views.View) -> bool:
-        required_scopes = self.action_scope_map.get(request.method)
         token = JWT.from_request(request)
-        LOG.debug(f"Request requires scope: {required_scopes=}")
         if not token:
-            return required_scopes == {JWT.Scopes.ARTIFACTS_READ}
-        if required_scopes is None:
+            return self.required_scopes == {JWT.Scopes.ARTIFACTS_READ}
+
+        if self.required_scopes is None:
             raise KeyError(
                 f"Required scopes not set for action {request.method} "
                 f"({request.get_full_path()})"
             )
-        return required_scopes.issubset(token.scope)
+
+        return self.required_scopes.issubset(token.scope)
+
+    @property
+    def message(self):
+        return f"Token does not have required scope: {' '.join(self.required_scopes)}"
 
 
-class ArtifactScopedPermission(BaseScopedPermission):
-    """
-    Determines if the user's authorization scope permits them to interact with the
-    Artifact in the way they desire.
-
-    TODO allow owners to specify which users may write to their artifacts
-    """
-
-    def has_object_permission(
-        self, request: Request, view: views.View, obj: Artifact
-    ) -> bool:
-        token = JWT.from_request(request)
-        if token:
-            token_urn = token.to_urn()
-        else:
-            token_urn = None
-        if token_urn == obj.owner_urn:
-            return True
-        else:
-            # If the authenticated user is not the artifact owner,
-            # they may not write to the artifact
-            LOG.debug(
-                f"Checking if non-owner {token_urn} requests write scope for {obj.uuid}"
-            )
-            required_scope = self.action_scope_map[request.method]
-            # Deny any non-owner users who are requesting writes
-            return not any(scope.is_write_scope() for scope in required_scope)
+class ArtifactReadScopePermission(BaseScopePermission):
+    required_scopes = {JWT.Scopes.ARTIFACTS_READ}
 
 
-class ArtifactVisibilityPermission(permissions.BasePermission):
+class ArtifactWriteScopePermission(BaseScopePermission):
+    required_scopes = {JWT.Scopes.ARTIFACTS_WRITE}
+
+
+class ArtifactWriteMetricsScopePermission(BaseScopePermission):
+    required_scopes = {JWT.Scopes.ARTIFACTS_WRITE_METRICS}
+
+
+class ArtifactViewPermission(TroviPermission):
     """
     Determines if an Artifact is visible to the user
     """
 
+    message = "User does not have permission to view this Artifact"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: Artifact
+    ) -> bool:
+        sharing_key = request.query_params.get("sharing_key")
+        if sharing_key == obj.sharing_key:
+            return True
+        token = JWT.from_request(request)
+        return token and obj.can_be_viewed_by(token.to_urn())
+
+
+class ArtifactEditPermission(TroviPermission):
+    message = "User does not have permission to edit this Artifact"
+
     def has_object_permission(
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
-        if obj.is_public():
-            return True
-        sharing_key = request.query_params.get("sharing_key")
-        if sharing_key and sharing_key == obj.sharing_key:
-            return True
-        # If the authenticated user owns the Artifact,
-        # then they may access the Artifact
-        return (token and token.to_urn() == obj.owner_urn) or obj.has_doi()
+        return token and obj.can_be_edited_by(token.to_urn())
 
 
-class ArtifactVersionVisibilityPermission(permissions.BasePermission):
+class ArtifactAdminPermission(TroviPermission):
     """
-    Determines if a user has permission to view an ArtifactVersion
+    Checks if the user is an admin of the requested Artifact
     """
 
     def has_object_permission(
-        self, request: Request, view: views.View, obj: ArtifactVersion
+        self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
-        sharing_key = request.query_params.get("sharing_key")
-        if obj.artifact.is_public() or sharing_key == obj.artifact.sharing_key:
-            return True
-        else:
-            token = JWT.from_request(request)
-            token_urn = token.to_urn() if token else None
-            return obj.has_doi() or token_urn == obj.artifact.owner_urn
-
-
-class ArtifactVersionScopedPermission(permissions.BasePermission):
-    """
-    Determines if the user's authorization scope permits them to interact with the
-    ArtifactVersion in the way they desire.
-    """
-
-    def has_object_permission(
-        self, request: Request, view: views.View, obj: ArtifactVersion
-    ) -> bool:
-        if request.method.upper() == "DELETE" and obj.has_doi():
+        token = JWT.from_request(request)
+        if not token:
             return False
-        artifact_scope = ArtifactScopedPermission()
-        return artifact_scope.has_object_permission(request, view, obj.artifact)
+        user_urn = token.to_urn()
+
+        return obj.has_admin(user_urn)
 
 
-class ArtifactVersionMetricsVisibilityPermission(permissions.BasePermission):
+class BaseParentArtifactPermission(TroviPermission):
+    """
+    Allows models which are children of Artifacts to check permissions based on their
+    parent artifact
+    """
+
+    parent_permission: Type[TroviPermission] = TroviPermission
+
+    def has_permission(self, request: Request, view: views.View) -> bool:
+        artifact_uuid = view.kwargs.get("parent_lookup_artifact")
+        if not artifact_uuid:
+            raise ValueError(
+                "/versions/ endpoint was called without a parent artifact. "
+                "Routes are misconfigured."
+            )
+        artifact = generics.get_object_or_404(
+            Artifact.objects.all(), uuid=artifact_uuid
+        )
+        return self.parent_permission().has_object_permission(request, view, artifact)
+
+    @property
+    def message(self) -> str:
+        return self.parent_permission.message
+
+
+class ParentArtifactViewPermission(BaseParentArtifactPermission):
+    parent_permission = ArtifactViewPermission
+
+
+class ParentArtifactAdminPermission(BaseParentArtifactPermission):
+    parent_permission = ArtifactAdminPermission
+
+
+class ParentArtifactEditPermission(BaseParentArtifactPermission):
+    parent_permission = ArtifactEditPermission
+
+
+class ArtifactRoleOwnerRolesPermission(TroviPermission):
+    message = (
+        "Artifact owners cannot have their roles revoked. "
+        "The owner must be changed first."
+    )
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactRole
+    ) -> bool:
+        return obj.user != obj.artifact.owner_urn
+
+
+class ArtifactVersionDestroyDOIPermission(TroviPermission):
+    message = "Artifact Versions with associated DOIs cannot be deleted!"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactVersion
+    ) -> bool:
+        return not obj.has_doi()
+
+
+class ArtifactVersionMetricsUpdatePermission(TroviPermission):
     """
     Determines if a USER has permission to increment artifact metrics.
     """
+
+    message = "User is forbidden from incrementing metrics on this artifact"
 
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
@@ -134,86 +173,43 @@ class ArtifactVersionMetricsVisibilityPermission(permissions.BasePermission):
         Confirms that the origin user has permission to update
         an artifact version's metrics
         """
-        if obj.artifact.visibility == Artifact.Visibility.PUBLIC:
-            return True
-        sharing_key = request.query_params.get("sharing_key")
-        if sharing_key and sharing_key == obj.artifact.sharing_key:
-            return True
+
         origin_jws = request.query_params.get("origin")
         if not origin_jws:
+            self.message = "Updating metrics requires an origin token"
+            self.code = status.HTTP_401_UNAUTHORIZED
             return False
+
+        # Authentication of the origin user is performed here
         origin_token = JWT.from_jws(origin_jws)
-        if not origin_token:
-            raise AuthenticationFailed("Updating metrics requires an origin token")
-        return origin_token.to_urn() == obj.artifact.owner_urn
+
+        sharing_key = request.query_params.get("sharing_key")
+        if sharing_key == obj.artifact.sharing_key:
+            return True
+
+        return obj.can_be_viewed_by(origin_token.to_urn())
 
 
-class ArtifactVersionMetricsScopedPermission(permissions.BasePermission):
-    """
-    Determines if a SERVICE has permission to increment artifact metrics.
-    """
-
-    def has_permission(self, request: Request, view: views.View) -> bool:
-        """
-        The only users with permission to change metrics are admins. Only admins
-        are allowed to obtain the trovi:admin or artifacts:write_metrics scopes
-        """
-        token = JWT.from_request(request)
-        return JWT.Scopes.ARTIFACTS_WRITE_METRICS in token.scope
-
-
-class ArtifactVersionOwnershipPermission(permissions.BasePermission):
-    """
-    Determines if a user is the owner of the parent artifact of an artifact version
-    """
+class RootStorageDownloadPermission(TroviPermission):
+    message = "User is not permitted to download this content"
 
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
         token = JWT.from_request(request)
-        return token and token.to_urn() == obj.artifact.owner_urn
+        return obj.can_be_viewed_by(token.to_urn())
 
 
-class BaseStoragePermission(permissions.BasePermission):
-    def has_permission(self, request: Request, view: views.View) -> bool:
-        if request.method.upper() == "POST":
-            # For StoreContents, we only require that the user is authenticated
-            return IsAuthenticatedWithTroviToken().has_permission(request, view)
-        else:
-            # For RetrieveContents, permission is validated by has_object_permission
-            return True
-
-    def has_object_permission(
-        self, request: Request, view: views.View, obj: ArtifactVersion
-    ) -> bool:
-        if request.method.upper() == "POST":
-            return True
-        else:
-            return (
-                ArtifactVersionScopedPermission & ArtifactVersionVisibilityPermission
-            )().has_object_permission(request, view, obj)
-
-
-class BaseMetadataPermission(permissions.BasePermission):
-    """
-    Base permissions for viewing API metadata
-    """
-
-    def has_permission(self, request: Request, view: views.View) -> bool:
-        if request.method.upper() == "GET":
-            # Listing metadata is public
-            return True
-        else:
-            admin_permission = AdminPermission()
-            return admin_permission.has_permission(request, view)
-
-
-class IsAuthenticatedWithTroviToken(permissions.BasePermission):
+class AuthenticatedWithTroviTokenPermission(TroviPermission):
     def has_permission(self, request: Request, view: views.View) -> bool:
         return JWT.from_request(request) is not None
 
 
-class AdminPermission(permissions.BasePermission):
+class TroviAdminPermission(TroviPermission):
+    """
+    Checks if the user is an admin of the entire Trovi service
+    """
+
     def has_object_permission(
         self, request: Request, view: views.View, obj: Any
     ) -> bool:
