@@ -108,3 +108,76 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
                 description=sharing_key_parameter.description,
             )
         ]
+
+
+class ArtifactRoleFilter(filters.BaseFilterBackend):
+    """
+    Allows Artifact roles to be filters on user= and/or role=
+    """
+
+    role_parameter = OpenApiParameter(
+        name="role",
+        type=OpenApiTypes.STR,
+        enum=ArtifactRole.RoleType,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        allow_blank=False,
+        description="A specific role type",
+    )
+    user_parameter = OpenApiParameter(
+        name="user",
+        type=OpenApiTypes.STR,
+        location=OpenApiParameter.QUERY,
+        required=False,
+        allow_blank=False,
+        description="A user URN",
+    )
+
+    def filter_queryset(
+        self, request: Request, queryset: models.QuerySet, view: views.View
+    ) -> models.QuerySet:
+        new_queryset = queryset.all()
+        if user := view.kwargs.get("user"):
+            new_queryset = new_queryset.filter(user=user)
+        if role := view.kwargs.get("role"):
+            new_queryset = new_queryset.filter(role=role)
+
+        return new_queryset
+
+    def get_schema_operation_parameters(
+        self, view: views.View
+    ) -> list[dict[str, JSON]]:
+        return [
+            build_parameter_type(
+                name=self.role_parameter.name,
+                schema=build_basic_type(self.role_parameter.type),
+                enum=self.role_parameter.enum,
+                location=self.role_parameter.location,
+                required=self.role_parameter.required,
+                description=self.role_parameter.description,
+            ),
+            build_parameter_type(
+                name=self.user_parameter.name,
+                schema=build_basic_type(self.user_parameter.type),
+                location=self.user_parameter.location,
+                required=self.user_parameter.required,
+                description=self.user_parameter.description,
+            ),
+        ]
+
+
+class ArtifactRoleOrderingFilter(filters.OrderingFilter):
+    """
+    Handles default ordering for roles. The fields used to sort the roles is not
+    accessible to users, so this class also overrides the default schema definition
+    to reflect that.
+    """
+
+    ordering_param = None
+    ordering_fields = ["user", "role"]
+
+    def get_schema_fields(self, view: views.View) -> list:
+        return []
+
+    def get_schema_operation_parameters(self, view: views.View) -> list:
+        return []
