@@ -180,7 +180,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "trovi.common.authenticators.AlwaysFailAuthentication"
     ],
-    "DEFAULT_SCHEMA_CLASS": "trovi.common.schema.APIViewSetAutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "trovi.common.schema.TroviAPIViewSetAutoSchema",
 }
 
 

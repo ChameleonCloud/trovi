@@ -48,6 +48,7 @@ from trovi.common.permissions import (
     ArtifactWriteMetricsScopePermission,
     ArtifactRoleOwnerRolesPermission,
 )
+from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
 from trovi.models import Artifact, ArtifactVersion, ArtifactRole

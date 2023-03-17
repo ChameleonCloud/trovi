@@ -92,6 +92,7 @@ class StorageViewSet(TroviAPIViewSet, mixins.CreateModelMixin, mixins.ListModelM
     serializer_class = StorageRequestSerializer
     lookup_field = "contents_urn__iexact"
     lookup_url_kwarg = "urn"
+    schema = StorageViewSetAutoSchema()
 
     @transaction.atomic
     def list(self, request: Request, *args, **kwargs) -> Response:
