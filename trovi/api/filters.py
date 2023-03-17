@@ -8,7 +8,7 @@ from rest_framework import filters, views
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact
+from trovi.models import Artifact, ArtifactRole
 from util.types import JSON
 
 sharing_key_parameter = OpenApiParameter(
@@ -75,22 +75,26 @@ class ListArtifactsVisibilityFilter(filters.BaseFilterBackend):
         if token:
             if token.is_admin():
                 return queryset
-            owner_urn = token.to_urn()
+            user_urn = token.to_urn()
         else:
-            owner_urn = None
+            user_urn = None
 
         public = queryset.filter(visibility=Artifact.Visibility.PUBLIC)
         private = queryset.filter(visibility=Artifact.Visibility.PRIVATE)
 
-        if sharing_key:
-            shared_with = private.filter(sharing_key=sharing_key)
-        else:
-            shared_with = Artifact.objects.none()
-        owner_of = private.filter(owner_urn=owner_urn)
+        shared_with = private.filter(sharing_key=sharing_key)
+
+        collaborator_of = private.filter(
+            roles__user=user_urn,
+            roles__role__in=(
+                ArtifactRole.RoleType.COLLABORATOR,
+                ArtifactRole.RoleType.ADMINISTRATOR,
+            ),
+        )
 
         has_zenodo = queryset.filter(versions__contents_urn__contains="zenodo")
 
-        return (public | shared_with | owner_of | has_zenodo).distinct()
+        return (public | shared_with | collaborator_of | has_zenodo).distinct()
 
     def get_schema_operation_parameters(
         self, view: views.View
