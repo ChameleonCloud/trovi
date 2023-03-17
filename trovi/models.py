@@ -120,6 +120,60 @@ class Artifact(models.Model):
         """
         return self.doi_versions().exists()
 
+    def has_admin(self, user: str) -> bool:
+        """
+        Reports whether a user has the role of Administrator on this Artifact.
+        The user string should be in the form of a user URN
+        """
+        return self.roles.filter(
+            user=user, role=ArtifactRole.RoleType.ADMINISTRATOR
+        ).exists()
+
+    def has_collaborator(self, user: str) -> bool:
+        """
+        Reports whether a user has the role of Collaborator on this Artifact.
+        The user string should be in the form of a user URN
+        """
+        return self.roles.filter(
+            user=user, role=ArtifactRole.RoleType.COLLABORATOR
+        ).exists()
+
+    def can_be_edited_by(self, user: str) -> bool:
+        """
+        Reports whether a user has permission to edit an Artifact.
+        The user string should be in the form of a user URN
+        """
+        return self.roles.filter(
+            user=user,
+            role__in=(
+                ArtifactRole.RoleType.COLLABORATOR,
+                ArtifactRole.RoleType.ADMINISTRATOR,
+            ),
+        ).exists()
+
+    def gives_permission_to(self, user: str) -> bool:
+        """
+        Reports whether a user has any elevated permissions on an artifact
+        The user string should be in the form of a user URN
+        """
+        return self.roles.filter(
+            user=user, role__in=ArtifactRole.RoleType.values
+        ).exists()
+
+    def can_be_viewed_by(self, user: str) -> bool:
+        """
+        Reports whether a user has permission to view an artifact
+        The user string should be in the form of a user URN
+        """
+        return self.is_public() or self.has_doi() or self.can_be_edited_by(user)
+
+    def can_be_deleted_by(self, user: str) -> bool:
+        """
+        Reports whether a user has permission to delete an artifact
+        The user string should be in the form of a user URN
+        """
+        return user == self.owner_urn
+
 
 class ArtifactVersion(models.Model):
     """Represents a single published version of an artifact"""
@@ -183,6 +237,29 @@ class ArtifactVersion(models.Model):
         # A Zenodo URN should look like "urn:trovi:contents:zenodo:<doi>"
         urn_info = parse_contents_urn(self.contents_urn)
         return urn_info["provider"] == "zenodo"
+
+    def can_be_viewed_by(self, user: str) -> bool:
+        """
+        Reports whether a user has permission to view an ArtifactVersion
+        The user string should be in the form of a user URN
+        """
+        return (
+            # Private Artifacts are always publicly visible if any of their versions \
+            # have a DOI.
+            # When querying the versions for those Artifacts, we will only display
+            # versions which have a DOI to public users. Non-DOI versions will remain
+            # hidden. That is the reason why we don't just defer this entire check to
+            # the Artifact itself.
+            self.has_doi()
+            or self.artifact.is_public()
+            or self.artifact.roles.filter(
+                user=user,
+                role__in=(
+                    ArtifactRole.RoleType.ADMINISTRATOR,
+                    ArtifactRole.RoleType.COLLABORATOR,
+                ),
+            ).exists()
+        )
 
     @staticmethod
     def generate_slug(instance: "ArtifactVersion", created: bool = False, **_):
