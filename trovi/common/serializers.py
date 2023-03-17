@@ -1,4 +1,4 @@
-from typing import Type, Any, Callable
+from typing import Type, Any, Callable, Optional
 
 from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
@@ -207,3 +207,16 @@ def strict_schema(
     """
     serializer.to_internal_value = _validate_strict_schema(serializer.to_internal_value)
     return serializer
+
+
+def get_requesting_user_urn(serializer: serializers.Serializer) -> Optional[str]:
+    """
+    Generates a default owner URN based on the requesting user's auth token
+    """
+    request = serializer.context.get("request")
+    if not request:
+        return None
+    token = JWT.from_request(request)
+    if not token:
+        return None
+    return token.to_urn()
