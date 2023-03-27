@@ -25,6 +25,7 @@ from trovi.common.serializers import (
     allow_force,
     strict_schema,
     _is_valid_force_request,
+    get_requesting_user_urn,
 )
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
@@ -37,6 +38,7 @@ from trovi.models import (
     ArtifactLink,
     ArtifactEvent,
     ArtifactVersionMigration,
+    ArtifactRole,
 )
 from util.types import JSON
 
@@ -312,10 +314,31 @@ class ArtifactMetricsSerializer(serializers.Serializer):
         raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
 
 
+class ArtifactChildSerializer(serializers.ModelSerializer):
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        # On requests for child endpoints to /artifacts, the Artifact UUID is attached
+        # to the view by the router, so we need to extract it from there.
+        # It is safe to retrieve the artifact from the view's kwargs,
+        # as it will be overwritten by the router if the user tries
+        # to pass their own kwargs
+        view = self.context["view"]
+        data["artifact"] = view.kwargs.get("parent_lookup_artifact")
+
+        try:
+            return super(ArtifactChildSerializer, self).to_internal_value(data)
+        except ValidationError as e:
+            # This is to trap Validation errors thrown from non-existent artifacts.
+            # By default, this will return a 400 error. We want to return 404 instead.
+            if artifact_error := e.detail.get("artifact"):
+                if any(detail.code == "does_not_exist" for detail in artifact_error):
+                    raise NotFound(e.detail)
+            raise e
+
+
 @extend_schema_serializer(exclude_fields=["artifact"])
 @allow_force
 @strict_schema
-class ArtifactVersionSerializer(serializers.ModelSerializer):
+class ArtifactVersionSerializer(ArtifactChildSerializer):
     """
     Describes a single version of an artifact
     """
@@ -364,26 +387,31 @@ class ArtifactVersionSerializer(serializers.ModelSerializer):
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
         }
 
-    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
-        # On CreateArtifactVersion requests, the Artifact UUID is attached to
-        # the view by the router, so we need to extract it from there. On
-        # CreateArtifact requests, the Artifact UUID should already be inserted
-        # into the data by the parent serializer in ArtifactSerializer.create
-        # It is safe to retrieve the artifact from the view's kwargs,
-        # as it will be overwritten by the router if the user tries to pass their own
-        # kwargs
-        view = self.context["view"]
-        data.setdefault("artifact", view.kwargs.get("parent_lookup_artifact"))
 
-        try:
-            return super(ArtifactVersionSerializer, self).to_internal_value(data)
-        except ValidationError as e:
-            # This is to trap Validation errors thrown from non-existent artifacts.
-            # By default, this will return a 400 error. We want to return 404 instead.
-            if artifact_error := e.detail.get("artifact"):
-                if any(detail.code == "does_not_exist" for detail in artifact_error):
-                    raise NotFound(e.detail)
-            raise e
+@extend_schema_serializer(exclude_fields=["artifact"])
+@strict_schema
+class ArtifactRoleSerializer(ArtifactChildSerializer):
+    """
+    Describes the user-roles attached to an Artifact
+    """
+
+    class Meta:
+        model = ArtifactRole
+        read_only_fields = ["assigned_by"]
+        exclude = ["id"]
+
+    def create(self, validated_data: dict) -> ArtifactRole:
+        validated_data["assigned_by"] = get_requesting_user_urn(self)
+        return super(ArtifactRoleSerializer, self).create(validated_data)
+
+    def update(self, instance, validated_data: dict):
+        raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
+
+    def to_representation(self, instance: ArtifactRole) -> dict[str, JSON]:
+        return {
+            "user": instance.user,
+            "role": instance.role,
+        }
 
 
 @allow_force
@@ -453,6 +481,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
     # Related fields used for validating on writes
     tags = ArtifactTagSerializer(many=True, required=False)
     authors = ArtifactAuthorSerializer(many=True, required=False)
+    roles = ArtifactRoleSerializer(many=True, read_only=True)
     linked_projects = ArtifactProjectSerializer(many=True, required=False)
     reproducibility = ArtifactReproducibilitySerializer(required=False)
     versions = ArtifactVersionSerializer(many=True, read_only=True)
@@ -468,13 +497,15 @@ class ArtifactSerializer(serializers.ModelSerializer):
         is_admin = token.is_admin() if token else False
         if (
             instance.is_public()
-            or token_urn == instance.owner_urn
+            or instance.gives_permission_to(token_urn)
             or is_admin
             or sharing_key == instance.sharing_key
         ):
             versions = instance.versions.all()
         else:
-            versions = [v for v in instance.versions.all() if v.has_doi()]
+            versions = [
+                v for v in instance.versions.all() if v.can_be_viewed_by(token_urn)
+            ]
 
         artifact_json = {
             "uuid": str(instance.uuid),
@@ -486,6 +517,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
             "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
             "owner_urn": instance.owner_urn,
+            "roles": ArtifactRoleSerializer(instance.roles.all(), many=True).data,
             "visibility": instance.visibility,
             "linked_projects": ArtifactProjectSerializer(
                 instance.linked_projects.all(), many=True
@@ -497,7 +529,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             ).data,
             "metrics": ArtifactMetricsSerializer(instance).data,
         }
-        if self.get_requesting_user_urn() == instance.owner_urn:
+        if instance.gives_permission_to(token_urn):
             artifact_json["sharing_key"] = instance.sharing_key
         return artifact_json
 
@@ -544,6 +576,14 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 reproducibility_serializer.is_valid(raise_exception=True)
                 artifact = reproducibility_serializer.save()
 
+            # The only default role is the artifact owner as an administrator
+            owner_urn = get_requesting_user_urn(self)
+            artifact.roles.create(
+                user=owner_urn,
+                assigned_by=owner_urn,
+                role=ArtifactRole.RoleType.ADMINISTRATOR,
+            )
+
         return artifact
 
     def update(self, instance: Artifact, validated_data: dict) -> Artifact:
@@ -563,6 +603,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         if tags is not None:
             tags = [t["tag"] for t in tags]
         reproducibility = validated_data.pop("reproducibility", None)
+        owner_urn = validated_data.pop("owner_urn", None)
 
         with transaction.atomic():
             if authors is not None:
@@ -606,23 +647,40 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 sharing_key_field = instance._meta.local_fields[sharing_key]
                 validated_data[sharing_key] = sharing_key_field.default()
 
+            # If the owner URN is changed, the new owner should be made admin.
+            # The old owner will retain their admin role unless manually removed.
+            if owner_urn and not instance.has_admin(owner_urn):
+                instance.roles.create(
+                    user=owner_urn,
+                    assigned_by=instance.owner_urn,
+                    role=ArtifactRole.RoleType.ADMINISTRATOR,
+                )
+
             return super(ArtifactSerializer, self).update(instance, validated_data)
 
     def to_internal_value(self, data: dict) -> dict:
         # If this is a new Artifact, its default owner is the user who is creating it
         if not self.instance:
-            data.setdefault("owner_urn", self.get_requesting_user_urn())
+            data.setdefault("owner_urn", get_requesting_user_urn(self))
 
         return super(ArtifactSerializer, self).to_internal_value(data)
 
+    def validate_roles(self, roles: dict):
+        raise ValidationError(
+            "Cannot edit roles via UpdateArtifact request. Roles can be"
+            "assigned or unassigned via the role endpoints"
+        )
+
     def validate_owner_urn(self, owner_urn: str) -> str:
-        token_urn = self.get_requesting_user_urn()
+        token_urn = get_requesting_user_urn(self)
         if not token_urn:
             raise PermissionDenied("Setting the owner_urn requires authentication.")
         if JWT.Scopes.TROVI_ADMIN in JWT.from_request(self.context["request"]).scope:
             return owner_urn
+        # Check for owner_urn edit
         elif self.instance and self.instance.owner_urn != token_urn:
             raise PermissionDenied("Non-owners cannot modify owner_urn")
+        # Check if owner_urn is specified on artifact creation
         elif not self.instance and owner_urn != token_urn:
             raise PermissionDenied(
                 "The owner of an artifact can only be edited by the artifact owner "
@@ -638,18 +696,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
         raise PermissionDenied(
             "Only Trovi admins are allowed to modify an artifact's linked projects."
         )
-
-    def get_requesting_user_urn(self) -> Optional[str]:
-        """
-        Generates a default owner URN based on the requesting user's auth token
-        """
-        request = self.context.get("request")
-        if not request:
-            return None
-        token = JWT.from_request(request)
-        if not token:
-            return None
-        return token.to_urn()
 
     def validate_long_description(
         self, long_description: Optional[str]

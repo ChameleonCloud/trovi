@@ -5,6 +5,7 @@ having to reference dicts with strings repeatedly in tests.
 """
 import datetime
 import logging
+import os
 import random
 from typing import Union, Optional, Iterable, Any
 from uuid import uuid4
@@ -23,6 +24,7 @@ from trovi.models import (
     ArtifactLink,
     ArtifactTag,
     ArtifactProject,
+    ArtifactRole,
 )
 
 
@@ -203,6 +205,18 @@ link_don_quixote_image = ArtifactLink(
     urn="urn:trovi:chameleon:disk-image:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
     label="Image of DuchessOS",
 )
+role_don_quixote_admin = ArtifactRole(
+    artifact=artifact_don_quixote,
+    user=f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}",
+    assigned_by="urn:trovi:user:chameleon:donq@rosinante.io",
+    role=ArtifactRole.RoleType.ADMINISTRATOR,
+)
+role_don_quixote_don = ArtifactRole(
+    artifact=artifact_don_quixote,
+    user=artifact_don_quixote.owner_urn,
+    assigned_by=artifact_don_quixote.owner_urn,
+    role=ArtifactRole.RoleType.ADMINISTRATOR,
+)
 don_quixote = [
     artifact_don_quixote,
     version_don_quixote_1,
@@ -214,6 +228,8 @@ don_quixote = [
     event_don_quixote_launch3,
     link_don_quixote_image,
     link_don_quixote_dataset,
+    role_don_quixote_admin,
+    role_don_quixote_don,
 ]
 
 
@@ -327,6 +343,16 @@ def generate_many_to_many(artifacts: Iterable[Artifact]):
         artifact.linked_projects.add(
             *random.choices(projects, weights=weights_projects, k=k_projects)
         )
+
+
+def make_admin(artifact: Artifact) -> Artifact:
+    artifact.roles.create(
+        artifact=artifact,
+        user=role_don_quixote_admin.user,
+        assigned_by=role_don_quixote_admin.assigned_by,
+        role=ArtifactRole.RoleType.ADMINISTRATOR,
+    )
+    return artifact
 
 
 class SampleDataTestRunner(DiscoverRunner):

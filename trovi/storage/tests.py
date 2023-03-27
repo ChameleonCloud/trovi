@@ -2,6 +2,7 @@ import io
 import os
 import random
 import tarfile
+import uuid
 from typing import IO
 from unittest import skipIf
 from urllib.parse import urlencode
@@ -14,7 +15,8 @@ from rest_framework import status
 from rest_framework.reverse import reverse
 
 from trovi.api.tests import APITest
-from trovi.models import ArtifactVersionMigration
+from trovi.common.tokens import JWT
+from trovi.models import ArtifactVersionMigration, Artifact
 from trovi.storage.urls import StoreContents, RetrieveContents
 from util.test import version_don_quixote_1, version_don_quixote_2, artifact_don_quixote
 
@@ -49,11 +51,15 @@ class StorageTest(APITest):
         return self.get_test_data_gzip(10 * 1024 * 1024)
 
     def store_contents_path(self, backend: str = "chameleon") -> str:
-        return self.authenticate_url(f"{reverse(StoreContents)}?backend={backend}")
+        return self.authenticate_url(
+            f"{reverse(StoreContents)}?backend={backend}",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
 
     def retrieve_contents_path(self, urn: str) -> str:
         return self.authenticate_url(
-            f"{reverse(RetrieveContents)}?{urlencode({'urn': urn})}"
+            f"{reverse(RetrieveContents)}?{urlencode({'urn': urn})}",
+            scopes=[JWT.Scopes.ARTIFACTS_READ],
         )
 
     def store_content(
@@ -177,9 +183,72 @@ class TestRetrieveContents(TestCase, StorageTest):
         for method in as_json["access_methods"]:
             self.assertIsInstance(method, dict, msg=as_json)
 
-    def test_retrieve_contents_not_found(self):
-        # TODO
-        pass
+    def test_retrieve_contents_artifact_not_found(self):
+        fake_uuid = uuid.uuid4()
+        while True:
+            try:
+                Artifact.objects.get(uuid=fake_uuid)
+                fake_uuid = uuid.uuid4()
+            except Artifact.DoesNotExist:
+                break
+        response = self.client.get(
+            self.authenticate_url(
+                reverse(
+                    "artifact-version-contents",
+                    args=[fake_uuid, version_don_quixote_1.slug],
+                )
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
+        )
+
+    def test_retrive_contents_version_not_found(self):
+        response = self.client.get(
+            self.authenticate_url(
+                reverse(
+                    "artifact-version-contents",
+                    args=[artifact_don_quixote.uuid, "retrive-contents-not-found-slug"],
+                )
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
+        )
+
+    def test_retrive_version_contents_private(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        artifact_don_quixote.save()
+
+        response = self.client.get(
+            self.authenticate_url(
+                reverse(
+                    "artifact-version-contents",
+                    args=[artifact_don_quixote.uuid, version_don_quixote_1.slug],
+                )
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=response.content)
+
+    def test_retrieve_version_contents_private_no_permission(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(
+            self.authenticate_url(
+                reverse(
+                    "artifact-version-contents",
+                    args=[artifact_don_quixote.uuid, version_don_quixote_1.slug],
+                )
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_403_FORBIDDEN, msg=response.content
+        )
 
     def test_retrieve_contents_access_methods(self):
         # TODO
@@ -233,7 +302,6 @@ class TestMigrateArtifactVersion(TransactionTestCase, StorageTest):
         artifact_don_quixote.refresh_from_db()
         artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
         artifact_don_quixote.save()
-        print(f"TEST URN {version_don_quixote_1.contents_urn}")
         response = self.client.post(
             self.migrate_artifact_version_path(
                 artifact_don_quixote.uuid, version_don_quixote_1.slug

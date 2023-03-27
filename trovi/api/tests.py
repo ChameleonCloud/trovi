@@ -24,6 +24,8 @@ from trovi.api.urls import (
     DeleteArtifactVersion,
     IncrArtifactVersionMetrics,
     MigrateArtifactVersion,
+    AssignArtifactRole,
+    UnassignArtifactRole,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
@@ -31,12 +33,16 @@ from trovi.models import (
     Artifact,
     ArtifactTag,
     ArtifactVersion,
+    ArtifactRole,
 )
 from util.decorators import timed_lru_cache
 from util.test import (
     artifact_don_quixote,
     version_don_quixote_1,
     version_don_quixote_2,
+    make_admin,
+    role_don_quixote_don,
+    role_don_quixote_admin,
 )
 from util.types import DummyRequest
 
@@ -146,7 +152,26 @@ class APITest(SimpleTestCase):
 
     def migrate_artifact_version_path(self, artifact_uuid: str, version_slug: str):
         return self.authenticate_url(
-            reverse(MigrateArtifactVersion, args=[artifact_uuid, version_slug])
+            reverse(MigrateArtifactVersion, args=[artifact_uuid, version_slug]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def assign_artifact_role_path(self, artifact_uuid: str) -> str:
+        return self.authenticate_url(
+            reverse(AssignArtifactRole, args=[artifact_uuid]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def unassign_artifact_role_path(
+        self, artifact_uuid: str, user: str, role: ArtifactRole.RoleType
+    ) -> str:
+        return self.authenticate_url(
+            reverse(
+                UnassignArtifactRole,
+                args=[artifact_uuid],
+            )
+            + f"?user={user}&role={role}",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
 
     def assertAPIModelContentEqual(self, actual: models.Model, expected: models.Model):
@@ -217,10 +242,10 @@ class TestListArtifacts(TestCase, APITest):
         public = Artifact.objects.filter(visibility=Artifact.Visibility.PUBLIC)
         has_doi = Artifact.objects.filter(versions__contents_urn__contains="zenodo")
         visible_objects_count = public.union(has_doi).count()
-        self.assertEqual(visible_objects_count, len(as_json["artifacts"]))
-        self.assertEqual(visible_objects_count, as_json["next"]["limit"])
+        self.assertEqual(visible_objects_count, len(as_json["artifacts"]), as_json)
+        self.assertEqual(visible_objects_count, as_json["next"]["limit"], as_json)
 
-    def test_visibility(self):
+    def test_private_doi(self):
         # This test is skipped for the empty tests
         if Artifact.objects.count() == 0:
             return
@@ -334,8 +359,34 @@ class TestListArtifacts(TestCase, APITest):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_private_artifacts_for_user(self):
-        # TODO
-        pass
+        if not Artifact.objects.exists():
+            return
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        artifact_don_quixote.save()
+
+        response = self.client.get(self.list_artifact_path())
+
+        self.assertIn(
+            str(artifact_don_quixote.uuid),
+            str(response.content),
+            msg="Private artifact not listed for user with permission",
+        )
+
+    def test_private_artifact(self):
+        if not Artifact.objects.exists():
+            return
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(self.list_artifact_path())
+
+        self.assertNotIn(
+            str(artifact_don_quixote.uuid),
+            str(response.content),
+            msg="Private artifact listed for user without permission",
+        )
 
     def test_public_artifacts(self):
         response = self.client.get(reverse(ListArtifact))
@@ -371,7 +422,6 @@ class TestListArtifactsEmpty(TestListArtifacts):
 class TestGetArtifact(TestCase, APITest):
     def test_get_artifact(self):
         artifact_don_quixote.refresh_from_db()
-        # TODO verify random data
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = json.loads(response.content)
 
@@ -383,30 +433,78 @@ class TestGetArtifact(TestCase, APITest):
         )
 
     def test_get_private_artifact(self):
-        # TODO
-        pass
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, msg=as_json)
 
     def test_get_private_artifact_for_user(self):
-        # TODO
-        pass
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        artifact_don_quixote.save()
+
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+        self.assertAPIResponseEqual(
+            as_json,
+            ArtifactSerializer(artifact_don_quixote, context=self.get_test_context()),
+        )
 
     def test_get_missing_artifact(self):
-        # TODO
-        pass
+        fake_uuid = uuid.uuid4()
+        while True:
+            try:
+                Artifact.objects.get(uuid=fake_uuid)
+                fake_uuid = uuid.uuid4()
+            except Artifact.DoesNotExist:
+                break
+        response = self.client.get(self.get_artifact_path(str(fake_uuid)))
+        self.assertEqual(
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
+        )
 
     def test_get_private_artifact_with_sharing_key(self):
-        # TODO
-        pass
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(
+            f"{self.get_artifact_path(artifact_don_quixote.uuid)}"
+            f"&sharing_key={artifact_don_quixote.sharing_key}"
+        )
+        as_json = response.json()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
+        self.assertAPIResponseEqual(
+            as_json,
+            ArtifactSerializer(artifact_don_quixote, context=self.get_test_context()),
+        )
 
     def test_sharing_key_in_response(self):
         artifact_don_quixote.refresh_from_db()
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = response.json()
         self.assertEqual(response.status_code, status.HTTP_200_OK, msg=as_json)
         self.assertNotIn("sharing_key", as_json)
 
-        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        artifact_don_quixote.save(update_fields=["owner_urn"])
+        test_token = JWT.from_jws(self.get_test_token())
+        artifact_don_quixote.roles.create(
+            user=test_token.to_urn(),
+            assigned_by=test_token.to_urn(),
+            role=ArtifactRole.RoleType.COLLABORATOR,
+        )
 
         response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
         as_json = response.json()
@@ -492,6 +590,29 @@ class TestCreateArtifact(TestCase, APITest):
         new_artifact["versions"] = [new_artifact.pop("version")]
         self.assertAPIResponseEqual(
             new_artifact, ArtifactSerializer(model, context=self.get_test_context())
+        )
+
+    def test_create_artifact_owner_admin(self):
+        new_artifact = self.get_new_artifact()
+        response = self.client.post(
+            self.create_artifact_path(),
+            content_type="application/json",
+            data=json.dumps(new_artifact),
+        )
+
+        # If the request is bad, sometimes a tuple is returned
+        self.assertIsInstance(response, Response)
+        response_body = json.loads(response.content)
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response_body
+        )
+
+        model = Artifact.objects.get(uuid=response_body["uuid"])
+        self.assertTrue(
+            model.roles.filter(
+                user=model.owner_urn, role=ArtifactRole.RoleType.ADMINISTRATOR
+            ).exists(),
+            "New artifact owner was not automatically set as admin!",
         )
 
     def test_request_schema(self):
@@ -600,12 +721,6 @@ class TestUpdateArtifact(TestCase, APITest):
         }
 
     def test_update_artifact(self, forced: bool = False):
-        artifact_don_quixote.refresh_from_db()
-        # Cheekily add the test user as an author for Don Quixote,
-        # so that we may write to it
-        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        artifact_don_quixote.save()
-
         # Ensures that the update endpoint is functioning
         # Extensive testing is not needed here, as most of the logic is
         # handled by json-patch
@@ -726,7 +841,7 @@ class TestUpdateArtifact(TestCase, APITest):
         # TODO
         pass
 
-    def test_update_artifact_not_owner(self):
+    def test_update_artifact_no_permission(self):
         # TODO
         pass
 
@@ -765,6 +880,18 @@ class TestCreateArtifactVersion(TestCase, APITest):
             self.assertIsNotNone(base_response)
         except Exception as e:
             self.fail(str(e))
+
+    def test_create_artifact_version_insufficient_role(self):
+        artifact_don_quixote.refresh_from_db()
+        test_token = JWT.from_jws(self.get_test_token())
+        artifact_don_quixote.roles.get(user=test_token.to_urn()).delete()
+        response = self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=self.example_version,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_create_artifact_version(self):
         artifact_don_quixote.refresh_from_db()
@@ -829,6 +956,7 @@ class TestCreateArtifactVersion(TestCase, APITest):
 
         # Test against different artifact
         random_artifact = random.choice(Artifact.objects.all())
+        make_admin(random_artifact)
         response_2 = self.client.post(
             self.create_artifact_version_path(random_artifact.uuid),
             content_type="application/json",
@@ -900,8 +1028,6 @@ class TestDeleteArtifactVersion(TestCase, APITest):
             self.fail(e)
 
     def test_delete_artifact_version(self):
-        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
-        artifact_don_quixote.save()
         for version in (version_don_quixote_1, version_don_quixote_2):
             response = self.client.delete(
                 self.delete_artifact_version_path(
@@ -946,16 +1072,56 @@ class TestDeleteArtifactVersion(TestCase, APITest):
         )
 
     def test_delete_artifact_version_no_write_scope(self):
-        # TODO
-        pass
+        request_url = self.authenticate_url(
+            reverse(
+                DeleteArtifactVersion,
+                args=[
+                    artifact_don_quixote.uuid,
+                    version_don_quixote_1.slug,
+                ],
+            ),
+            scopes=[JWT.Scopes.ARTIFACTS_READ],
+        )
+        response = self.client.delete(request_url)
 
-    def test_delete_artifact_version_not_owner(self):
-        # TODO
-        pass
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "Deleted artifact version with insufficient scope",
+        )
+
+    def test_delete_artifact_version_not_collaborator(self):
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(artifact_don_quixote.uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertIsNotNone(response)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            msg="Deleted artifact version with insufficient role",
+        )
 
     def test_delete_artifact_version_has_doi(self):
-        # TODO artifact versions should fail to delete if they have an associated DOI
-        pass
+        version_don_quixote_1.contents_urn = "urn:trovi:contents:zenodo:foobar"
+        version_don_quixote_1.save()
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(artifact_don_quixote.uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertIsNotNone(response)
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            msg="Deleted artifact version with DOI",
+        )
 
 
 class TestIncrArtifactVersionMetrics(TestCase, APITest):
@@ -1054,6 +1220,174 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
         self.do_unique_cell_execution_count_test()
         self.do_access_count_test(amount=5)
 
-    def test_increment_metrics_permissions(self):
-        # TODO
-        pass
+    def test_increment_metrics_no_scope(self):
+        metrics_path_no_scope = self.authenticate_url(
+            f"{reverse(IncrArtifactVersionMetrics, args=[artifact_don_quixote.uuid, version_don_quixote_1.slug])}"
+            f"?metric=cell_execution_count&origin={self.get_test_token()}&amount=1",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+        base_response = self.client.put(metrics_path_no_scope)
+
+        self.assertEqual(
+            base_response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            msg=base_response.content,
+        )
+
+    def test_increment_metrics_private(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        artifact_don_quixote.save()
+
+        response = self.client.put(
+            self.incr_artifact_version_metrics_path(
+                artifact_don_quixote.uuid,
+                version_don_quixote_1.slug,
+                "cell_execution_count",
+                amount=1,
+            )
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_403_FORBIDDEN, msg=response.content
+        )
+
+
+class TestAssignArtifactRole(TestCase, APITest):
+    test_user = "urn:trovi:user:chameleon:foobar@baz.biz"
+
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.post(
+                self.assign_artifact_role_path(artifact_don_quixote.uuid)
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)
+
+    def test_assign_role(self):
+        artifact_don_quixote.refresh_from_db()
+        response = self.client.post(
+            self.assign_artifact_role_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"user": self.test_user, "role": ArtifactRole.RoleType.COLLABORATOR},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        new_role_query = artifact_don_quixote.roles.filter(
+            user=self.test_user, role=ArtifactRole.RoleType.COLLABORATOR
+        )
+
+        self.assertEqual(new_role_query.count(), 1)
+
+    def test_assign_role_non_admin(self):
+        artifact_don_quixote.refresh_from_db()
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        response = self.client.post(
+            self.assign_artifact_role_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"user": self.test_user, "role": ArtifactRole.RoleType.COLLABORATOR},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_403_FORBIDDEN, response.content
+        )
+
+        test_token = JWT.from_jws(self.get_test_token())
+        artifact_don_quixote.roles.create(
+            user=test_token.to_urn(),
+            role=ArtifactRole.RoleType.COLLABORATOR,
+            assigned_by=artifact_don_quixote.owner_urn,
+        )
+        response = self.client.post(
+            self.assign_artifact_role_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"user": self.test_user, "role": ArtifactRole.RoleType.COLLABORATOR},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_403_FORBIDDEN, response.content
+        )
+
+    def assign_role_conflict(self):
+        test_role = artifact_don_quixote.roles.first()
+        response = self.client.post(
+            self.assign_artifact_role_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"user": test_role.user, "role": test_role.role},
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_409_CONFLICT, "Created duplicate role"
+        )
+
+
+class TestUnassignArtifactRole(TestCase, APITest):
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.delete(
+                self.unassign_artifact_role_path(
+                    artifact_don_quixote.uuid, "foo", ArtifactRole.RoleType.COLLABORATOR
+                )
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)
+
+    def test_unassign_role(self):
+        response = self.client.delete(
+            self.unassign_artifact_role_path(
+                artifact_don_quixote.uuid,
+                role_don_quixote_admin.user,
+                role_don_quixote_admin.role,
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.assertFalse(
+            artifact_don_quixote.roles.filter(
+                user=role_don_quixote_admin.user, role=role_don_quixote_admin.role
+            ).exists(),
+            "UnassignRole did not delete target role",
+        )
+
+    def test_unassign_role_non_admin(self):
+        artifact_don_quixote.refresh_from_db()
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        test_user = "urn:trovi:user:chameleon:foo@bar.baz"
+        artifact_don_quixote.roles.create(
+            user=test_user,
+            role=ArtifactRole.RoleType.COLLABORATOR,
+            assigned_by=test_user,
+        )
+
+        response = self.client.delete(
+            self.unassign_artifact_role_path(
+                artifact_don_quixote.uuid, test_user, ArtifactRole.RoleType.COLLABORATOR
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "Unassigned role without admin access",
+        )
+
+    def test_unassign_owner_as_admin(self):
+        response = self.client.delete(
+            self.unassign_artifact_role_path(
+                artifact_don_quixote.uuid,
+                role_don_quixote_don.user,
+                role_don_quixote_don.role,
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            "Unassigned admin role from owner",
+        )
