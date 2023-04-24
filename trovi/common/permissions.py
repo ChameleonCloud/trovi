@@ -94,11 +94,8 @@ class ArtifactAdminPermission(TroviPermission):
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
-        if not token:
-            return False
-        user_urn = token.to_urn()
 
-        return obj.has_admin(user_urn)
+        return token and obj.has_admin(token.to_urn())
 
 
 class BaseParentArtifactPermission(TroviPermission):
@@ -197,7 +194,7 @@ class RootStorageDownloadPermission(TroviPermission):
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
         token = JWT.from_request(request)
-        return obj.can_be_viewed_by(token.to_urn())
+        return token and obj.can_be_viewed_by(token.to_urn())
 
 
 class AuthenticatedWithTroviTokenPermission(TroviPermission):
