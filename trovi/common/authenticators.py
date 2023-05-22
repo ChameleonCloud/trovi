@@ -15,7 +15,7 @@ class TroviTokenAuthentication(BaseAuthentication):
     Verifies a Trovi token and extracts metadata from it
     """
 
-    def authenticate(self, request: Request) -> Optional[tuple[None, JWT]]:
+    def authenticate(self, request: Request) -> Optional[tuple[None, Optional[JWT]]]:
         # First attempt to fetch the token from the access_token parameter.
         # This parameter will override the header if both are provided.
         access_token = request.query_params.get("access_token")
@@ -25,7 +25,7 @@ class TroviTokenAuthentication(BaseAuthentication):
             # The header should be in the format Authorization: bearer <token>
             authz_header = request.headers.get("Authorization", "").split()
             if not authz_header:
-                return None
+                return None, None
             if len(authz_header) != 2:
                 raise ValidationError("Malformed Authorization header")
             scheme, access_token = authz_header

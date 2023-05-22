@@ -493,19 +493,16 @@ class ArtifactSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         token = JWT.from_request(request)
         sharing_key = request.query_params.get("sharing_key")
-        token_urn = token.to_urn() if token else None
         is_admin = token.is_admin() if token else False
         if (
             instance.is_public()
-            or instance.gives_permission_to(token_urn)
+            or instance.gives_permission_to(token)
             or is_admin
             or sharing_key == instance.sharing_key
         ):
             versions = instance.versions.all()
         else:
-            versions = [
-                v for v in instance.versions.all() if v.can_be_viewed_by(token_urn)
-            ]
+            versions = [v for v in instance.versions.all() if v.can_be_viewed_by(token)]
 
         artifact_json = {
             "uuid": str(instance.uuid),
@@ -529,7 +526,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             ).data,
             "metrics": ArtifactMetricsSerializer(instance).data,
         }
-        if instance.gives_permission_to(token_urn):
+        if instance.gives_permission_to(token):
             artifact_json["sharing_key"] = instance.sharing_key
         return artifact_json
 

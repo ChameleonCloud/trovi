@@ -1,6 +1,7 @@
 import base64
 import secrets
 import uuid as uuid
+from typing import Optional, Union
 
 from django.conf import settings
 from django.core import validators
@@ -13,6 +14,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
+from common.tokens import JWT
 from trovi.fields import URNField
 from util.urn import parse_contents_urn
 
@@ -120,59 +122,79 @@ class Artifact(models.Model):
         """
         return self.doi_versions().exists()
 
-    def has_admin(self, user: str) -> bool:
+    def has_admin(self, token: Optional[Union[JWT, str]]) -> bool:
         """
         Reports whether a user has the role of Administrator on this Artifact.
         The user string should be in the form of a user URN
         """
-        return self.roles.filter(
-            user=user, role=ArtifactRole.RoleType.ADMINISTRATOR
-        ).exists()
+        if isinstance(token, JWT):
+            urn = token.to_urn()
+        else:
+            urn = token
+        return (
+            token
+            and self.roles.filter(
+                user=urn, role=ArtifactRole.RoleType.ADMINISTRATOR
+            ).exists()
+        )
 
-    def has_collaborator(self, user: str) -> bool:
+    def has_collaborator(self, token: Optional[JWT]) -> bool:
         """
         Reports whether a user has the role of Collaborator on this Artifact.
         The user string should be in the form of a user URN
         """
-        return self.roles.filter(
-            user=user, role=ArtifactRole.RoleType.COLLABORATOR
-        ).exists()
+        return (
+            token
+            and self.roles.filter(
+                user=token.to_urn(), role=ArtifactRole.RoleType.COLLABORATOR
+            ).exists()
+        )
 
-    def can_be_edited_by(self, user: str) -> bool:
+    def can_be_edited_by(self, token: Optional[JWT]) -> bool:
         """
         Reports whether a user has permission to edit an Artifact.
         The user string should be in the form of a user URN
         """
-        return self.roles.filter(
-            user=user,
-            role__in=(
-                ArtifactRole.RoleType.COLLABORATOR,
-                ArtifactRole.RoleType.ADMINISTRATOR,
-            ),
-        ).exists()
+        return (
+            token
+            and self.roles.filter(
+                user=token.to_urn(),
+                role__in=(
+                    ArtifactRole.RoleType.COLLABORATOR,
+                    ArtifactRole.RoleType.ADMINISTRATOR,
+                ),
+            ).exists()
+        )
 
-    def gives_permission_to(self, user: str) -> bool:
+    def gives_permission_to(self, token: Optional[JWT]) -> bool:
         """
         Reports whether a user has any elevated permissions on an artifact
         The user string should be in the form of a user URN
         """
-        return self.roles.filter(
-            user=user, role__in=ArtifactRole.RoleType.values
-        ).exists()
+        return (
+            token
+            and self.roles.filter(
+                user=token.to_urn(), role__in=ArtifactRole.RoleType.values
+            ).exists()
+        )
 
-    def can_be_viewed_by(self, user: str) -> bool:
+    def can_be_viewed_by(self, token: Optional[JWT]) -> bool:
         """
         Reports whether a user has permission to view an artifact
         The user string should be in the form of a user URN
         """
-        return self.is_public() or self.has_doi() or self.can_be_edited_by(user)
+        return (
+            self.is_public()
+            or self.has_doi()
+            or (token and self.can_be_edited_by(token))
+        )
 
-    def can_be_deleted_by(self, user: str) -> bool:
+    def can_be_deleted_by(self, token: JWT) -> bool:
         """
         Reports whether a user has permission to delete an artifact
         The user string should be in the form of a user URN
         """
-        return user == self.owner_urn
+        return token and token.to_urn() == self.owner_urn
 
 
 class ArtifactVersion(models.Model):
@@ -238,7 +260,7 @@ class ArtifactVersion(models.Model):
         urn_info = parse_contents_urn(self.contents_urn)
         return urn_info["provider"] == "zenodo"
 
-    def can_be_viewed_by(self, user: str) -> bool:
+    def can_be_viewed_by(self, token: Optional[JWT]) -> bool:
         """
         Reports whether a user has permission to view an ArtifactVersion
         The user string should be in the form of a user URN
@@ -252,13 +274,16 @@ class ArtifactVersion(models.Model):
             # the Artifact itself.
             self.has_doi()
             or self.artifact.is_public()
-            or self.artifact.roles.filter(
-                user=user,
-                role__in=(
-                    ArtifactRole.RoleType.ADMINISTRATOR,
-                    ArtifactRole.RoleType.COLLABORATOR,
-                ),
-            ).exists()
+            or (
+                token
+                and self.artifact.roles.filter(
+                    user=token.to_urn(),
+                    role__in=(
+                        ArtifactRole.RoleType.ADMINISTRATOR,
+                        ArtifactRole.RoleType.COLLABORATOR,
+                    ),
+                ).exists()
+            )
         )
 
     @staticmethod

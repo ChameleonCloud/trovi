@@ -72,7 +72,7 @@ class ArtifactViewPermission(TroviPermission):
         if sharing_key == obj.sharing_key:
             return True
         token = JWT.from_request(request)
-        return token and obj.can_be_viewed_by(token.to_urn())
+        return obj.can_be_viewed_by(token)
 
 
 class ArtifactEditPermission(TroviPermission):
@@ -82,7 +82,7 @@ class ArtifactEditPermission(TroviPermission):
         self, request: Request, view: views.View, obj: Artifact
     ) -> bool:
         token = JWT.from_request(request)
-        return token and obj.can_be_edited_by(token.to_urn())
+        return obj.can_be_edited_by(token)
 
 
 class ArtifactAdminPermission(TroviPermission):
@@ -184,7 +184,7 @@ class ArtifactVersionMetricsUpdatePermission(TroviPermission):
         if sharing_key == obj.artifact.sharing_key:
             return True
 
-        return obj.can_be_viewed_by(origin_token.to_urn())
+        return obj.can_be_viewed_by(origin_token)
 
 
 class RootStorageDownloadPermission(TroviPermission):
@@ -194,7 +194,7 @@ class RootStorageDownloadPermission(TroviPermission):
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
         token = JWT.from_request(request)
-        return token and obj.can_be_viewed_by(token.to_urn())
+        return obj.can_be_viewed_by(token)
 
 
 class AuthenticatedWithTroviTokenPermission(TroviPermission):

@@ -432,6 +432,16 @@ class TestGetArtifact(TestCase, APITest):
             ArtifactSerializer(artifact_don_quixote, context=self.get_test_context()),
         )
 
+    def test_get_artifact_unauthenticated(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PUBLIC
+        artifact_don_quixote.save()
+        response = self.client.get(
+            reverse(GetArtifact, args=[artifact_don_quixote.uuid])
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=response.json())
+
     def test_get_private_artifact(self):
         artifact_don_quixote.refresh_from_db()
         artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
