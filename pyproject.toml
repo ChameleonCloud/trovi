@@ -23,7 +23,7 @@ giturlparse = "^0.10.0"
 [tool.poetry.dev-dependencies]
 pytest = "^7.4.0"
 flake8 = "^6.0.0"
-Faker = "^18.9.0"
+Faker = "^18.11.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
