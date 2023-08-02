@@ -299,14 +299,12 @@ class ArtifactVersion(models.Model):
             time_stamp = instance.created_at.strftime("%Y-%m-%d")
             with transaction.atomic():
                 if instance.artifact:
-                    versions_today = (
-                        instance.artifact.versions.filter(
-                            artifact__created_at__date=instance.created_at.date(),
-                        )
-                        .exclude(slug__exact="")
-                        .select_for_update()
-                        .count()
-                    )
+                    versions_today_query = instance.artifact.versions.filter(
+                        artifact__created_at__date=instance.created_at.date(),
+                    ).select_for_update()
+                    versions_today = versions_today_query.exclude(
+                        slug__exact=""
+                    ).count()
                 else:
                     versions_today = 0
                 if versions_today:
