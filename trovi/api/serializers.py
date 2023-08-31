@@ -378,8 +378,10 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             contents_serializer.is_valid(raise_exception=True)
             contents_serializer.save()
 
+        view = self.context["view"]
+        artifact_uuid = view.kwargs.get("parent_lookup_artifact")
         LOG.info(
-            f"Created new version for artifact {version.artifact.uuid}: {version.slug}"
+            f"Created new version for artifact {artifact_uuid}: {version.slug}"
         )
 
         return version
