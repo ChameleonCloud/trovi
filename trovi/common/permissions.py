@@ -110,7 +110,7 @@ class BaseParentArtifactPermission(TroviPermission):
         artifact_uuid = view.kwargs.get("parent_lookup_artifact")
         if not artifact_uuid:
             raise ValueError(
-                "/versions/ endpoint was called without a parent artifact. "
+                "child endpoint of /artifacts was called without a parent artifact. "
                 "Routes are misconfigured."
             )
         artifact = generics.get_object_or_404(
