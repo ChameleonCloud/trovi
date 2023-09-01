@@ -30,7 +30,7 @@ class GitBackend(StorageBackend):
             # this functionality of `giturlparse` is broken currently.
             if protocol not in ["https", "git"]:
                 raise RuntimeError(
-                    f"Can't create a git backend for remote protocl {protocol}"
+                    f"Can't create a git backend for remote protocol {protocol}"
                 )
             self.parsed_git_url = parse_result
         except Exception:

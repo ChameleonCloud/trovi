@@ -233,6 +233,8 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
             # Because of strict_schema validation, this should be unreachable
             raise ValueError("Unknown event type")
 
+        LOG.info(f"Recording {count} {event_type} event(s) from {origin}")
+
         # We don't call bulk_create here, because it doesn't run any save signals
         # even though it persists the models to the database
         with transaction.atomic():
@@ -376,6 +378,10 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             contents_serializer.is_valid(raise_exception=True)
             contents_serializer.save()
 
+        view = self.context["view"]
+        artifact_uuid = view.kwargs.get("parent_lookup_artifact")
+        LOG.info(f"Created new version for artifact {artifact_uuid}: {version.slug}")
+
         return version
 
     def to_representation(self, instance: ArtifactVersion) -> dict:
@@ -402,7 +408,9 @@ class ArtifactRoleSerializer(ArtifactChildSerializer):
 
     def create(self, validated_data: dict) -> ArtifactRole:
         validated_data["assigned_by"] = get_requesting_user_urn(self)
-        return super(ArtifactRoleSerializer, self).create(validated_data)
+        role = super(ArtifactRoleSerializer, self).create(validated_data)
+        LOG.info(f"New role: {role.user} as {role.role} on {role.artifact.uuid}")
+        return role
 
     def update(self, instance, validated_data: dict):
         raise NotImplementedError(f"Incorrect use of {self.__class__.__name__}")
@@ -581,6 +589,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 role=ArtifactRole.RoleType.ADMINISTRATOR,
             )
 
+        LOG.info(f"Created new artifact: {artifact.uuid}")
+
         return artifact
 
     def update(self, instance: Artifact, validated_data: dict) -> Artifact:
@@ -653,7 +663,9 @@ class ArtifactSerializer(serializers.ModelSerializer):
                     role=ArtifactRole.RoleType.ADMINISTRATOR,
                 )
 
-            return super(ArtifactSerializer, self).update(instance, validated_data)
+            updated = super(ArtifactSerializer, self).update(instance, validated_data)
+            LOG.info(f"Updated artifact {updated.uuid}: {', '.join(validated_data)}")
+            return updated
 
     def to_internal_value(self, data: dict) -> dict:
         # If this is a new Artifact, its default owner is the user who is creating it
@@ -775,7 +787,7 @@ class ArtifactVersionMigrationSerializer(serializers.ModelSerializer):
         if version.migrations.filter(
             status=ArtifactVersionMigration.MigrationStatus.IN_PROGRESS
         ).exists():
-            raise MethodNotAllowed(
+            raise ConflictError(
                 f"Artifact version {artifact.uuid}/{version.slug} "
                 f"already has a migration in progress."
             )

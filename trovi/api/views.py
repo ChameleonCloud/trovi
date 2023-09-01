@@ -1,3 +1,4 @@
+import logging
 from functools import cache
 
 from django.db import transaction
@@ -53,6 +54,8 @@ from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
 from trovi.models import Artifact, ArtifactVersion, ArtifactRole
 from trovi.storage.serializers import StorageRequestSerializer
+
+LOG = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -235,7 +238,11 @@ class ArtifactRoleViewSet(
     @transaction.atomic
     def unassign(self, request: Request, *args, **kwargs) -> Response:
         role = self.get_object()
+        user = role.user
+        role_type = role.role
+        artifact = role.artifact
         role.delete()
+        LOG.info(f"Unassigned Role: {user} from {role_type} on {artifact.uuid}")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

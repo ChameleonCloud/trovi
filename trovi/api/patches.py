@@ -201,6 +201,11 @@ class ArtifactPatch(jsonpatch.JsonPatch):
         return updated_fields
 
     def _get_operation(self, operation: JSONObject) -> jsonpatch.PatchOperation:
+        """
+        This override associates an ID with each operation object so that the
+        owner of the object is able to aggregate errors from all the operations
+        it owns.
+        """
         try:
             op = super(ArtifactPatch, self)._get_operation(operation)
         except jsonpatch.InvalidJsonPatch as e:

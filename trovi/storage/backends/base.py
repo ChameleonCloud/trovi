@@ -190,7 +190,9 @@ class StorageBackend(io.BufferedIOBase, ABC):
             links.append(git_remote.to_json())
 
         if not links:
-            raise AttributeError(f"Storage backend {self.name} could not generate ")
+            raise AttributeError(
+                f"Storage backend {self.name} could not generate links"
+            )
 
         return links
 

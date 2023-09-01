@@ -1,3 +1,4 @@
+import logging
 from typing import Type, Any, Callable, Optional
 
 from django.conf import settings
@@ -10,6 +11,8 @@ from rest_framework.exceptions import ValidationError, PermissionDenied
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from util.types import JSON
+
+LOG = logging.getLogger(__name__)
 
 
 class JsonPointerField(serializers.RegexField):
@@ -126,6 +129,7 @@ def _is_valid_force_request(self: serializers.Serializer) -> bool:
         if not token:
             raise PermissionDenied("Unauthenticated user attempted to use ?force flag.")
         if token.is_admin():
+            LOG.warning(f"Recorded a forced update from {token.to_urn()}")
             self.context.setdefault("force", True)
             return True
         else:

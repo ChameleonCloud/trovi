@@ -90,16 +90,18 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
     migration_status = ArtifactVersionMigration.MigrationStatus
     dest_backend_name = migration.backend
     source = migration.source_urn
+    version = migration.artifact_version
     # urn:trovi:contents:<backend>:<id>
     source_backend_name, source_id = source.split(":")[3:5]
     source_backend = get_backend(
-        source_backend_name, content_id=source_id, version=migration.artifact_version
+        source_backend_name, content_id=source_id, version=version
     )
     dest_backend = get_backend(
         dest_backend_name,
-        version=migration.artifact_version,
+        version=version,
     )
     with ArtifactVersionMigrationErrorHandler(migration) as error_handler:
+        LOG.info(f"Beginning migration: {source} to {dest_backend_name}")
         dest_backend.open()
         # We want to throw first via the source backend
         # so uploads are short-circuited
@@ -140,8 +142,10 @@ def migrate_artifact_version(migration: ArtifactVersionMigration):
             destination_urn=dest_backend.to_urn(),
         )
         with transaction.atomic():
-            migration.artifact_version.contents_urn = dest_backend.to_urn()
-            migration.artifact_version.save()
+            version.contents_urn = dest_backend.to_urn()
+            version.save()
+
+        LOG.info(f"Finished migration: {source} to {version.contents_urn}")
 
         # New threads get their own DB connection which has to be manually closed
         db.connection.close()
