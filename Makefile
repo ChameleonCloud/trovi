@@ -52,4 +52,4 @@ requirements-frozen.txt: build
 
 .PHONY: tests
 tests: .env
-	docker-docker -f ./tests-compose.yml run manage.py test
+	docker-compose -f ./tests-compose.yml run trovi test
