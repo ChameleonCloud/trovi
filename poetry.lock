@@ -452,13 +452,13 @@ referencing = ">=0.28.0"
 
 [[package]]
 name = "keystoneauth1"
-version = "5.2.1"
+version = "5.3.0"
 description = "Authentication Library for OpenStack Identity"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "keystoneauth1-5.2.1-py3-none-any.whl", hash = "sha256:d2fcfdcfe347df8d92390e0806b4969289d884cd9ec3519e4c5aec53e66d0767"},
-    {file = "keystoneauth1-5.2.1.tar.gz", hash = "sha256:f79b1c27ed5a69be4d03a5bc4967df3dfab0c5d76e85226fa2060cffadff74a1"},
+    {file = "keystoneauth1-5.3.0-py3-none-any.whl", hash = "sha256:174407998ecdee31234b6f84bef2fd440949b0ad66a49ddcbe978952589485d5"},
+    {file = "keystoneauth1-5.3.0.tar.gz", hash = "sha256:017c2b9b599453c92940750edbb20f17687121b2890114bf9d36df14a0627117"},
 ]
 
 [package.dependencies]
@@ -1017,4 +1017,4 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "e2f9953e2c8a50a562a96bf8748a84bdb80d84a3e421a9d6639b1390567c5d35"
+content-hash = "3c446ea33a679171bbc8ff184fd410ae552e5e16fe55468041351e3365015c8d"
