@@ -21,7 +21,7 @@ drf-spectacular = "^0.26.4"
 giturlparse = "^0.11.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^7.4.0"
+pytest = "^7.4.3"
 flake8 = "^6.1.0"
 Faker = "^19.3.1"
 
