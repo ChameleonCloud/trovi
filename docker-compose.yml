@@ -6,8 +6,8 @@ services:
     image: ${DOCKER_IMAGE_LATEST}
     restart: on-failure
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${TROVI_PORT}"]
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:${TROVI_PORT}/artifacts/?limit=1"]
+      timeout: 60s
       retries: 3
     env_file:
       - .env
@@ -16,7 +16,7 @@ services:
       - ./media:/media
       - static:/static
     ports:
-      - "127.0.0.1:8890:${TROVI_PORT}"
+      - "127.0.0.1:${TROVI_PORT}:${TROVI_PORT}"
     entrypoint: ["python3", "manage.py"]
     command: ["runserver", "0.0.0.0:${TROVI_PORT}"]
     depends_on:
@@ -37,8 +37,6 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./db:/docker-entrypoint-initdb.d
-    ports:
-      - "3306:3306"
 
 volumes:
   static:
