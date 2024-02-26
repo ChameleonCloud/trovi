@@ -283,7 +283,7 @@ class ZenodoBackend(StorageBackend):
         zip_url = f"{record_url}/files/archive.zip?download=1"
 
         # See if the tar archive exists
-        tar_response = requests.head(tar_url)
+        tar_response = requests.head(tar_url, allow_redirects=True)
         if tar_response.ok:
             download_url = tar_url
         else:
