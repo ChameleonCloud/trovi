@@ -274,7 +274,7 @@ class ZenodoBackend(StorageBackend):
 
     def to_record_url(self) -> str:
         record = self.to_record()
-        return f"{settings.ZENODO_URL}/record/{record}"
+        return f"{settings.ZENODO_URL}/records/{record}"
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
         # Legacy archives will be archive.zip, so we have to determine which is right
