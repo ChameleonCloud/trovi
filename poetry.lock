@@ -428,13 +428,13 @@ pyflakes = ">=3.1.0,<3.2.0"
 
 [[package]]
 name = "giturlparse"
-version = "0.11.1"
+version = "0.12.0"
 description = "A Git URL parsing module (supports parsing and rewriting)"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "giturlparse-0.11.1-py2.py3-none-any.whl", hash = "sha256:6422f25c8ca563e1a3cb6b85862e48614be804cd1334e6d84be5630eb26b343f"},
-    {file = "giturlparse-0.11.1.tar.gz", hash = "sha256:cdbe0c062096c69e00f08397826dddebc1f73bc15b793994579c13aafc70c990"},
+    {file = "giturlparse-0.12.0-py2.py3-none-any.whl", hash = "sha256:412b74f2855f1da2fefa89fd8dde62df48476077a72fc19b62039554d27360eb"},
+    {file = "giturlparse-0.12.0.tar.gz", hash = "sha256:c0fff7c21acc435491b1779566e038757a205c1ffdcb47e4f81ea52ad8c3859a"},
 ]
 
 [[package]]
@@ -1424,4 +1424,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "fe88b639dac299aa0d0fcf53c2cc5937e4c6e74a24336a24544bef10edfdeab8"
+content-hash = "329f99d7d6ea3fbf633600a6e682cb68786a4b260efc4317da654a73ecb8d6e3"
