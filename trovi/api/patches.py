@@ -2,6 +2,7 @@
 The classes in this file provide overrides to JSON Patch classes to ensure that
 patches are valid specifically for our Trovi models.
 """
+
 from collections import defaultdict
 from types import MappingProxyType
 from typing import Any
