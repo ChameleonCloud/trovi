@@ -6,8 +6,8 @@ ifneq (,$(wildcard ./.env))
 endif
 
 DOCKER_TAG ?= $(shell git rev-parse --short HEAD)
-DOCKER_IMAGE ?= $(DOCKER_REGISTRY)/trovi:$(DOCKER_TAG)
-DOCKER_IMAGE_LATEST ?= $(DOCKER_REGISTRY)/trovi:latest
+DOCKER_IMAGE ?= trovi:$(DOCKER_TAG)
+DOCKER_IMAGE_LATEST ?= trovi:latest
 DOCKER_DEV_IMAGE ?= trovi-dev:$(DOCKER_TAG)
 DOCKER_DEV_IMAGE_LATEST ?= trovi-dev:latest
 DOCKER_DIR ?= docker
