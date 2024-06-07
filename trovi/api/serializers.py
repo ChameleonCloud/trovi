@@ -39,6 +39,7 @@ from trovi.models import (
     ArtifactEvent,
     ArtifactVersionMigration,
     ArtifactRole,
+    ArtifactVersionSetup,
 )
 from util.types import JSON
 
@@ -152,6 +153,22 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
             # TODO check if this is a valid resource
             "urn": instance.urn,
         }
+
+
+@extend_schema_serializer(exclude_fields=["artifact_version"])
+@allow_force
+@strict_schema
+class ArtifactVersionSetupSerializer(serializers.ModelSerializer):
+    """
+    Describes a setup step for integrations
+    """
+
+    class Meta:
+        model = ArtifactVersionSetup
+        exclude = ["id"]
+
+    def to_representation(self, instance: ArtifactVersionSetup) -> dict[str, JSON]:
+        return {"type": instance.type, "arguments": instance.arguments}
 
 
 @allow_force
@@ -352,11 +369,12 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
 
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
-    metrics = ArtifactVersionMetricsSerializer(read_only=True)
+    environment_setup = ArtifactVersionSetupSerializer(many=True, read_only=True)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
         contents = validated_data.pop("contents", {})
+        environment_setup = validated_data.pop("environment_setup", [])
 
         with transaction.atomic():
             try:
@@ -391,6 +409,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
+            "environment_setup": ArtifactVersionSetupSerializer(instance.setupSteps.all(), many=True).data,
         }
 
 
