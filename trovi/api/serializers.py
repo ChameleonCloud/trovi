@@ -371,7 +371,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
 
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
-    environment_setup = ArtifactVersionSetupSerializer(many=True)
+    environment_setup = ArtifactVersionSetupSerializer(many=True, required=False)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
