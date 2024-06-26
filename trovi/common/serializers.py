@@ -227,6 +227,4 @@ def get_requesting_user_urn(serializer: serializers.Serializer) -> Optional[str]
     """
     Generates a default owner URN based on the requesting user's auth token
     """
-    return get_user_urn_from_request(
-        serializer.context.get("request")
-    )
+    return get_user_urn_from_request(serializer.context.get("request"))

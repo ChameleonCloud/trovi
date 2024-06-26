@@ -1,8 +1,17 @@
 from django.conf import settings
 from django.db import transaction
-from trovi.api.serializers import ArtifactPatchSerializer, ArtifactSerializer, ArtifactVersionSerializer
+from trovi.api.serializers import (
+    ArtifactPatchSerializer,
+    ArtifactSerializer,
+    ArtifactVersionSerializer,
+)
 from trovi.common.authenticators import TroviTokenAuthentication
-from trovi.common.permissions import ArtifactEditPermission, ArtifactReadScopePermission, ArtifactViewPermission, ArtifactWriteScopePermission
+from trovi.common.permissions import (
+    ArtifactEditPermission,
+    ArtifactReadScopePermission,
+    ArtifactViewPermission,
+    ArtifactWriteScopePermission,
+)
 from trovi.common.serializers import get_user_urn_from_request
 from trovi.common.views import TroviAPIViewSet
 from trovi.importing.serializers import ArtifactImportSerializer
@@ -48,7 +57,8 @@ class ArtifactImportView(TroviAPIViewSet):
         parsed_git_url = parse(url)
         if not (parsed_git_url and parsed_git_url.host == "github.com"):
             raise drf_exceptions.ValidationError(
-                "Importing artifact metadata is only supported from github.com")
+                "Importing artifact metadata is only supported from github.com"
+            )
 
         with Github(
             login_or_token=settings.GITHUB_ACCESS_TOKEN,
@@ -60,7 +70,10 @@ class ArtifactImportView(TroviAPIViewSet):
             # We could import many things from github here in the future.
             git_version = repo.get_commits()[0].sha
             remote_url = next(
-                remote for proto, remote in parsed_git_url.urls.items() if proto == "https")
+                remote
+                for proto, remote in parsed_git_url.urls.items()
+                if proto == "https"
+            )
             trovi_urn = f"urn:trovi:contents:git:{remote_url}@{git_version}"
             artifact_data["version"] = {
                 "contents": {"urn": trovi_urn},
@@ -81,7 +94,9 @@ class ArtifactImportView(TroviAPIViewSet):
                     crate = ROCrate(temp_dir)
                     crate = crate.dereference("./")
                     artifact_data["title"] = crate.get("name")
-                    artifact_data["short_description"] = crate.get("disambiguatingDescription")
+                    artifact_data["short_description"] = crate.get(
+                        "disambiguatingDescription"
+                    )
                     artifact_data["long_description"] = crate.get("description")
                     artifact_data["owner_urn"] = get_user_urn_from_request(request)
                     for t in crate.get("keywords").split(","):
@@ -98,13 +113,17 @@ class ArtifactImportView(TroviAPIViewSet):
 
                     for obj in crate.get("actionApplication", []):
                         if obj.type == "SoftwareApplication" and obj.get("trovi_type"):
-                            artifact_data["version"]["environment_setup"].append({
-                                "type": obj.get("trovi_type"),
-                                "arguments": obj.get("trovi_arguments"),
-                            })
+                            artifact_data["version"]["environment_setup"].append(
+                                {
+                                    "type": obj.get("trovi_type"),
+                                    "arguments": obj.get("trovi_arguments"),
+                                }
+                            )
                     return artifact_data
             except GithubException:
-                raise drf_exceptions.ValidationError("Could not fetch information from GitHub.")
+                raise drf_exceptions.ValidationError(
+                    "Could not fetch information from GitHub."
+                )
 
     @transaction.atomic
     def update(self, request, pk):
@@ -114,7 +133,7 @@ class ArtifactImportView(TroviAPIViewSet):
             context={
                 "request": request,
                 "view": self,
-            }
+            },
         )
         d = ArtifactImportSerializer(data=request.data)
         if d.is_valid():
@@ -125,8 +144,7 @@ class ArtifactImportView(TroviAPIViewSet):
             v = artifact_data.pop("version")
             js_patch = jsonpatch.JsonPatch.from_diff(old_artifact.data, artifact_data)
             patch = [
-                d for d in js_patch
-                if d["op"] != "remove"  # filter out readonly fields
+                d for d in js_patch if d["op"] != "remove"  # filter out readonly fields
             ]
             patch_serializer = ArtifactPatchSerializer(
                 old_instance,
@@ -138,10 +156,13 @@ class ArtifactImportView(TroviAPIViewSet):
             )
             patch_serializer.is_valid(raise_exception=True)
             updated_artifact = patch_serializer.save()
-            version_serializer = ArtifactVersionSerializer(data=v, context={
-                "request": request,
-                "view": self,
-            })
+            version_serializer = ArtifactVersionSerializer(
+                data=v,
+                context={
+                    "request": request,
+                    "view": self,
+                },
+            )
             version_serializer.is_valid(raise_exception=True)
             version = version_serializer.save()
             # Set the artifact, which can't be done via the serializer
@@ -160,10 +181,13 @@ class ArtifactImportView(TroviAPIViewSet):
             artifact_data = self._parse_git_url(
                 d.validated_data.get("github_url"), request
             )
-            artifact_serializer = ArtifactSerializer(data=artifact_data, context={
-                "request": request,
-                "view": self,
-            })
+            artifact_serializer = ArtifactSerializer(
+                data=artifact_data,
+                context={
+                    "request": request,
+                    "view": self,
+                },
+            )
             if not artifact_serializer.is_valid():
                 return Response(artifact_serializer.errors)
             artifact_serializer.save()
