@@ -1,5 +1,3 @@
-from django.urls import re_path
-
 from trovi.importing import views
 
 from rest_framework.routers import SimpleRouter
