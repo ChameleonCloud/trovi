@@ -10,7 +10,6 @@ from rest_framework.exceptions import (
     ValidationError,
     PermissionDenied,
     NotFound,
-    MethodNotAllowed,
 )
 
 from trovi.api.patches import ArtifactPatch
@@ -39,6 +38,7 @@ from trovi.models import (
     ArtifactEvent,
     ArtifactVersionMigration,
     ArtifactRole,
+    ArtifactVersionSetup,
 )
 from util.types import JSON
 
@@ -152,6 +152,25 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
             # TODO check if this is a valid resource
             "urn": instance.urn,
         }
+
+
+@extend_schema_serializer(exclude_fields=["artifact_version"])
+@allow_force
+@strict_schema
+class ArtifactVersionSetupSerializer(serializers.ModelSerializer):
+    """
+    Describes a setup step for integrations
+    """
+
+    class Meta:
+        model = ArtifactVersionSetup
+        exclude = ["id"]
+
+    def to_representation(self, instance: ArtifactVersionSetup) -> dict[str, JSON]:
+        return {"type": instance.type, "arguments": instance.arguments}
+
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        return data
 
 
 @allow_force
@@ -352,11 +371,20 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
 
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
-    metrics = ArtifactVersionMetricsSerializer(read_only=True)
+    environment_setup = ArtifactVersionSetupSerializer(many=True, required=False)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
         contents = validated_data.pop("contents", {})
+        # Default environment setup used if non given
+        environment_setup = validated_data.pop("environment_setup", [])
+        if not environment_setup:
+            environment_setup = [
+                {
+                    "type": ArtifactVersionSetup.ArtifactVersionSetupType.JUPYTERHUB,
+                    "arguments": {},
+                }
+            ]
 
         with transaction.atomic():
             try:
@@ -378,6 +406,14 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             contents_serializer.is_valid(raise_exception=True)
             contents_serializer.save()
 
+            for es in environment_setup:
+                es["artifact_version"] = version
+                setup_serializer = ArtifactVersionSetupSerializer(
+                    data=es, context=self.context
+                )
+                setup_serializer.is_valid(raise_exception=True)
+                version.setupSteps.add(setup_serializer.save())
+
         view = self.context["view"]
         artifact_uuid = view.kwargs.get("parent_lookup_artifact")
         LOG.info(f"Created new version for artifact {artifact_uuid}: {version.slug}")
@@ -391,6 +427,9 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
+            "environment_setup": ArtifactVersionSetupSerializer(
+                instance.setupSteps.all(), many=True
+            ).data,
         }
 
 

@@ -1,4 +1,5 @@
 """Pretty-Print SQL queries for console output."""
+
 from logging import Formatter
 
 from django.conf import settings
