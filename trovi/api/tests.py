@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import random
+from unittest import skipIf
 import uuid
 
 from django.conf import settings
@@ -949,6 +950,7 @@ class TestCreateArtifactVersion(TestCase, APITest):
             response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
         )
 
+    @skipIf("sqlite" in os.getenv("DB_ENGINE"), "This test fails locally due to a difference with the sqlite3 engine")
     def test_non_unique_artifact_contents(self):
         example = self.example_version.copy()
         example["contents"]["urn"] = version_don_quixote_1.contents_urn
