@@ -517,7 +517,7 @@ class ArtifactVersionSetup(models.Model):
                 fields=["artifact_version"],
                 name="artifact_version_setup_unique_constraint",
             )
-        ]   
+        ]
 
     class ArtifactVersionSetupType(models.TextChoices):
         JUPYTERHUB = _("jupyterhub")

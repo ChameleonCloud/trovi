@@ -8,7 +8,9 @@ from trovi.common.routers import TroviRouter
 
 router = TroviRouter()
 
-router.register("", ArtifactViewSet).register(
+
+artifact_route = router.register("", ArtifactViewSet)
+artifact_route.register(
     "versions",
     ArtifactVersionViewSet,
     basename="artifact-version",
@@ -20,7 +22,7 @@ router.register("", ArtifactViewSet).register(
     parents_query_lookups=["artifact", "version"],
 )
 
-router.register("", ArtifactViewSet).register(
+artifact_route.register(
     "roles",
     ArtifactRoleViewSet,
     basename="artifact-role",
