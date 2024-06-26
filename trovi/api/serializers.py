@@ -379,10 +379,12 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
         # Default environment setup used if non given
         environment_setup = validated_data.pop("environment_setup", [])
         if not environment_setup:
-            environment_setup = [{
-                "type": ArtifactVersionSetup.ArtifactVersionSetupType.JUPYTERHUB,
-                "arguments": {}
-            }]
+            environment_setup = [
+                {
+                    "type": ArtifactVersionSetup.ArtifactVersionSetupType.JUPYTERHUB,
+                    "arguments": {},
+                }
+            ]
 
         with transaction.atomic():
             try:
@@ -425,7 +427,9 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
             "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
-            "environment_setup": ArtifactVersionSetupSerializer(instance.setupSteps.all(), many=True).data,
+            "environment_setup": ArtifactVersionSetupSerializer(
+                instance.setupSteps.all(), many=True
+            ).data,
         }
 
 

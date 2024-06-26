@@ -523,7 +523,9 @@ class ArtifactVersionSetup(models.Model):
         JUPYTERHUB = _("jupyterhub")
         ISOLATED_JUPYTER = _("isolated_jupyter")
 
-    artifact_version = models.ForeignKey(ArtifactVersion, models.CASCADE, related_name="setupSteps")
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, models.CASCADE, related_name="setupSteps"
+    )
     type = models.CharField(choices=ArtifactVersionSetupType.choices, max_length=255)
     arguments = models.JSONField()
 

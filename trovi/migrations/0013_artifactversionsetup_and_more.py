@@ -5,6 +5,7 @@ import django.db.models.deletion
 
 from trovi.models import ArtifactVersion, ArtifactVersionSetup
 
+
 def add_default_version_setup(apps, schema_editor):
     """
     Add artifact version setups to all existing versions, which are the current
@@ -12,31 +13,58 @@ def add_default_version_setup(apps, schema_editor):
     """
     for v in ArtifactVersion.objects.filter(setupSteps=None):
         ArtifactVersionSetup.objects.create(
-            artifact_version=v, 
+            artifact_version=v,
             type=ArtifactVersionSetup.ArtifactVersionSetupType.JUPYTERHUB,
-            arguments={}
+            arguments={},
         )
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trovi', '0012_increase_title_and_short_description_length'),
+        ("trovi", "0012_increase_title_and_short_description_length"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ArtifactVersionSetup',
+            name="ArtifactVersionSetup",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('type', models.CharField(choices=[('jupyterhub', 'Jupyterhub'), ('isolated_jupyter', 'Isolated Jupyter')], max_length=255)),
-                ('arguments', models.JSONField()),
-                ('artifact_version', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='setupSteps', to='trovi.artifactversion')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[
+                            ("jupyterhub", "Jupyterhub"),
+                            ("isolated_jupyter", "Isolated Jupyter"),
+                        ],
+                        max_length=255,
+                    ),
+                ),
+                ("arguments", models.JSONField()),
+                (
+                    "artifact_version",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="setupSteps",
+                        to="trovi.artifactversion",
+                    ),
+                ),
             ],
         ),
         migrations.AddConstraint(
-            model_name='artifactversionsetup',
-            constraint=models.UniqueConstraint(fields=('artifact_version',), name='artifact_version_setup_unique_constraint'),
+            model_name="artifactversionsetup",
+            constraint=models.UniqueConstraint(
+                fields=("artifact_version",),
+                name="artifact_version_setup_unique_constraint",
+            ),
         ),
-        migrations.RunPython(add_default_version_setup)
+        migrations.RunPython(add_default_version_setup),
     ]
