@@ -10,7 +10,6 @@ from rest_framework.exceptions import (
     ValidationError,
     PermissionDenied,
     NotFound,
-    MethodNotAllowed,
 )
 
 from trovi.api.patches import ArtifactPatch

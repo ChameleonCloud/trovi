@@ -1,17 +1,15 @@
 from django.conf import settings
 from django.db import transaction
-from rest_framework import mixins
 from trovi.api.serializers import ArtifactPatchSerializer, ArtifactSerializer, ArtifactVersionSerializer
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import ArtifactEditPermission, ArtifactReadScopePermission, ArtifactViewPermission, ArtifactWriteScopePermission
-from trovi.common.serializers import get_requesting_user_urn, get_user_urn_from_request
+from trovi.common.serializers import get_user_urn_from_request
 from trovi.common.views import TroviAPIViewSet
 from trovi.importing.serializers import ArtifactImportSerializer
 from rest_framework.response import Response
-from rest_framework import viewsets
 from rest_framework import exceptions as drf_exceptions
 from giturlparse import parse
-from github import Github, GithubException, Auth
+from github import Github, GithubException
 
 from rocrate.rocrate import ROCrate
 from rocrate.model.metadata import Metadata
@@ -22,12 +20,13 @@ import base64
 
 import logging
 
-from trovi.models import Artifact, ArtifactTag, ArtifactVersion
+from trovi.models import Artifact, ArtifactVersion
 
 LOG = logging.getLogger(__name__)
 
 # Overwrite the ro-crate filename
 Metadata.BASENAME = settings.RO_CRATE_FILENAME
+
 
 class ArtifactImportView(TroviAPIViewSet):
     serializer_class = ArtifactImportSerializer
@@ -47,7 +46,7 @@ class ArtifactImportView(TroviAPIViewSet):
         Raises ValidationError if issue occurs.
         """
         parsed_git_url = parse(url)
-        if not(parsed_git_url and parsed_git_url.host == "github.com"):
+        if not (parsed_git_url and parsed_git_url.host == "github.com"):
             raise drf_exceptions.ValidationError(
                 "Importing artifact metadata is only supported from github.com")
 
@@ -56,7 +55,7 @@ class ArtifactImportView(TroviAPIViewSet):
         ) as g:
             repo_name = f"{parsed_git_url.owner}/{parsed_git_url.repo}"
             repo = g.get_repo(repo_name)
-            
+
             artifact_data = {}
             # We could import many things from github here in the future.
             git_version = repo.get_commits()[0].sha
@@ -69,7 +68,7 @@ class ArtifactImportView(TroviAPIViewSet):
             }
             artifact_data["authors"] = []
             artifact_data["tags"] = []
-            
+
             try:
                 # Save the github file to a temp file
                 contents = repo.get_contents(settings.RO_CRATE_FILENAME)
@@ -127,10 +126,10 @@ class ArtifactImportView(TroviAPIViewSet):
             js_patch = jsonpatch.JsonPatch.from_diff(old_artifact.data, artifact_data)
             patch = [
                 d for d in js_patch
-                if d["op"] != "remove" # filter out readonly fields
+                if d["op"] != "remove"  # filter out readonly fields
             ]
             patch_serializer = ArtifactPatchSerializer(
-                old_instance, 
+                old_instance,
                 data={"patch": patch},
                 context={
                     "request": request,
@@ -153,7 +152,6 @@ class ArtifactImportView(TroviAPIViewSet):
             ArtifactVersion.generate_slug(version, created=True)
             return Response(patch_serializer.data)
         return Response(d.errors)
-
 
     @transaction.atomic
     def create(self, request):
