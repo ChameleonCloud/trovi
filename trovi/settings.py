@@ -125,7 +125,7 @@ INSTALLED_APPS = [
     # Plugins
     "rest_framework",
     "drf_spectacular",
-    'corsheaders',
+    "corsheaders",
     # Trovi
     "trovi.apps.TroviConfig",
     "trovi.api.apps.ApiConfig",
