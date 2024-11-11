@@ -160,6 +160,8 @@ artifact_don_quixote = Artifact(
     is_reproducible=True,
     repro_access_hours=3,
 )
+artifact_don_quixote.created_at -= datetime.timedelta(days=2)
+
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
     contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",

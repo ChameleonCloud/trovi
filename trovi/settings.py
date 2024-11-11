@@ -14,6 +14,7 @@ import secrets
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+import sys
 from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -191,8 +192,9 @@ REST_FRAMEWORK = {
 
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
+TESTING = "test" in sys.argv or "test_coverage" in sys.argv
 
-if os.getenv("DB_ENGINE"):
+if not TESTING and os.getenv("DB_ENGINE"):
     DATABASES = {
         "default": {
             "ENGINE": os.getenv("DB_ENGINE"),
