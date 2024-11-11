@@ -300,7 +300,7 @@ class ArtifactVersion(models.Model):
             with transaction.atomic():
                 if instance.artifact:
                     versions_today_query = instance.artifact.versions.filter(
-                        artifact__created_at__date=instance.created_at.date(),
+                        created_at__date=instance.created_at.date(),
                     ).select_for_update()
                     versions_today = versions_today_query.exclude(
                         slug__exact=""

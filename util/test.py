@@ -3,6 +3,7 @@ Helper data classes used for dot-referencing API responses
 Not meant to be robust, and mostly unvalidated, but helpful to avoid
 having to reference dicts with strings repeatedly in tests.
 """
+
 import datetime
 import logging
 import os
@@ -160,6 +161,8 @@ artifact_don_quixote = Artifact(
     is_reproducible=True,
     repro_access_hours=3,
 )
+artifact_don_quixote.created_at -= datetime.timedelta(days=2)
+
 version_don_quixote_1 = ArtifactVersion(
     artifact=artifact_don_quixote,
     contents_urn=f"urn:trovi:contents:chameleon:{uuid4()}",
@@ -270,9 +273,9 @@ def generate_fake_artifact() -> list[models.Model]:
         ArtifactEvent(
             artifact_version=random.choice(artifact_versions),
             event_type=random.choice(ArtifactEvent.EventType.values),
-            event_origin=None
-            if fake.boolean(chance_of_getting_true=90)
-            else fake_user_urn(),
+            event_origin=(
+                None if fake.boolean(chance_of_getting_true=90) else fake_user_urn()
+            ),
         )
         for _ in range(random.randint(0, 40))
     ]
@@ -282,10 +285,12 @@ def generate_fake_artifact() -> list[models.Model]:
         verified = fake.boolean(chance_of_getting_true=20)
         return {
             "verified": verified,
-            "verified_at": None
-            if not verified
-            else fake.date_time_between(
-                datetime.date.min, datetime.date.max, timezone.utc
+            "verified_at": (
+                None
+                if not verified
+                else fake.date_time_between(
+                    datetime.date.min, datetime.date.max, timezone.utc
+                )
             ),
         }
 
