@@ -52,6 +52,7 @@ TROVI_PORT = os.getenv("TROVI_PORT", "8808")
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
+    "chameleon.local",
     TROVI_FQDN,
 ]
 
