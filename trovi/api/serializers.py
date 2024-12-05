@@ -170,6 +170,9 @@ class ArtifactVersionSetupSerializer(serializers.ModelSerializer):
     def to_representation(self, instance: ArtifactVersionSetup) -> dict[str, JSON]:
         return {"type": instance.type, "arguments": instance.arguments}
 
+    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        return data
+
 
 @allow_force
 @strict_schema
@@ -369,12 +372,18 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
 
     contents = ArtifactVersionContentsSerializer(required=True)
     links = ArtifactLinkSerializer(many=True, required=False)
-    environment_setup = ArtifactVersionSetupSerializer(many=True, read_only=True)
+    environment_setup = ArtifactVersionSetupSerializer(many=True)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
         links = validated_data.pop("links", [])
         contents = validated_data.pop("contents", {})
+        # Default environment setup used if non given
         environment_setup = validated_data.pop("environment_setup", [])
+        if not environment_setup:
+            environment_setup = [{
+                "type": ArtifactVersionSetup.ArtifactVersionSetupType.JUPYTERHUB,
+                "arguments": {}
+            }]
 
         with transaction.atomic():
             try:
@@ -395,6 +404,14 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             )
             contents_serializer.is_valid(raise_exception=True)
             contents_serializer.save()
+
+            for es in environment_setup:
+                es["artifact_version"] = version
+                setup_serializer = ArtifactVersionSetupSerializer(
+                    data=es, context=self.context
+                )
+                setup_serializer.is_valid(raise_exception=True)
+                version.setupSteps.add(setup_serializer.save())
 
         view = self.context["view"]
         artifact_uuid = view.kwargs.get("parent_lookup_artifact")
