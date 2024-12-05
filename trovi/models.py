@@ -510,6 +510,26 @@ class ArtifactRole(models.Model):
     )
 
 
+class ArtifactVersionSetup(models.Model):
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["artifact_version"],
+                name="artifact_version_setup_unique_constraint",
+            )
+        ]
+
+    class ArtifactVersionSetupType(models.TextChoices):
+        JUPYTERHUB = _("jupyterhub")
+        ISOLATED_JUPYTER = _("isolated_jupyter")
+
+    artifact_version = models.ForeignKey(
+        ArtifactVersion, models.CASCADE, related_name="setupSteps"
+    )
+    type = models.CharField(choices=ArtifactVersionSetupType.choices, max_length=255)
+    arguments = models.JSONField()
+
+
 # Signals
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)
 post_save.connect(ArtifactEvent.incr_access_count, sender=ArtifactEvent)

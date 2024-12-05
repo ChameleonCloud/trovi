@@ -24,4 +24,5 @@ urlpatterns = [
     re_path(r"^contents/?", include("trovi.storage.urls")),
     re_path(r"^docs/?", include("trovi.docs.urls")),
     re_path(r"^meta/?", include("trovi.meta.urls")),
+    re_path(r"^import/?", include("trovi.importing.urls")),
 ]

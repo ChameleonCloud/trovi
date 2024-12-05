@@ -2,6 +2,7 @@ import logging
 from typing import Type, Any, Callable, Optional
 
 from django.conf import settings
+from rest_framework.request import Request
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from jsonpatch import JsonPatch
@@ -213,14 +214,17 @@ def strict_schema(
     return serializer
 
 
-def get_requesting_user_urn(serializer: serializers.Serializer) -> Optional[str]:
-    """
-    Generates a default owner URN based on the requesting user's auth token
-    """
-    request = serializer.context.get("request")
+def get_user_urn_from_request(request: Request) -> Optional[str]:
     if not request:
         return None
     token = JWT.from_request(request)
     if not token:
         return None
     return token.to_urn()
+
+
+def get_requesting_user_urn(serializer: serializers.Serializer) -> Optional[str]:
+    """
+    Generates a default owner URN based on the requesting user's auth token
+    """
+    return get_user_urn_from_request(serializer.context.get("request"))
