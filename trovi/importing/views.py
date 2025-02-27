@@ -136,9 +136,7 @@ class ArtifactImportView(TroviAPIViewSet):
         )
         d = ArtifactImportSerializer(data=request.data)
         d.is_valid(raise_exception=True)
-        artifact_data = self._parse_git_url(
-            d.validated_data.get("github_url"), request
-        )
+        artifact_data = self._parse_git_url(d.validated_data.get("github_url"), request)
         # _parse_git_url assumes singular version, move it to a list
         v = artifact_data.pop("version")
         js_patch = jsonpatch.JsonPatch.from_diff(old_artifact.data, artifact_data)
@@ -176,9 +174,7 @@ class ArtifactImportView(TroviAPIViewSet):
     def create(self, request):
         d = ArtifactImportSerializer(data=request.data)
         d.is_valid(raise_exception=True)
-        artifact_data = self._parse_git_url(
-            d.validated_data.get("github_url"), request
-        )
+        artifact_data = self._parse_git_url(d.validated_data.get("github_url"), request)
         artifact_serializer = ArtifactSerializer(
             data=artifact_data,
             context={
