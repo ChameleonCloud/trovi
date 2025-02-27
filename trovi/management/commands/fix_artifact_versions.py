@@ -35,7 +35,7 @@ class Command(BaseCommand):
                     suffix = ""
                     if (i):
                         suffix = f".{i}"
-                    new_slug = f"\t{version.slug}{suffix}"
+                    new_slug = f"{version.slug}{suffix}"
                     self.stdout.write(f"{version.slug} -> {new_slug}")
                     if not dry_run:
                         version.slug = new_slug
