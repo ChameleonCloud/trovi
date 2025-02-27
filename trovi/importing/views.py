@@ -64,25 +64,24 @@ class ArtifactImportView(TroviAPIViewSet):
             login_or_token=settings.GITHUB_ACCESS_TOKEN,
         ) as g:
             repo_name = f"{parsed_git_url.owner}/{parsed_git_url.repo}"
-            repo = g.get_repo(repo_name)
-
-            artifact_data = {}
-            # We could import many things from github here in the future.
-            git_version = repo.get_commits()[0].sha
-            remote_url = next(
-                remote
-                for proto, remote in parsed_git_url.urls.items()
-                if proto == "https"
-            )
-            trovi_urn = f"urn:trovi:contents:git:{remote_url}@{git_version}"
-            artifact_data["version"] = {
-                "contents": {"urn": trovi_urn},
-                "environment_setup": [],
-            }
-            artifact_data["authors"] = []
-            artifact_data["tags"] = []
-
             try:
+                repo = g.get_repo(repo_name)
+                artifact_data = {}
+                # We could import many things from github here in the future.
+                git_version = repo.get_commits()[0].sha
+                remote_url = next(
+                    remote
+                    for proto, remote in parsed_git_url.urls.items()
+                    if proto == "https"
+                )
+                trovi_urn = f"urn:trovi:contents:git:{remote_url}@{git_version}"
+                artifact_data["version"] = {
+                    "contents": {"urn": trovi_urn},
+                    "environment_setup": [],
+                }
+                artifact_data["authors"] = []
+                artifact_data["tags"] = []
+
                 # Save the github file to a temp file
                 contents = repo.get_contents(settings.RO_CRATE_FILENAME)
                 content = base64.b64decode(contents.content).decode("utf-8")
@@ -136,60 +135,57 @@ class ArtifactImportView(TroviAPIViewSet):
             },
         )
         d = ArtifactImportSerializer(data=request.data)
-        if d.is_valid():
-            artifact_data = self._parse_git_url(
-                d.validated_data.get("github_url"), request
-            )
-            # _parse_git_url assumes singular version, move it to a list
-            v = artifact_data.pop("version")
-            js_patch = jsonpatch.JsonPatch.from_diff(old_artifact.data, artifact_data)
-            patch = [
-                d for d in js_patch if d["op"] != "remove"  # filter out readonly fields
-            ]
-            patch_serializer = ArtifactPatchSerializer(
-                old_instance,
-                data={"patch": patch},
-                context={
-                    "request": request,
-                    "view": self,
-                },
-            )
-            patch_serializer.is_valid(raise_exception=True)
-            updated_artifact = patch_serializer.save()
-            version_serializer = ArtifactVersionSerializer(
-                data=v,
-                context={
-                    "request": request,
-                    "view": self,
-                },
-            )
-            version_serializer.is_valid(raise_exception=True)
-            version = version_serializer.save()
-            # Set the artifact, which can't be done via the serializer
-            version.artifact = updated_artifact
-            version.save()
-            # Pretend we just created this artifact. Otherwise the
-            # slug won't get increment right.
-            ArtifactVersion.generate_slug(version, created=True)
-            return Response(patch_serializer.data)
-        return Response(d.errors)
+        d.is_valid(raise_exception=True)
+        artifact_data = self._parse_git_url(
+            d.validated_data.get("github_url"), request
+        )
+        # _parse_git_url assumes singular version, move it to a list
+        v = artifact_data.pop("version")
+        js_patch = jsonpatch.JsonPatch.from_diff(old_artifact.data, artifact_data)
+        patch = [
+            d for d in js_patch if d["op"] != "remove"  # filter out readonly fields
+        ]
+        patch_serializer = ArtifactPatchSerializer(
+            old_instance,
+            data={"patch": patch},
+            context={
+                "request": request,
+                "view": self,
+            },
+        )
+        patch_serializer.is_valid(raise_exception=True)
+        updated_artifact = patch_serializer.save()
+        version_serializer = ArtifactVersionSerializer(
+            data=v,
+            context={
+                "request": request,
+                "view": self,
+            },
+        )
+        version_serializer.is_valid(raise_exception=True)
+        version = version_serializer.save()
+        # Set the artifact, which can't be done via the serializer
+        version.artifact = updated_artifact
+        version.save()
+        # Pretend we just created this artifact. Otherwise the
+        # slug won't get increment right.
+        ArtifactVersion.generate_slug(version, created=True)
+        return Response(patch_serializer.data)
 
     @transaction.atomic
     def create(self, request):
         d = ArtifactImportSerializer(data=request.data)
-        if d.is_valid():
-            artifact_data = self._parse_git_url(
-                d.validated_data.get("github_url"), request
-            )
-            artifact_serializer = ArtifactSerializer(
-                data=artifact_data,
-                context={
-                    "request": request,
-                    "view": self,
-                },
-            )
-            if not artifact_serializer.is_valid():
-                return Response(artifact_serializer.errors)
-            artifact_serializer.save()
-            return Response(artifact_serializer.data)
-        return Response(d.errors)
+        d.is_valid(raise_exception=True)
+        artifact_data = self._parse_git_url(
+            d.validated_data.get("github_url"), request
+        )
+        artifact_serializer = ArtifactSerializer(
+            data=artifact_data,
+            context={
+                "request": request,
+                "view": self,
+            },
+        )
+        artifact_serializer.is_valid(raise_exception=True)
+        artifact_serializer.save()
+        return Response(artifact_serializer.data)
