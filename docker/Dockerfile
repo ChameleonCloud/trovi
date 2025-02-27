@@ -1,6 +1,6 @@
 ARG PY_IMG_TAG=3.9.7
 
-FROM python:${PY_IMG_TAG} as base
+FROM python:${PY_IMG_TAG} AS base
 
 WORKDIR /project
 
@@ -19,12 +19,12 @@ RUN \
 
 EXPOSE 80 443
 
-FROM base as dev
+FROM base AS dev
 
 # dev only
 RUN poetry install
 
-FROM base as release
+FROM base AS release
 
 COPY . /project
 

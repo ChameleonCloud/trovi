@@ -16,9 +16,9 @@ services:
       - ./media:/media
       - static:/static
     ports:
-      - "127.0.0.1:${TROVI_PORT}:${TROVI_PORT}"
+      - "8808:8808"
     entrypoint: ["python3", "manage.py"]
-    command: ["runserver", "0.0.0.0:${TROVI_PORT}"]
+    command: ["runserver", "0.0.0.0:8808"]
     depends_on:
       - db
 
@@ -27,7 +27,7 @@ services:
     image: mariadb:${DB_IMG_TAG}
     restart: on-failure
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "mariadb", "-u", "ccuser", "-pccpass", "trovi", "-eselect 1"]
       timeout: 10s
       retries: 10
     environment:
@@ -36,7 +36,7 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./db:/docker-entrypoint-initdb.d
+     - ./db:/docker-entrypoint-initdb.d
 
 volumes:
   static:
