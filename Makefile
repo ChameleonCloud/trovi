@@ -6,8 +6,8 @@ ifneq (,$(wildcard ./.env))
 endif
 
 DOCKER_TAG ?= $(shell git rev-parse --short HEAD)
-DOCKER_IMAGE ?= $(DOCKER_REGISTRY)/trovi:$(DOCKER_TAG)
-DOCKER_IMAGE_LATEST ?= $(DOCKER_REGISTRY)/trovi:latest
+DOCKER_IMAGE ?= trovi:$(DOCKER_TAG)
+DOCKER_IMAGE_LATEST ?= trovi:latest
 DOCKER_DEV_IMAGE ?= trovi-dev:$(DOCKER_TAG)
 DOCKER_DEV_IMAGE_LATEST ?= trovi-dev:latest
 DOCKER_DIR ?= docker
@@ -37,19 +37,19 @@ publish-latest:
 
 .PHONY: start
 start: .env
-	docker-compose $(ENV_FILE_PARAM) up -d
+	docker compose $(ENV_FILE_PARAM) up -d
 
 .PHONY: clean
 clean:
-	docker-compose $(ENV_FILE_PARAM) down
+	docker compose $(ENV_FILE_PARAM) down
 
 .PHONY: migrations
 migrations: start
-	docker-compose exec trovi python manage.py makemigrations --check
+	docker compose exec trovi python manage.py makemigrations --check
 
 requirements-frozen.txt: build
 	docker run --rm $(DOCKER_IMAGE) pip freeze > $@
 
 .PHONY: tests
 tests: .env
-	docker-compose -f ./tests-compose.yml run trovi test
+	docker compose -f ./tests-compose.yml run trovi test
