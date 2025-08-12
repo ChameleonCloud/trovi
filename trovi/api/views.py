@@ -81,6 +81,10 @@ LOG = logging.getLogger(__name__)
         description=(update_description := "Update an Artifact's representation."),
     ),
     partial_update=extend_schema(description=update_description),
+    destroy=extend_schema(
+        description="Deletes an artifact given its UUID",
+        responses={status.HTTP_204_NO_CONTENT: None},
+    ),
 )
 @method_decorator(transaction.atomic, name="list")
 class ArtifactViewSet(
@@ -90,6 +94,7 @@ class ArtifactViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
 ):
     """
     Implements all endpoints at /artifacts
@@ -112,6 +117,12 @@ class ArtifactViewSet(
     ]
     create_permission_classes = [ArtifactWriteScopePermission]
     update_permission_classes = [
+        ArtifactReadScopePermission,
+        ArtifactWriteScopePermission,
+        ArtifactViewPermission,
+        ArtifactEditPermission,
+    ]
+    destroy_permission_classes = [
         ArtifactReadScopePermission,
         ArtifactWriteScopePermission,
         ArtifactViewPermission,
