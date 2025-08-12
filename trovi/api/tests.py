@@ -1139,6 +1139,165 @@ class TestDeleteArtifactVersion(TestCase, APITest):
         )
 
 
+class TestDeleteArtifact(TestCase, APITest):
+    def test_endpoint_works(self):
+        try:
+            base_response = self.client.delete(
+                self.authenticate_url(
+                    reverse(
+                        DeleteArtifactVersion,
+                        args=[artifact_don_quixote.uuid, "foo"]
+                    )
+                )
+            )
+            self.assertIsNotNone(base_response)
+        except Exception as e:
+            self.fail(e)
+
+    def test_delete_artifact(self):
+        artifact = Artifact.objects.create(
+            title="To Be Deleted",
+            short_description="This artifact will be deleted",
+            long_description="This artifact will be deleted",
+            visibility=Artifact.Visibility.PUBLIC,
+            owner_urn=artifact_don_quixote.owner_urn,
+        )
+        test_token = JWT.from_jws(
+            self.get_test_token(
+                scope=' '.join([
+                    JWT.Scopes.ARTIFACTS_WRITE,
+                    JWT.Scopes.ARTIFACTS_READ
+                ])
+            )
+        )
+        artifact.roles.create(
+            user=test_token.to_urn(),
+            role=ArtifactRole.RoleType.ADMINISTRATOR,
+            assigned_by=test_token.to_urn(),
+        )
+        url = self.authenticate_url(
+            reverse(GetArtifact, args=[artifact.uuid]), scopes=[
+                JWT.Scopes.ARTIFACTS_WRITE,
+                JWT.Scopes.ARTIFACTS_READ,
+            ])
+        response = self.client.delete(url)
+        self.assertIsNotNone(response)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            msg=response.content
+        )
+        with self.assertRaises(Artifact.DoesNotExist):
+            Artifact.objects.get(uuid=artifact.uuid)
+
+    def test_delete_artifact_missing(self):
+        fake_uuid = uuid.uuid4()
+        while True:
+            try:
+                Artifact.objects.get(uuid=fake_uuid)
+                fake_uuid = uuid.uuid4()
+            except Artifact.DoesNotExist:
+                break
+        url = self.authenticate_url(
+            reverse(GetArtifact, args=[str(fake_uuid)]), scopes=[
+                JWT.Scopes.ARTIFACTS_WRITE,
+                JWT.Scopes.ARTIFACTS_READ,
+            ])
+        response = self.client.delete(url)
+        self.assertIsNotNone(response)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+            msg=response.content
+        )
+
+    def test_delete_artifact_no_write_scope(self):
+        url = self.authenticate_url(
+            reverse(GetArtifact, args=[artifact_don_quixote.uuid]),
+            scopes=[
+                JWT.Scopes.ARTIFACTS_READ
+            ]
+        )
+        response = self.client.delete(url)
+        self.assertIsNotNone(response)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            msg=response.content
+        )
+
+    def test_delete_artfiact_no_permission(self):
+        artifact_don_quixote.refresh_from_db()
+        for role in artifact_don_quixote.roles.all():
+            role.delete()
+        url = self.authenticate_url(
+            reverse(GetArtifact, args=[artifact_don_quixote.uuid]),
+            scopes=[
+                JWT.Scopes.ARTIFACTS_WRITE
+            ]
+        )
+        response = self.client.delete(url)
+        self.assertIsNotNone(response)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_403_FORBIDDEN,
+            msg=response.content
+        )
+
+    def test_delete_artifact_removes_versions(self):
+        artifact = Artifact.objects.create(
+            title="To Be Deleted",
+            short_description="This artifact will be deleted",
+            long_description="This artifact will be deleted",
+            visibility=Artifact.Visibility.PUBLIC,
+            owner_urn=artifact_don_quixote.owner_urn,
+        )
+        test_token = JWT.from_jws(
+            self.get_test_token(
+                scope=' '.join([
+                    JWT.Scopes.ARTIFACTS_WRITE,
+                    JWT.Scopes.ARTIFACTS_READ
+                ])
+            )
+        )
+        artifact.roles.create(
+            user=test_token.to_urn(),
+            role=ArtifactRole.RoleType.ADMINISTRATOR,
+            assigned_by=test_token.to_urn(),
+        )
+        version = ArtifactVersion.objects.create(
+            artifact=artifact,
+            contents_urn="urn:trovi:contents:chameleon:delete-test-1",
+        )
+        version2 = ArtifactVersion.objects.create(
+            artifact=artifact,
+            contents_urn="urn:trovi:contents:chameleon:delete-test-2",
+        )
+        self.assertTrue(
+            ArtifactVersion.objects.filter(artifact=artifact).count() == 2
+        )
+        url = self.authenticate_url(
+            reverse(GetArtifact, args=[artifact.uuid]), scopes=[
+                JWT.Scopes.ARTIFACTS_WRITE,
+                JWT.Scopes.ARTIFACTS_READ,
+            ])
+        response = self.client.delete(url)
+        self.assertIsNotNone(response)
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_204_NO_CONTENT,
+            msg=response.content
+        )
+        self.assertFalse(
+            ArtifactVersion.objects.filter(pk=version.pk).exists()
+        )
+        self.assertFalse(
+            ArtifactVersion.objects.filter(pk=version2.pk).exists()
+        )
+        with self.assertRaises(Artifact.DoesNotExist):
+            Artifact.objects.get(uuid=artifact.uuid)
+
+
 class TestIncrArtifactVersionMetrics(TestCase, APITest):
     def test_endpoint_works(self):
         try:

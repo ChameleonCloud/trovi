@@ -3,7 +3,7 @@ version: "3.5"
 services:
   trovi:
     container_name: trovi_web
-    image: trovi:dev
+    image: trovi-dev
     restart: on-failure
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${TROVI_PORT}/artifacts/?limit=1"]
