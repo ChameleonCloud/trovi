@@ -17,7 +17,7 @@ def get_kc_token():
         "grant_type": "password",
         "password": password,
         "client_id": client_id,
-        "client_secret": client_secret
+        "client_secret": client_secret,
     }
     headers = {"content-type": "application/x-www-form-urlencoded"}
 
@@ -35,7 +35,7 @@ def get_trovi_token():
         "grant_type": "token_exchange",
         "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
         "scope": "artifacts:read artifacts:write",
-        "subject_token": kc_token
+        "subject_token": kc_token,
     }
     response = requests.post(url, json=payload)
     return response.json()
@@ -83,9 +83,11 @@ def main():
         "short_description": "demo",
         "long_description": "demo",
         "owner_urn": f"urn:trovi:user:chameleon:{username}",
-        "visibility": "private"
+        "visibility": "private",
     }
-    res = make_authenticated_trovi_request("artifacts", token=token, method="POST", payload=artifact_body)
+    res = make_authenticated_trovi_request(
+        "artifacts", token=token, method="POST", payload=artifact_body
+    )
     print("Created artifact")
     pretty_print(res)
 
