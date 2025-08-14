@@ -7,33 +7,31 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help="Don't save changes, just print what would be done."
+            "--dry-run",
+            action="store_true",
+            help="Don't save changes, just print what would be done.",
         )
-
 
     def handle(self, *args, **options):
-        dry_run = options['dry_run']
+        dry_run = options["dry_run"]
         # Get all distinct (artifact, slug) pairs
-        distinct_pairs = (
-            ArtifactVersion.objects.values("artifact", "slug").distinct()
-        )
+        distinct_pairs = ArtifactVersion.objects.values("artifact", "slug").distinct()
 
         # Get the results for all pairs
         for pair in distinct_pairs:
             versions = ArtifactVersion.objects.filter(
-                artifact=pair["artifact"],
-                slug=pair["slug"]
+                artifact=pair["artifact"], slug=pair["slug"]
             ).order_by("created_at")
 
             if len(versions) > 1:
-                self.stdout.write(self.style.SUCCESS(
-                    f"\nArtifact ID: {pair['artifact']}, Slug: {pair['slug']}"
-                ))
-                for (i, version) in enumerate(versions):
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"\nArtifact ID: {pair['artifact']}, Slug: {pair['slug']}"
+                    )
+                )
+                for i, version in enumerate(versions):
                     suffix = ""
-                    if (i):
+                    if i:
                         suffix = f".{i}"
                     new_slug = f"{version.slug}{suffix}"
                     self.stdout.write(f"{version.slug} -> {new_slug}")

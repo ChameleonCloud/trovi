@@ -20,7 +20,7 @@ from util.types import JSON
                 "grant_type": "token_exchange",
                 "subject_token": JWT(
                     azp=(email := "user@example.com"),
-                    aud=[(url := "https://example.com")],
+                    aud=[url := "https://example.com"],
                     iss=url,
                     iat=int(datetime.utcnow().timestamp()),
                     sub=email,
