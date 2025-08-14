@@ -1145,8 +1145,7 @@ class TestDeleteArtifact(TestCase, APITest):
             base_response = self.client.delete(
                 self.authenticate_url(
                     reverse(
-                        DeleteArtifactVersion,
-                        args=[artifact_don_quixote.uuid, "foo"]
+                        DeleteArtifactVersion, args=[artifact_don_quixote.uuid, "foo"]
                     )
                 )
             )
@@ -1164,10 +1163,7 @@ class TestDeleteArtifact(TestCase, APITest):
         )
         test_token = JWT.from_jws(
             self.get_test_token(
-                scope=' '.join([
-                    JWT.Scopes.ARTIFACTS_WRITE,
-                    JWT.Scopes.ARTIFACTS_READ
-                ])
+                scope=" ".join([JWT.Scopes.ARTIFACTS_WRITE, JWT.Scopes.ARTIFACTS_READ])
             )
         )
         artifact.roles.create(
@@ -1176,16 +1172,16 @@ class TestDeleteArtifact(TestCase, APITest):
             assigned_by=test_token.to_urn(),
         )
         url = self.authenticate_url(
-            reverse(GetArtifact, args=[artifact.uuid]), scopes=[
+            reverse(GetArtifact, args=[artifact.uuid]),
+            scopes=[
                 JWT.Scopes.ARTIFACTS_WRITE,
                 JWT.Scopes.ARTIFACTS_READ,
-            ])
+            ],
+        )
         response = self.client.delete(url)
         self.assertIsNotNone(response)
         self.assertEqual(
-            response.status_code,
-            status.HTTP_204_NO_CONTENT,
-            msg=response.content
+            response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
         )
         with self.assertRaises(Artifact.DoesNotExist):
             Artifact.objects.get(uuid=artifact.uuid)
@@ -1199,31 +1195,27 @@ class TestDeleteArtifact(TestCase, APITest):
             except Artifact.DoesNotExist:
                 break
         url = self.authenticate_url(
-            reverse(GetArtifact, args=[str(fake_uuid)]), scopes=[
+            reverse(GetArtifact, args=[str(fake_uuid)]),
+            scopes=[
                 JWT.Scopes.ARTIFACTS_WRITE,
                 JWT.Scopes.ARTIFACTS_READ,
-            ])
+            ],
+        )
         response = self.client.delete(url)
         self.assertIsNotNone(response)
         self.assertEqual(
-            response.status_code,
-            status.HTTP_404_NOT_FOUND,
-            msg=response.content
+            response.status_code, status.HTTP_404_NOT_FOUND, msg=response.content
         )
 
     def test_delete_artifact_no_write_scope(self):
         url = self.authenticate_url(
             reverse(GetArtifact, args=[artifact_don_quixote.uuid]),
-            scopes=[
-                JWT.Scopes.ARTIFACTS_READ
-            ]
+            scopes=[JWT.Scopes.ARTIFACTS_READ],
         )
         response = self.client.delete(url)
         self.assertIsNotNone(response)
         self.assertEqual(
-            response.status_code,
-            status.HTTP_403_FORBIDDEN,
-            msg=response.content
+            response.status_code, status.HTTP_403_FORBIDDEN, msg=response.content
         )
 
     def test_delete_artfiact_no_permission(self):
@@ -1232,16 +1224,12 @@ class TestDeleteArtifact(TestCase, APITest):
             role.delete()
         url = self.authenticate_url(
             reverse(GetArtifact, args=[artifact_don_quixote.uuid]),
-            scopes=[
-                JWT.Scopes.ARTIFACTS_WRITE
-            ]
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
         response = self.client.delete(url)
         self.assertIsNotNone(response)
         self.assertEqual(
-            response.status_code,
-            status.HTTP_403_FORBIDDEN,
-            msg=response.content
+            response.status_code, status.HTTP_403_FORBIDDEN, msg=response.content
         )
 
     def test_delete_artifact_removes_versions(self):
@@ -1254,10 +1242,7 @@ class TestDeleteArtifact(TestCase, APITest):
         )
         test_token = JWT.from_jws(
             self.get_test_token(
-                scope=' '.join([
-                    JWT.Scopes.ARTIFACTS_WRITE,
-                    JWT.Scopes.ARTIFACTS_READ
-                ])
+                scope=" ".join([JWT.Scopes.ARTIFACTS_WRITE, JWT.Scopes.ARTIFACTS_READ])
             )
         )
         artifact.roles.create(
@@ -1273,27 +1258,21 @@ class TestDeleteArtifact(TestCase, APITest):
             artifact=artifact,
             contents_urn="urn:trovi:contents:chameleon:delete-test-2",
         )
-        self.assertTrue(
-            ArtifactVersion.objects.filter(artifact=artifact).count() == 2
-        )
+        self.assertTrue(ArtifactVersion.objects.filter(artifact=artifact).count() == 2)
         url = self.authenticate_url(
-            reverse(GetArtifact, args=[artifact.uuid]), scopes=[
+            reverse(GetArtifact, args=[artifact.uuid]),
+            scopes=[
                 JWT.Scopes.ARTIFACTS_WRITE,
                 JWT.Scopes.ARTIFACTS_READ,
-            ])
+            ],
+        )
         response = self.client.delete(url)
         self.assertIsNotNone(response)
         self.assertEqual(
-            response.status_code,
-            status.HTTP_204_NO_CONTENT,
-            msg=response.content
+            response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
         )
-        self.assertFalse(
-            ArtifactVersion.objects.filter(pk=version.pk).exists()
-        )
-        self.assertFalse(
-            ArtifactVersion.objects.filter(pk=version2.pk).exists()
-        )
+        self.assertFalse(ArtifactVersion.objects.filter(pk=version.pk).exists())
+        self.assertFalse(ArtifactVersion.objects.filter(pk=version2.pk).exists())
         with self.assertRaises(Artifact.DoesNotExist):
             Artifact.objects.get(uuid=artifact.uuid)
 
