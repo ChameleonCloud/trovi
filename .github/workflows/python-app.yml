@@ -45,7 +45,7 @@ jobs:
       run: |
         poetry run python manage.py migrate
       env:
-        DB_ENGINE: django.db.backends.sqlite3
+        DB_ENGINE: ''
     - name: Django tests
       env:
         CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET: ${{ secrets.CHAMELEON_KEYCLOAK_TROVI_ADMIN_CLIENT_SECRET }}
@@ -58,6 +58,6 @@ jobs:
         CHAMELEON_SWIFT_PROJECT_NAME: ${{ secrets.CHAMELEON_SWIFT_PROJECT_NAME }}
         CHAMELEON_SWIFT_TEMP_URL_KEY: ${{ secrets.CHAMELEON_SWIFT_TEMP_URL_KEY }}
         TROVI_ADMIN_USERS: ${{ secrets.TROVI_ADMIN_USERS }}
-        DB_ENGINE: django.db.backends.sqlite3
+        DB_ENGINE: ''
       run: |
         poetry run python manage.py test
