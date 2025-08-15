@@ -1,5 +1,0 @@
-export TEST_TROVI_USERNAME=""
-export TEST_TROVI_PASSWORD=""
-export TEST_TROVI_CLIENT_ID="portal-local-dev"
-export TEST_TROVI_CLIENT_SECRET="25727fbd-0e6f-4d79-9c0b-39e8d65523d1"
-
