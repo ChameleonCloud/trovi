@@ -12,6 +12,36 @@ from ..models import (
 )
 
 
+class ArtifactAuthorInline(admin.TabularInline):
+    model = ArtifactAuthor
+    extra = 0
+
+
+class ArtifactProjectInline(admin.TabularInline):
+    model = Artifact.linked_projects.through
+    extra = 0
+
+
+class ArtifactRoleInline(admin.TabularInline):
+    model = ArtifactRole
+    extra = 0
+
+
+class ArtifactTagInline(admin.TabularInline):
+    model = Artifact.tags.through
+    extra = 0
+
+
+class ArtifactLinkInline(admin.TabularInline):
+    model = ArtifactLink
+    extra = 0
+
+
+class ArtifactVersionMigrationInline(admin.TabularInline):
+    model = ArtifactVersionMigration
+    extra = 0
+
+
 @admin.register(Artifact)
 class ArtifactAdmin(admin.ModelAdmin):
     list_display = (
@@ -25,6 +55,12 @@ class ArtifactAdmin(admin.ModelAdmin):
     search_fields = ("title", "short_description", "owner_urn")
     list_filter = ("visibility", "created_at", "updated_at")
     ordering = ("-created_at",)
+    inlines = [
+        ArtifactAuthorInline,
+        ArtifactProjectInline,
+        ArtifactRoleInline,
+        ArtifactTagInline,
+    ]
 
 
 @admin.register(ArtifactVersion)
@@ -32,6 +68,10 @@ class ArtifactVersionAdmin(admin.ModelAdmin):
     list_display = ("artifact", "created_at", "contents_urn", "slug")
     search_fields = ("contents_urn",)
     list_filter = ("created_at",)
+    inlines = [
+        ArtifactLinkInline,
+        ArtifactVersionMigrationInline,
+    ]
 
 
 @admin.register(ArtifactVersionMigration)
