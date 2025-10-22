@@ -473,7 +473,7 @@ class ArtifactProject(models.Model):
     urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
 
 
-class ArtifactLink(models.Model):
+class ArtifactVersionLink(models.Model):
     """Represents a piece of data linked to an artifact"""
 
     artifact_version = models.ForeignKey(

@@ -7,7 +7,7 @@ from ..models import (
     ArtifactTag,
     ArtifactAuthor,
     ArtifactProject,
-    ArtifactLink,
+    ArtifactVersionLink,
     ArtifactRole,
 )
 
@@ -32,8 +32,8 @@ class ArtifactTagInline(admin.TabularInline):
     extra = 0
 
 
-class ArtifactLinkInline(admin.TabularInline):
-    model = ArtifactLink
+class ArtifactVersionLinkInline(admin.TabularInline):
+    model = ArtifactVersionLink
     extra = 0
 
 
@@ -69,7 +69,7 @@ class ArtifactVersionAdmin(admin.ModelAdmin):
     search_fields = ("contents_urn",)
     list_filter = ("created_at",)
     inlines = [
-        ArtifactLinkInline,
+        ArtifactVersionLinkInline,
         ArtifactVersionMigrationInline,
     ]
 
@@ -106,8 +106,8 @@ class ArtifactProjectAdmin(admin.ModelAdmin):
     search_fields = ("urn",)
 
 
-@admin.register(ArtifactLink)
-class ArtifactLinkAdmin(admin.ModelAdmin):
+@admin.register(ArtifactVersionLink)
+class ArtifactVersionLinkAdmin(admin.ModelAdmin):
     list_display = ("artifact_version", "urn", "label", "verified", "verified_at")
     search_fields = ("urn", "label")
     list_filter = ("verified",)

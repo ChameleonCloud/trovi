@@ -34,7 +34,7 @@ from trovi.models import (
     ArtifactAuthor,
     ArtifactProject,
     ArtifactVersion,
-    ArtifactLink,
+    ArtifactVersionLink,
     ArtifactEvent,
     ArtifactVersionMigration,
     ArtifactRole,
@@ -135,17 +135,17 @@ class ArtifactProjectSerializer(serializers.ModelSerializer):
 @extend_schema_serializer(exclude_fields=["artifact_version"])
 @allow_force
 @strict_schema
-class ArtifactLinkSerializer(serializers.ModelSerializer):
+class ArtifactVersionLinkSerializer(serializers.ModelSerializer):
     """
     Describes an external link relevant to an artifact version
     """
 
     class Meta:
-        model = ArtifactLink
+        model = ArtifactVersionLink
         exclude = ["id", "verified_at"]
         read_only_fields = ["verified"]
 
-    def to_representation(self, instance: ArtifactLink) -> dict:
+    def to_representation(self, instance: ArtifactVersionLink) -> dict:
         return {
             "label": instance.label,
             "verified": instance.verified,
@@ -370,7 +370,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
         read_only_fields = ["slug", "created_at"]
 
     contents = ArtifactVersionContentsSerializer(required=True)
-    links = ArtifactLinkSerializer(many=True, required=False)
+    links = ArtifactVersionLinkSerializer(many=True, required=False)
     environment_setup = ArtifactVersionSetupSerializer(many=True, required=False)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
@@ -394,7 +394,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
                 raise e
 
             if links:
-                link_serializer = ArtifactLinkSerializer(
+                link_serializer = ArtifactVersionLinkSerializer(
                     data=links, many=True, context=self.context
                 )
                 link_serializer.is_valid(raise_exception=True)
@@ -426,7 +426,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
-            "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
+            "links": ArtifactVersionLinkSerializer(instance.links.all(), many=True).data,
             "environment_setup": ArtifactVersionSetupSerializer(
                 instance.setupSteps.all(), many=True
             ).data,
