@@ -67,7 +67,7 @@ class Artifact(models.Model):
             validators.MinValueValidator(0),
         ],
     )
-    repro_access_hours = models.IntegerField(null=True)
+    repro_access_hours = models.IntegerField(null=True, blank=True)
 
     # Hidden field which tracks how many times this artifact has been launched
     access_count = models.PositiveIntegerField(default=0)
@@ -507,6 +507,21 @@ class ArtifactRole(models.Model):
     assigned_by = URNField(max_length=settings.URN_MAX_CHARS)
     role = models.CharField(
         choices=RoleType.choices, max_length=max(len(c) for c in RoleType.values)
+    )
+
+
+class ArtifactLink(models.Model):
+    """Represents a link between two artifacts"""
+
+    source_artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="linked_artifacts", null=False
+    )
+    linked_artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="linked_from", null=False
+    )
+    relation = models.CharField(
+        choices=[("collection", "collection")],
+        max_length=256,
     )
 
 

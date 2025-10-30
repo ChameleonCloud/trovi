@@ -1,6 +1,7 @@
 from django.contrib import admin
 from ..models import (
     Artifact,
+    ArtifactLink,
     ArtifactVersion,
     ArtifactVersionMigration,
     ArtifactEvent,
@@ -42,6 +43,12 @@ class ArtifactVersionMigrationInline(admin.TabularInline):
     extra = 0
 
 
+class ArtifactLinkInline(admin.TabularInline):
+    model = ArtifactLink
+    extra = 0
+    fk_name = "source_artifact"
+
+
 @admin.register(Artifact)
 class ArtifactAdmin(admin.ModelAdmin):
     list_display = (
@@ -54,12 +61,14 @@ class ArtifactAdmin(admin.ModelAdmin):
     )
     search_fields = ("title", "short_description", "owner_urn")
     list_filter = ("visibility", "created_at", "updated_at")
+    readonly_fields = ("sharing_key",)
     ordering = ("-created_at",)
     inlines = [
         ArtifactAuthorInline,
         ArtifactProjectInline,
         ArtifactRoleInline,
         ArtifactTagInline,
+        ArtifactLinkInline,
     ]
 
 

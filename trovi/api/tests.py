@@ -15,7 +15,11 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
-from trovi.api.serializers import ArtifactSerializer, ArtifactVersionSerializer
+from trovi.api.serializers import (
+    ArtifactSerializer,
+    ArtifactVersionSerializer,
+    ArtifactLinkToSerializer,
+)
 from trovi.api.urls import (
     ListArtifact,
     GetArtifact,
@@ -603,6 +607,34 @@ class TestCreateArtifact(TestCase, APITest):
             new_artifact, ArtifactSerializer(model, context=self.get_test_context())
         )
 
+        # Create another artifact and link it to the newly created artifact
+        linked = Artifact.objects.create(
+            title="Linked artifact",
+            short_description="linked",
+            long_description=None,
+            owner_urn=model.owner_urn,
+        )
+
+        # Use serializer to create a link (mimics API child endpoint behaviour)
+        from types import SimpleNamespace
+
+        view = SimpleNamespace(kwargs={"uuid": str(model.uuid)})
+        link_data = {
+            "relation": "collection",
+            "linked_artifact": str(linked.uuid),
+            "source_artifact": str(model.uuid),
+        }
+        link_serializer = ArtifactLinkToSerializer(data=link_data, context={"view": view})
+        link_serializer.is_valid(raise_exception=True)
+        link_obj = link_serializer.save()
+
+        # Verify link exists and is associated with the source artifact
+        model.refresh_from_db()
+        self.assertTrue(
+            model.linked_artifacts.filter(pk=link_obj.pk).exists(),
+            "Created ArtifactLink was not associated with the source artifact",
+        )
+
     def test_create_artifact_owner_admin(self):
         new_artifact = self.get_new_artifact()
         response = self.client.post(
@@ -742,6 +774,21 @@ class TestUpdateArtifact(TestCase, APITest):
 
         patch = self.get_patch()
 
+        # Add a new linked artifact via JSON Patch for this update test
+        new_linked = Artifact.objects.create(
+            title="Update linked",
+            short_description="update-linked",
+            long_description=None,
+            owner_urn=artifact_don_quixote.owner_urn,
+        )
+        patch["patch"].append(
+            {
+                "op": "add",
+                "path": "/linked_artifacts/-",
+                "value": {"relation": "collection", "linked_artifact": str(new_linked.uuid)},
+            }
+        )
+
         if forced:
             new_timestamp = timezone.datetime(
                 year=2049, month=7, day=6, tzinfo=timezone.get_current_timezone()
@@ -797,6 +844,10 @@ class TestUpdateArtifact(TestCase, APITest):
         target_project = patch["patch"][5]["value"]
         self.assertIn(target_project, new_projects, msg=diff_msg)
 
+        # Ensure the new linked artifact is present in the response
+        linked_uuids = {link["linked_artifact"] for link in new_donq.get("linked_artifacts", [])}
+        self.assertIn(str(new_linked.uuid), linked_uuids)
+
         if forced:
             self.assertEqual(new_donq["created_at"], new_timestamp, msg=diff_msg)
 
@@ -830,6 +881,10 @@ class TestUpdateArtifact(TestCase, APITest):
             p
             for p in sorted(new_donq_as_json["linked_projects"])
             if p != target_project
+        ]
+        # Remove the linked_artifact we added so the final equality check ignores it
+        new_donq_as_json["linked_artifacts"] = [
+            link for link in new_donq_as_json.get("linked_artifacts", []) if link.get("linked_artifact") != str(new_linked.uuid)
         ]
         if forced:
             old_donq_as_json.pop("created_at")
