@@ -615,7 +615,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_from.all(), many=True
             ).data,
             "linked_artifacts": ArtifactLinkToSerializer(
-                instance.linked_artifacts.all(), many=True
+                instance.linked_artifacts.all().order_by("order") , many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
             "versions": ArtifactVersionSerializer(

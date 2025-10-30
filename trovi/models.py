@@ -524,6 +524,12 @@ class ArtifactLink(models.Model):
         max_length=256,
     )
 
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]  # ensures queryset returns them in order
+        unique_together = ("source_artifact", "linked_artifact")
+
 
 class ArtifactVersionSetup(models.Model):
     class Meta:
