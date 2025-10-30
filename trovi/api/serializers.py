@@ -167,6 +167,7 @@ class ArtifactLinkToSerializer(serializers.ModelSerializer):
 
 class ArtifactLinkFromSerializer(serializers.ModelSerializer):
     linked_from_title = serializers.SerializerMethodField()
+    linked_from_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = ArtifactLink
@@ -174,6 +175,9 @@ class ArtifactLinkFromSerializer(serializers.ModelSerializer):
 
     def get_linked_from_title(self, obj):
         return obj.source_artifact.title if obj.source_artifact else None
+
+    def get_linked_from_owner(self, obj):
+        return obj.source_artifact.owner_urn if obj.source_artifact else None
 
 
 @extend_schema_serializer(exclude_fields=["artifact_version"])
