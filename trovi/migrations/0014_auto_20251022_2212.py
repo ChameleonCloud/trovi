@@ -6,9 +6,9 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trovi', '0013_artifactversionsetup_and_more'),
+        ("trovi", "0013_artifactversionsetup_and_more"),
     ]
 
     operations = [
-        migrations.RenameModel('ArtifactLink', 'ArtifactVersionLink'),
+        migrations.RenameModel("ArtifactLink", "ArtifactVersionLink"),
     ]

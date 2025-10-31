@@ -615,7 +615,6 @@ class TestCreateArtifact(TestCase, APITest):
             owner_urn=model.owner_urn,
         )
 
-        # Use serializer to create a link (mimics API child endpoint behaviour)
         from types import SimpleNamespace
 
         view = SimpleNamespace(kwargs={"uuid": str(model.uuid)})
@@ -624,7 +623,9 @@ class TestCreateArtifact(TestCase, APITest):
             "linked_artifact": str(linked.uuid),
             "source_artifact": str(model.uuid),
         }
-        link_serializer = ArtifactLinkToSerializer(data=link_data, context={"view": view})
+        link_serializer = ArtifactLinkToSerializer(
+            data=link_data, context={"view": view}
+        )
         link_serializer.is_valid(raise_exception=True)
         link_obj = link_serializer.save()
 
@@ -785,7 +786,10 @@ class TestUpdateArtifact(TestCase, APITest):
             {
                 "op": "add",
                 "path": "/linked_artifacts/-",
-                "value": {"relation": "collection", "linked_artifact": str(new_linked.uuid)},
+                "value": {
+                    "relation": "collection",
+                    "linked_artifact": str(new_linked.uuid),
+                },
             }
         )
 
@@ -845,7 +849,9 @@ class TestUpdateArtifact(TestCase, APITest):
         self.assertIn(target_project, new_projects, msg=diff_msg)
 
         # Ensure the new linked artifact is present in the response
-        linked_uuids = {link["linked_artifact"] for link in new_donq.get("linked_artifacts", [])}
+        linked_uuids = {
+            link["linked_artifact"] for link in new_donq.get("linked_artifacts", [])
+        }
         self.assertIn(str(new_linked.uuid), linked_uuids)
 
         if forced:
@@ -884,7 +890,9 @@ class TestUpdateArtifact(TestCase, APITest):
         ]
         # Remove the linked_artifact we added so the final equality check ignores it
         new_donq_as_json["linked_artifacts"] = [
-            link for link in new_donq_as_json.get("linked_artifacts", []) if link.get("linked_artifact") != str(new_linked.uuid)
+            link
+            for link in new_donq_as_json.get("linked_artifacts", [])
+            if link.get("linked_artifact") != str(new_linked.uuid)
         ]
         if forced:
             old_donq_as_json.pop("created_at")

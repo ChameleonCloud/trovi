@@ -7,22 +7,49 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trovi', '0014_auto_20251022_2212'),
+        ("trovi", "0014_auto_20251022_2212"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='artifact',
-            name='repro_access_hours',
+            model_name="artifact",
+            name="repro_access_hours",
             field=models.IntegerField(blank=True, null=True),
         ),
         migrations.CreateModel(
-            name='ArtifactLink',
+            name="ArtifactLink",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('relation', models.CharField(choices=[('collection', 'collection')], max_length=256)),
-                ('linked_artifact', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='linked_from', to='trovi.artifact')),
-                ('source_artifact', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='linked_artifacts', to='trovi.artifact')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "relation",
+                    models.CharField(
+                        choices=[("collection", "collection")], max_length=256
+                    ),
+                ),
+                (
+                    "linked_artifact",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="linked_from",
+                        to="trovi.artifact",
+                    ),
+                ),
+                (
+                    "source_artifact",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="linked_artifacts",
+                        to="trovi.artifact",
+                    ),
+                ),
             ],
         ),
     ]

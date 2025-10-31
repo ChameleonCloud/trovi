@@ -474,7 +474,9 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
-            "links": ArtifactVersionLinkSerializer(instance.links.all(), many=True).data,
+            "links": ArtifactVersionLinkSerializer(
+                instance.links.all(), many=True
+            ).data,
             "environment_setup": ArtifactVersionSetupSerializer(
                 instance.setupSteps.all(), many=True
             ).data,
@@ -619,7 +621,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_from.all(), many=True
             ).data,
             "linked_artifacts": ArtifactLinkToSerializer(
-                instance.linked_artifacts.all().order_by("order") , many=True
+                instance.linked_artifacts.all().order_by("order"), many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
             "versions": ArtifactVersionSerializer(

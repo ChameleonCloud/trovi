@@ -6,21 +6,21 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trovi', '0015_alter_artifact_repro_access_hours_artifactlink'),
+        ("trovi", "0015_alter_artifact_repro_access_hours_artifactlink"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='artifactlink',
-            options={'ordering': ['order']},
+            name="artifactlink",
+            options={"ordering": ["order"]},
         ),
         migrations.AddField(
-            model_name='artifactlink',
-            name='order',
+            model_name="artifactlink",
+            name="order",
             field=models.PositiveIntegerField(default=0),
         ),
         migrations.AlterUniqueTogether(
-            name='artifactlink',
-            unique_together={('source_artifact', 'linked_artifact')},
+            name="artifactlink",
+            unique_together={("source_artifact", "linked_artifact")},
         ),
     ]
