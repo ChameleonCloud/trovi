@@ -11,9 +11,9 @@ COPY poetry.lock pyproject.toml /project/
 ENV POETRY_VIRTUALENVS_CREATE=false
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
-  default-mysql-client \
+  default-mysql-client=1.0.7 \
   && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /var/lib/apt/lists/*
 
 # Use pip to install poetry. We don't use virtualenvs in the build context.
 # Therefore, the vendored install provides no additional isolation.
