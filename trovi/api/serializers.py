@@ -30,11 +30,12 @@ from trovi.common.tokens import JWT
 from trovi.fields import URNField
 from trovi.models import (
     Artifact,
+    ArtifactLink,
     ArtifactTag,
     ArtifactAuthor,
     ArtifactProject,
     ArtifactVersion,
-    ArtifactLink,
+    ArtifactVersionLink,
     ArtifactEvent,
     ArtifactVersionMigration,
     ArtifactRole,
@@ -132,20 +133,67 @@ class ArtifactProjectSerializer(serializers.ModelSerializer):
         return urn
 
 
+class ArtifactLinkToSerializer(serializers.ModelSerializer):
+    linked_title = serializers.SerializerMethodField()
+    linked_artifact = serializers.PrimaryKeyRelatedField(
+        queryset=Artifact.objects.all(),
+    )
+
+    class Meta:
+        model = ArtifactLink
+        exclude = ["id", "source_artifact"]
+
+    def get_linked_title(self, obj):
+        return obj.linked_artifact.title if obj.linked_artifact else None
+
+    def create(self, validated_data):
+        view = self.context["view"]
+        source_uuid = view.kwargs.get("uuid")
+        linked_uuid = validated_data["linked_artifact"]
+
+        return ArtifactLink.objects.create(
+            source_artifact_id=source_uuid,
+            linked_artifact_id=linked_uuid,
+            relation=validated_data["relation"],
+        )
+
+    def validate_linked_artifact(self, value):
+        view = self.context["view"]
+        source_uuid = view.kwargs.get("uuid")
+        if str(value.uuid) == source_uuid:
+            raise ValidationError("Cannot link an artifact to itself.")
+        return value.uuid
+
+
+class ArtifactLinkFromSerializer(serializers.ModelSerializer):
+    linked_from_title = serializers.SerializerMethodField()
+    linked_from_owner = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ArtifactLink
+        exclude = ["id", "linked_artifact"]
+
+    def get_linked_from_title(self, obj):
+        return obj.source_artifact.title if obj.source_artifact else None
+
+    def get_linked_from_owner(self, obj):
+        return obj.source_artifact.owner_urn if obj.source_artifact else None
+
+
 @extend_schema_serializer(exclude_fields=["artifact_version"])
 @allow_force
 @strict_schema
-class ArtifactLinkSerializer(serializers.ModelSerializer):
+class ArtifactVersionLinkSerializer(serializers.ModelSerializer):
     """
     Describes an external link relevant to an artifact version
     """
 
     class Meta:
-        model = ArtifactLink
+        model = ArtifactVersionLink
         exclude = ["id", "verified_at"]
         read_only_fields = ["verified"]
 
-    def to_representation(self, instance: ArtifactLink) -> dict:
+    def to_representation(self, instance: ArtifactVersionLink) -> dict:
         return {
             "label": instance.label,
             "verified": instance.verified,
@@ -370,7 +418,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
         read_only_fields = ["slug", "created_at"]
 
     contents = ArtifactVersionContentsSerializer(required=True)
-    links = ArtifactLinkSerializer(many=True, required=False)
+    links = ArtifactVersionLinkSerializer(many=True, required=False)
     environment_setup = ArtifactVersionSetupSerializer(many=True, required=False)
 
     def create(self, validated_data: dict) -> ArtifactVersion:
@@ -394,7 +442,7 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
                 raise e
 
             if links:
-                link_serializer = ArtifactLinkSerializer(
+                link_serializer = ArtifactVersionLinkSerializer(
                     data=links, many=True, context=self.context
                 )
                 link_serializer.is_valid(raise_exception=True)
@@ -426,7 +474,9 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
             "contents": ArtifactVersionContentsSerializer(instance).data,
             "metrics": ArtifactVersionMetricsSerializer(instance).data,
-            "links": ArtifactLinkSerializer(instance.links.all(), many=True).data,
+            "links": ArtifactVersionLinkSerializer(
+                instance.links.all(), many=True
+            ).data,
             "environment_setup": ArtifactVersionSetupSerializer(
                 instance.setupSteps.all(), many=True
             ).data,
@@ -530,6 +580,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
     authors = ArtifactAuthorSerializer(many=True, required=False)
     roles = ArtifactRoleSerializer(many=True, read_only=True)
     linked_projects = ArtifactProjectSerializer(many=True, required=False)
+    linked_artifacts = ArtifactLinkToSerializer(many=True, required=False)
     reproducibility = ArtifactReproducibilitySerializer(required=False)
     versions = ArtifactVersionSerializer(many=True, read_only=True)
     version = ArtifactVersionSerializer(required=False, write_only=True)
@@ -565,6 +616,12 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "visibility": instance.visibility,
             "linked_projects": ArtifactProjectSerializer(
                 instance.linked_projects.all(), many=True
+            ).data,
+            "linked_from": ArtifactLinkFromSerializer(
+                instance.linked_from.all(), many=True
+            ).data,
+            "linked_artifacts": ArtifactLinkToSerializer(
+                instance.linked_artifacts.all().order_by("order"), many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
             "versions": ArtifactVersionSerializer(
@@ -645,6 +702,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
         linked_projects = validated_data.pop("linked_projects", None)
         if linked_projects is not None:
             linked_projects = [p["urn"] for p in linked_projects]
+        linked_artifacts = validated_data.pop("linked_artifacts", None)
         tags = validated_data.pop("tags", None)
         if tags is not None:
             tags = [t["tag"] for t in tags]
@@ -679,6 +737,14 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 project_serializer.is_valid(raise_exception=True)
                 instance.linked_projects.clear()
                 instance.linked_projects.add(*project_serializer.save())
+
+            if linked_artifacts is not None:
+                instance.linked_artifacts.all().delete()
+                link_serializer = ArtifactLinkToSerializer(
+                    data=linked_artifacts, many=True, context=self.context
+                )
+                link_serializer.is_valid(raise_exception=True)
+                link_serializer.save()
 
             # Handle reproducibility changes
             if reproducibility is not None:

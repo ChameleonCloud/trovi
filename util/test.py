@@ -22,7 +22,7 @@ from trovi.models import (
     ArtifactVersion,
     ArtifactAuthor,
     ArtifactEvent,
-    ArtifactLink,
+    ArtifactVersionLink,
     ArtifactTag,
     ArtifactProject,
     ArtifactRole,
@@ -198,12 +198,12 @@ event_don_quixote_launch3 = ArtifactEvent(
     event_type=ArtifactEvent.EventType.LAUNCH,
     event_origin="urn:trovi:user:chameleon:dulcinea@toboso.gov",
 )
-link_don_quixote_dataset = ArtifactLink(
+link_don_quixote_dataset = ArtifactVersionLink(
     artifact_version=version_don_quixote_1,
     urn="urn:globus:dataset:9a7c09d3-80e7-466c-9325-423f4358db96:/data",
     label="Windmill Data",
 )
-link_don_quixote_image = ArtifactLink(
+link_don_quixote_image = ArtifactVersionLink(
     artifact_version=version_don_quixote_2,
     urn="urn:trovi:chameleon:disk-image:CHI@UC:fbcf21f7-8397-43d1-a9ef-55c3eee868f7",
     label="Image of DuchessOS",
@@ -295,7 +295,7 @@ def generate_fake_artifact() -> list[models.Model]:
         }
 
     artifact_links = [
-        ArtifactLink(
+        ArtifactVersionLink(
             artifact_version=random.choice(artifact_versions),
             urn=fake_link_urn(),
             label=fake.text(max_nb_chars=settings.ARTIFACT_LINK_LABEL_MAX_CHARS),

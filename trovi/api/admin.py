@@ -1,13 +1,14 @@
 from django.contrib import admin
 from ..models import (
     Artifact,
+    ArtifactLink,
     ArtifactVersion,
     ArtifactVersionMigration,
     ArtifactEvent,
     ArtifactTag,
     ArtifactAuthor,
     ArtifactProject,
-    ArtifactLink,
+    ArtifactVersionLink,
     ArtifactRole,
 )
 
@@ -32,14 +33,20 @@ class ArtifactTagInline(admin.TabularInline):
     extra = 0
 
 
-class ArtifactLinkInline(admin.TabularInline):
-    model = ArtifactLink
+class ArtifactVersionLinkInline(admin.TabularInline):
+    model = ArtifactVersionLink
     extra = 0
 
 
 class ArtifactVersionMigrationInline(admin.TabularInline):
     model = ArtifactVersionMigration
     extra = 0
+
+
+class ArtifactLinkInline(admin.TabularInline):
+    model = ArtifactLink
+    extra = 0
+    fk_name = "source_artifact"
 
 
 @admin.register(Artifact)
@@ -54,12 +61,14 @@ class ArtifactAdmin(admin.ModelAdmin):
     )
     search_fields = ("title", "short_description", "owner_urn")
     list_filter = ("visibility", "created_at", "updated_at")
+    readonly_fields = ("sharing_key",)
     ordering = ("-created_at",)
     inlines = [
         ArtifactAuthorInline,
         ArtifactProjectInline,
         ArtifactRoleInline,
         ArtifactTagInline,
+        ArtifactLinkInline,
     ]
 
 
@@ -69,7 +78,7 @@ class ArtifactVersionAdmin(admin.ModelAdmin):
     search_fields = ("contents_urn",)
     list_filter = ("created_at",)
     inlines = [
-        ArtifactLinkInline,
+        ArtifactVersionLinkInline,
         ArtifactVersionMigrationInline,
     ]
 
@@ -106,8 +115,8 @@ class ArtifactProjectAdmin(admin.ModelAdmin):
     search_fields = ("urn",)
 
 
-@admin.register(ArtifactLink)
-class ArtifactLinkAdmin(admin.ModelAdmin):
+@admin.register(ArtifactVersionLink)
+class ArtifactVersionLinkAdmin(admin.ModelAdmin):
     list_display = ("artifact_version", "urn", "label", "verified", "verified_at")
     search_fields = ("urn", "label")
     list_filter = ("verified",)

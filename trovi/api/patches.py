@@ -38,6 +38,10 @@ class ArtifactPatchMixin:
         "email": None,
         "affiliation": None,
     }
+    _artifact_link_description = {
+        "relation": None,
+        "linked_artifact": None,
+    }
 
     def _int_key_only(self, desired_key: Any, value: Any = None) -> Any:
         """
@@ -73,6 +77,9 @@ class ArtifactPatchMixin:
                 # linked_projects is mutable, but only admins can modify it
                 # this is enforced by the ArtifactSerializer
                 "linked_projects": self.walker(self._int_key_only),
+                "linked_artifacts": self.walker(
+                    lambda a: self._int_key_only(a, self._artifact_link_description)
+                ),
                 "reproducibility": {"enable_requests": None, "access_hours": None},
                 # owner_urn is mutable, but only current owners can modify it
                 # this is enforced by the ArtifactSerializer

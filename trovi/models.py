@@ -67,7 +67,7 @@ class Artifact(models.Model):
             validators.MinValueValidator(0),
         ],
     )
-    repro_access_hours = models.IntegerField(null=True)
+    repro_access_hours = models.IntegerField(null=True, blank=True)
 
     # Hidden field which tracks how many times this artifact has been launched
     access_count = models.PositiveIntegerField(default=0)
@@ -473,7 +473,7 @@ class ArtifactProject(models.Model):
     urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
 
 
-class ArtifactLink(models.Model):
+class ArtifactVersionLink(models.Model):
     """Represents a piece of data linked to an artifact"""
 
     artifact_version = models.ForeignKey(
@@ -508,6 +508,27 @@ class ArtifactRole(models.Model):
     role = models.CharField(
         choices=RoleType.choices, max_length=max(len(c) for c in RoleType.values)
     )
+
+
+class ArtifactLink(models.Model):
+    """Represents a link between two artifacts"""
+
+    source_artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="linked_artifacts", null=False
+    )
+    linked_artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="linked_from", null=False
+    )
+    relation = models.CharField(
+        choices=[("collection", "collection")],
+        max_length=256,
+    )
+
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]  # ensures queryset returns them in order
+        unique_together = ("source_artifact", "linked_artifact")
 
 
 class ArtifactVersionSetup(models.Model):
