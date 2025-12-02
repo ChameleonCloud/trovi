@@ -1,7 +1,8 @@
 import logging
 from functools import cache
 
-from django.db import transaction
+from django.db import transaction, models
+from django.db.models import Count, Q
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
@@ -52,7 +53,7 @@ from trovi.common.permissions import (
 from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
-from trovi.models import Artifact, ArtifactVersion, ArtifactRole
+from trovi.models import Artifact, ArtifactVersion, ArtifactRole, ArtifactEvent
 from trovi.storage.serializers import StorageRequestSerializer
 
 LOG = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ class ArtifactViewSet(
     Implements all endpoints at /artifacts
     """
 
-    queryset = Artifact.objects.all().prefetch_related()
+    queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer
     patch_serializer_class = ArtifactPatchSerializer
     parser_classes = [JSONParser]
@@ -135,6 +136,49 @@ class ArtifactViewSet(
         TroviTokenAuthenticationExtension,
         TokenGrantRequestSerializerExtension,
     ]
+
+    def get_queryset(self):
+        """
+        Optimize the queryset by prefetching all related objects needed during
+        serialization to avoid N+1 queries.
+        """
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                "authors",
+                "tags",
+                "linked_projects",
+                "roles",
+                models.Prefetch(
+                    "versions",
+                    queryset=ArtifactVersion.objects.annotate(
+                        access_count_annotation=Count(
+                            "events",
+                            filter=Q(
+                                events__event_type=ArtifactEvent.EventType.LAUNCH
+                            ),
+                        ),
+                        unique_access_count_annotation=Count(
+                            "events__event_origin",
+                            distinct=True,
+                            filter=Q(
+                                events__event_type=ArtifactEvent.EventType.LAUNCH
+                            ),
+                        ),
+                        unique_cell_execution_count_annotation=Count(
+                            "events__event_origin",
+                            distinct=True,
+                            filter=Q(
+                                events__event_type=ArtifactEvent.EventType.CELL_EXECUTION
+                            ),
+                        ),
+                    ).prefetch_related("links", "setupSteps"),
+                ),
+                "linked_artifacts",
+                "linked_from",
+            )
+        )
 
     @transaction.atomic
     def update(self, request: Request, *args, **kwargs) -> Response:

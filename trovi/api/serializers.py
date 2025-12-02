@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 from typing import Optional, Any
 
 import cmarkgfm as commonmark
@@ -48,6 +49,17 @@ LOG = logging.getLogger(__name__)
 serializers.ModelSerializer.serializer_field_mapping.update(
     {URNField: URNSerializerField}
 )
+
+
+@lru_cache(maxsize=1024)
+def _get_unique_event_count(artifact_id: str, event_type: str) -> int:
+    """
+    Cached query for counting unique events.
+    """
+    return ArtifactEvent.objects.filter(
+        artifact_version__artifact_id=artifact_id,
+        event_type=event_type,
+    ).values("event_origin").distinct().count()
 
 
 class ArtifactTagSerializer(serializers.ModelSerializer):
@@ -360,20 +372,12 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         return {
             "access_count": instance.access_count,
-            "unique_access_count": ArtifactEvent.objects.filter(
-                artifact_version__artifact=instance,
-                event_type=ArtifactEvent.EventType.LAUNCH,
-            )
-            .values("event_origin")
-            .distinct()
-            .count(),
-            "unique_cell_execution_count": ArtifactEvent.objects.filter(
-                artifact_version__artifact=instance,
-                event_type=ArtifactEvent.EventType.CELL_EXECUTION,
-            )
-            .values("event_origin")
-            .distinct()
-            .count(),
+            "unique_access_count": _get_unique_event_count(
+                str(instance.uuid), ArtifactEvent.EventType.LAUNCH.value
+            ),
+            "unique_cell_execution_count": _get_unique_event_count(
+                str(instance.uuid), ArtifactEvent.EventType.CELL_EXECUTION.value
+            ),
         }
 
     def create(self, validated_data):
