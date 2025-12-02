@@ -64,6 +64,7 @@ def _get_unique_event_count(artifact_id: str, event_type: str) -> int:
         .values("event_origin")
         .distinct()
         .count()
+    )
 
 
 class ArtifactTagSerializer(serializers.ModelSerializer):

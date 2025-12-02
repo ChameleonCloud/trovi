@@ -165,7 +165,9 @@ class ArtifactViewSet(
                         unique_cell_execution_count_annotation=Count(
                             "events__event_origin",
                             distinct=True,
-                            filter=Q(events__event_type=ArtifactEvent.EventType.CELL_EXECUTION),
+                            filter=Q(
+                                events__event_type=ArtifactEvent.EventType.CELL_EXECUTION
+                            ),
                         ),
                     ).prefetch_related("links", "setupSteps"),
                 ),
