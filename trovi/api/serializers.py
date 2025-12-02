@@ -56,10 +56,14 @@ def _get_unique_event_count(artifact_id: str, event_type: str) -> int:
     """
     Cached query for counting unique events.
     """
-    return ArtifactEvent.objects.filter(
-        artifact_version__artifact_id=artifact_id,
-        event_type=event_type,
-    ).values("event_origin").distinct().count()
+    return (
+        ArtifactEvent.objects.filter(
+            artifact_version__artifact_id=artifact_id,
+            event_type=event_type,
+        )
+        .values("event_origin")
+        .distinct()
+        .count()
 
 
 class ArtifactTagSerializer(serializers.ModelSerializer):

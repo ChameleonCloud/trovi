@@ -155,23 +155,17 @@ class ArtifactViewSet(
                     queryset=ArtifactVersion.objects.annotate(
                         access_count_annotation=Count(
                             "events",
-                            filter=Q(
-                                events__event_type=ArtifactEvent.EventType.LAUNCH
-                            ),
+                            filter=Q(events__event_type=ArtifactEvent.EventType.LAUNCH),
                         ),
                         unique_access_count_annotation=Count(
                             "events__event_origin",
                             distinct=True,
-                            filter=Q(
-                                events__event_type=ArtifactEvent.EventType.LAUNCH
-                            ),
+                            filter=Q(events__event_type=ArtifactEvent.EventType.LAUNCH),
                         ),
                         unique_cell_execution_count_annotation=Count(
                             "events__event_origin",
                             distinct=True,
-                            filter=Q(
-                                events__event_type=ArtifactEvent.EventType.CELL_EXECUTION
-                            ),
+                            filter=Q(events__event_type=ArtifactEvent.EventType.CELL_EXECUTION),
                         ),
                     ).prefetch_related("links", "setupSteps"),
                 ),
