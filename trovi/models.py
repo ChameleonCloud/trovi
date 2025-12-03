@@ -219,6 +219,8 @@ class ArtifactVersion(models.Model):
         Shortcut for determining how many times an artifact version has been launched
         :return: The number of LAUNCH events for this artifact version
         """
+        if hasattr(self, "access_count_annotation"):
+            return self.access_count_annotation
         return self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH).count()
 
     @property
@@ -229,6 +231,8 @@ class ArtifactVersion(models.Model):
         :return: The number of unique urns for LAUNCH events for this artifact
         version
         """
+        if hasattr(self, "unique_access_count_annotation"):
+            return self.unique_access_count_annotation
         return (
             self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH)
             .values("event_origin")
@@ -244,6 +248,8 @@ class ArtifactVersion(models.Model):
         :return: The number of unique urns for CELL_EXECUTION events for this artifact
         version
         """
+        if hasattr(self, "unique_cell_execution_count_annotation"):
+            return self.unique_cell_execution_count_annotation
         return (
             self.events.filter(event_type=ArtifactEvent.EventType.CELL_EXECUTION)
             .values("event_origin")
