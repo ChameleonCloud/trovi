@@ -213,7 +213,9 @@ class ArtifactTagFilter(filters.BaseFilterBackend):
     """
 
     tag_param = "tag"
-    tag_description = _("An artifact tag to filter by. Can be specified multiple times.")
+    tag_description = _(
+        "An artifact tag to filter by. Can be specified multiple times."
+    )
 
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
@@ -413,13 +415,13 @@ class ArtifactAccessCountFilter(filters.BaseFilterBackend):
                 schema=build_basic_type(OpenApiTypes.INT),
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description=self.min_access_description
+                description=self.min_access_description,
             ),
             build_parameter_type(
                 name=self.max_access_param,
                 schema=build_basic_type(OpenApiTypes.INT),
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description=self.max_access_description
+                description=self.max_access_description,
             ),
         ]
