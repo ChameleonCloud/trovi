@@ -518,6 +518,12 @@ class TestArtifactFiltering(TestCase, APITest):
             {str(self.artifact_3.uuid)},
         )
 
+        # Test invalid input
+        url = f"{self.list_artifact_path()}&min_access_count=foo"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Must be an integer", str(response.json()))
+
     def test_search_filter(self):
         self.assertEqual(
             self.get_uuids_for_query({"q": "Notebook"}), {str(self.artifact_1.uuid)}
