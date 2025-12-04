@@ -236,7 +236,7 @@ class ArtifactTagFilter(filters.BaseFilterBackend):
             build_parameter_type(
                 name=self.tag_param,
                 schema=build_object_type(
-                    type=OpenApiTypes.ARRAY, items={"type": OpenApiTypes.STR}
+                    type="array", items={"type": OpenApiTypes.STR.value}
                 ),
                 location=OpenApiParameter.QUERY,
                 description=self.tag_description,
