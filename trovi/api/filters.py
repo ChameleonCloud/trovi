@@ -2,10 +2,15 @@ import shlex
 from django.db import models
 from django.db.models import F, Q, Count
 from django.utils.translation import gettext_lazy as _
-from drf_spectacular.plumbing import build_parameter_type, build_basic_type
+from drf_spectacular.plumbing import (
+    build_parameter_type,
+    build_basic_type,
+    build_object_type,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter
 from rest_framework import filters, views
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
