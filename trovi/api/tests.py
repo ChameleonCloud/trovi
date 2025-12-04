@@ -3,6 +3,7 @@ import json
 import os
 import random
 from unittest import skipIf
+from urllib.parse import urlencode
 import uuid
 
 from django.conf import settings
@@ -38,6 +39,7 @@ from trovi.models import (
     Artifact,
     ArtifactTag,
     ArtifactVersion,
+    ArtifactAuthor,
     ArtifactRole,
 )
 from util.decorators import timed_lru_cache
@@ -415,6 +417,133 @@ class TestListArtifacts(TestCase, APITest):
                 artifacts,
                 msg=f"Public artifact {artifact} not included in response",
             )
+
+
+class TestArtifactFiltering(TestCase, APITest):
+    def setUp(self):
+        super().setUp()
+        self.owner_1_urn = "urn:trovi:user:chameleon:testuser1"
+
+        self.artifact_1 = Artifact.objects.create(
+            title="Python Notebook",
+            short_description="An artifact for testing filters.",
+            owner_urn=self.owner_1_urn,
+            visibility=Artifact.Visibility.PUBLIC,
+            access_count=10,
+        )
+        self.artifact_1.authors.create(full_name="Dr. Jane Doe")
+        self.artifact_1.tags.create(tag="Python")
+        self.artifact_1.tags.create(tag="Jupyter")
+
+        self.owner_2_urn = "urn:trovi:user:chameleon:testuser2"
+        self.artifact_2 = Artifact.objects.create(
+            title="Jupyter Tutorial",
+            short_description="A tutorial for testing filters.",
+            owner_urn=self.owner_2_urn,
+            visibility=Artifact.Visibility.PUBLIC,
+            access_count=100,
+        )
+        self.artifact_2.authors.create(full_name="Dr. John Smith")
+        self.artifact_2.tags.add(ArtifactTag.objects.get(tag="Jupyter"))
+
+        self.artifact_3 = Artifact.objects.create(
+            title="More Python",
+            short_description="An artifact for testing boolean logic.",
+            owner_urn=self.owner_1_urn,
+            visibility=Artifact.Visibility.PUBLIC,
+            access_count=50,
+        )
+        self.artifact_3.authors.create(full_name="Dr. Jane Doe")
+        self.artifact_3.authors.create(full_name="Dr. John Smith")
+        self.artifact_3.tags.add(ArtifactTag.objects.get(tag="Python"))
+
+    def get_uuids_for_query(self, params: dict) -> set[str]:
+        """Helper to fetch artifact UUIDs for a given query."""
+        url = f"{self.list_artifact_path()}&{urlencode(params, doseq=True)}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        # Only return UUIDs created in this test's setup
+        expected_uuids = {
+            str(self.artifact_1.uuid),
+            str(self.artifact_2.uuid),
+            str(self.artifact_3.uuid),
+        }
+        return {a["uuid"] for a in response.json()["artifacts"]} & expected_uuids
+
+    def test_owner_filter(self):
+        self.assertEqual(
+            self.get_uuids_for_query({"owner": self.owner_1_urn}),
+            {str(self.artifact_1.uuid), str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"owner": self.owner_2_urn}),
+            {str(self.artifact_2.uuid)},
+        )
+
+    def test_author_name_filter(self):
+        self.assertEqual(
+            self.get_uuids_for_query({"author_name": "Jane Doe"}),
+            {str(self.artifact_1.uuid), str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"author_name": "Smith"}),
+            {str(self.artifact_2.uuid), str(self.artifact_3.uuid)},
+        )
+
+    def test_tag_filter(self):
+        self.assertEqual(
+            self.get_uuids_for_query({"tag": "Python"}),
+            {str(self.artifact_1.uuid), str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"tag": "Jupyter"}),
+            {str(self.artifact_1.uuid), str(self.artifact_2.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"tag": ["Python", "Jupyter"]}),
+            {str(self.artifact_1.uuid)},
+        )
+
+    def test_access_count_filter(self):
+        self.assertEqual(
+            self.get_uuids_for_query({"min_access_count": 50}),
+            {str(self.artifact_2.uuid), str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"max_access_count": 50}),
+            {str(self.artifact_1.uuid), str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"min_access_count": 20, "max_access_count": 80}),
+            {str(self.artifact_3.uuid)},
+        )
+
+        # Test invalid input
+        url = f"{self.list_artifact_path()}&min_access_count=foo"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Must be an integer", str(response.json()))
+
+    def test_search_filter(self):
+        self.assertEqual(
+            self.get_uuids_for_query({"q": "Notebook"}), {str(self.artifact_1.uuid)}
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"q": "More Python"}),
+            {str(self.artifact_3.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"q": "Notebook OR Tutorial"}),
+            {str(self.artifact_1.uuid), str(self.artifact_2.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"q": "Python -More"}),
+            {str(self.artifact_1.uuid)},
+        )
+        self.assertEqual(
+            self.get_uuids_for_query({"q": '"Python Notebook"'}),
+            {str(self.artifact_1.uuid)},
+        )
 
 
 class TestListArtifactsEmpty(TestListArtifacts):
