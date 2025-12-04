@@ -23,6 +23,11 @@ from trovi.api.docs.extensions import (
 from trovi.api.filters import (
     ListArtifactsOrderingFilter,
     ListArtifactsVisibilityFilter,
+    ArtifactSearchFilter,
+    ArtifactTagFilter,
+    ArtifactOwnerFilter,
+    ArtifactAuthorNameFilter,
+    ArtifactAccessCountFilter,
     sharing_key_parameter,
     ArtifactRoleFilter,
     ArtifactRoleOrderingFilter,
@@ -106,9 +111,24 @@ class ArtifactViewSet(
     patch_serializer_class = ArtifactPatchSerializer
     parser_classes = [JSONParser]
     pagination_class = ListArtifactsPagination
-    filter_backends = [ListArtifactsVisibilityFilter, ListArtifactsOrderingFilter]
+    filter_backends = [
+        ListArtifactsVisibilityFilter,
+        ListArtifactsOrderingFilter,
+        ArtifactSearchFilter,
+        ArtifactTagFilter,
+        ArtifactOwnerFilter,
+        ArtifactAuthorNameFilter,
+        ArtifactAccessCountFilter,
+    ]
     ordering = "updated_at"
-    ordering_fields = ["date", "updated_at", "access_count"]
+    ordering_fields = [
+        "date",
+        "created_at",
+        "updated_at",
+        "access_count",
+        "unique_access_count",
+        "unique_cell_execution_count",
+    ]
     authentication_classes = [TroviTokenAuthentication]
     # Individual visibility checks are handled by the visibility filter
     list_permission_classes = [ArtifactReadScopePermission]
