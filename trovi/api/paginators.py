@@ -43,14 +43,17 @@ class ListArtifactsPagination(LimitOffsetPagination):
     ) -> list[Artifact]:
         after = request.query_params.get(self.offset_query_param)
         if after:
+            # Use values_list to get the UUIDs. This avoids getting full Artifact
+            # objects with all their prefetches just to calculate an array index.
             try:
-                # This should only be acceptable if it is wrapped
-                # by an atomic transaction, such as ListArtifacts.get
-                self.offset = (*queryset,).index(queryset.get(uuid=after))
-            except Artifact.DoesNotExist:
+                uuids = list(str(u) for u in queryset.values_list("uuid", flat=True))
+                self.offset = uuids.index(str(after))
+            except ValueError:
                 raise NotFound(f"Artifact with uuid {after} not found in query.")
+
         if self.limit is None:
             self.limit = queryset.count()
+
         return super(ListArtifactsPagination, self).paginate_queryset(
             queryset, request, view
         )

@@ -2,7 +2,6 @@ from functools import cache
 from typing import Type, Any
 
 from django.db import models
-from django.db.models import QuerySet
 from rest_framework import viewsets, serializers, permissions
 from rest_framework.request import Request
 
@@ -65,11 +64,14 @@ class TroviAPIViewSet(viewsets.GenericViewSet):
         # can be referenced in multiple functions without redundant database round-trips
         return super(TroviAPIViewSet, self).get_object()
 
-    def get_queryset(self) -> QuerySet:
+    def get_queryset(self) -> models.QuerySet:
         # This override ensures relevant objects in the database to maintain the same
         # state for any operations which require that behavior.
         qs = super(TroviAPIViewSet, self).get_queryset()
-        if self.action.lower() in ("list", "create", "update", "partial_update"):
+
+        # Only use select_for_update for actual modifications.
+        # "list" and "create" should NOT lock rows.
+        if self.action.lower() in ("update", "partial_update"):
             qs = qs.select_for_update()
         return qs
 
