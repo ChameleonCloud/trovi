@@ -227,6 +227,11 @@ class ArtifactTagFilter(filters.BaseFilterBackend):
         self, request: Request, queryset: models.QuerySet, view: views.View
     ) -> models.QuerySet:
         tags = request.query_params.getlist(self.tag_param)
+
+        # Fallback for bracket syntax: ?tag[]=foo
+        if not tags:
+            tags = request.query_params.getlist(f"{self.tag_param}[]")
+
         if not tags:
             return queryset
 
