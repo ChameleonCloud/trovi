@@ -46,24 +46,30 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
     ) -> models.QuerySet:
-        # Annotate the query such that the database understands our sort_by params
-        prepared_query = queryset.annotate(
-            date=F("created_at"),
-            unique_access_count=Count(
-                "versions__events__event_origin",
-                distinct=True,
-                filter=Q(
-                    versions__events__event_type=ArtifactEvent.EventType.LAUNCH.value
+
+        prepared_query = queryset.annotate(date=F("created_at"))
+
+        # Only annotate expensive aggregates if we are actually sorting by them.
+        # This prevents massive joins on the Event table for every single list request.
+        sort_by = request.query_params.get(self.ordering_param, "")
+
+        if "unique_access_count" in sort_by or "unique_cell_execution_count" in sort_by:
+            prepared_query = prepared_query.annotate(
+                unique_access_count=Count(
+                    "versions__events__event_origin",
+                    distinct=True,
+                    filter=Q(
+                        versions__events__event_type=ArtifactEvent.EventType.LAUNCH.value
+                    ),
                 ),
-            ),
-            unique_cell_execution_count=Count(
-                "versions__events__event_origin",
-                distinct=True,
-                filter=Q(
-                    versions__events__event_type=ArtifactEvent.EventType.CELL_EXECUTION.value
+                unique_cell_execution_count=Count(
+                    "versions__events__event_origin",
+                    distinct=True,
+                    filter=Q(
+                        versions__events__event_type=ArtifactEvent.EventType.CELL_EXECUTION.value
+                    ),
                 ),
-            ),
-        )
+            )
 
         # The prepared query from above will be sorted properly using the
         # sort_by url param in the super call here
