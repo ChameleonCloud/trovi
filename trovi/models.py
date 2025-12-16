@@ -549,6 +549,9 @@ class ArtifactVersionSetup(models.Model):
     class ArtifactVersionSetupType(models.TextChoices):
         JUPYTERHUB = _("jupyterhub")
         ISOLATED_JUPYTER = _("isolated_jupyter")
+        SOURCE_CODE = _("source_code")
+        IMAGE = _("image")
+        HEAT_TEMPLATE = _("heat_template")
 
     artifact_version = models.ForeignKey(
         ArtifactVersion, models.CASCADE, related_name="setupSteps"
