@@ -6,13 +6,22 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('trovi', '0016_alter_artifactlink_options_artifactlink_order_and_more'),
+        ("trovi", "0016_alter_artifactlink_options_artifactlink_order_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='artifactversionsetup',
-            name='type',
-            field=models.CharField(choices=[('jupyterhub', 'Jupyterhub'), ('isolated_jupyter', 'Isolated Jupyter'), ('source_code', 'Source Code'), ('image', 'Image'), ('heat_template', 'Heat Template')], max_length=255),
+            model_name="artifactversionsetup",
+            name="type",
+            field=models.CharField(
+                choices=[
+                    ("jupyterhub", "Jupyterhub"),
+                    ("isolated_jupyter", "Isolated Jupyter"),
+                    ("source_code", "Source Code"),
+                    ("image", "Image"),
+                    ("heat_template", "Heat Template"),
+                ],
+                max_length=255,
+            ),
         ),
     ]
