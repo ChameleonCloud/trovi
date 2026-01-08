@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 # Therefore, the vendored install provides no additional isolation.
 RUN \
   pip install --no-cache-dir "poetry~=1.1" && \
+  poetry lock --no-update && \
   poetry install --no-dev --no-root && \
   mkdir /var/log/django
 

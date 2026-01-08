@@ -20,6 +20,17 @@ class ApiConfig(AppConfig):
         post_save.connect(_clear_cache, sender=ArtifactEvent)
         post_delete.connect(_clear_cache, sender=ArtifactEvent)
 
+        # Register signal to trigger crawl request processing
+        from trovi.models import CrawlRequest
+        from trovi.celery.tasks import process_crawl_request
+
+        def trigger_crawl_request(sender, instance: CrawlRequest, created: bool, **kwargs):
+            """Trigger a celery task to process the crawl request"""
+            if created:
+                process_crawl_request.delay(instance.id)
+
+        post_save.connect(trigger_crawl_request, sender=CrawlRequest)
+
         # Only run if we're spinning up the server
         if "runserver" in sys.argv:
             from trovi.api.tasks import (
