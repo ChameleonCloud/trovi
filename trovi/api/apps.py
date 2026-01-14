@@ -24,7 +24,9 @@ class ApiConfig(AppConfig):
         from trovi.models import CrawlRequest
         from trovi.celery.tasks import process_crawl_request
 
-        def trigger_crawl_request(sender, instance: CrawlRequest, created: bool, **kwargs):
+        def trigger_crawl_request(
+            sender, instance: CrawlRequest, created: bool, **kwargs
+        ):
             """Trigger a celery task to process the crawl request"""
             if created:
                 process_crawl_request.delay(instance.id)
