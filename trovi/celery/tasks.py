@@ -15,6 +15,8 @@ LOG = getLogger(__name__)
 
 
 scraper = cloudscraper.create_scraper()
+
+
 class RobotsVerifier:
     def __init__(self):
         self.parsers = {}
