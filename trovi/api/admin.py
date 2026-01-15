@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.db import transaction
+from django.conf import settings
 
 from ..models import (
     Artifact,
@@ -168,6 +169,13 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
         if crawled_artifact.abstract:
             long_description += crawled_artifact.abstract
 
+        long_description += (
+            "\n\n--\n\n"
+            "This artifact was auto-generated from a crawl. Please contact "
+            f"Chameleon support at {settings.TROVI_SUPPORT_EMAIL} for more information "
+            "or if you are the author and would like to claim the artifact."
+        )
+
         # Check if an artifact with this source_url already exists
         setup = (
             ArtifactVersionSetup.objects.filter(
@@ -214,16 +222,16 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
 
                 ArtifactAuthor.objects.create(
                     artifact=new_artifact,
-                    full_name=author_data.get("name") or "Unknown Author",
-                    email=author_data.get("email") or "support@chameleoncloud.org",
+                    full_name=author_data.get("name") or settings.TROVI_SUPPORT_FULL_NAME,
+                    email=author_data.get("email") or settings.TROVI_SUPPORT_EMAIL,
                     affiliation=author_data.get("affiliation"),
                 )
         else:
             ArtifactAuthor.objects.create(
                 artifact=new_artifact,
-                full_name="Contact Chameleon Support",
-                email="support@chameleoncloud.org",
-                affiliation="Chameleon Cloud",
+                full_name=settings.TROVI_SUPPORT_FULL_NAME,
+                email=settings.TROVI_SUPPORT_EMAIL,
+                affiliation=settings.TROVI_SUPPORT_AFFILIATION,
             )
 
         if crawled_artifact.tags:
