@@ -49,6 +49,18 @@ class Artifact(models.Model):
     long_description = models.TextField(
         max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS, null=True
     )
+    citation = models.TextField(null=True, blank=True)
+
+    # If this artifact was promoted from an auto-crawled result, link back
+    # to the originating AutoCrawledArtifact (nullable because not all
+    # Artifacts are promoted from a crawl).
+    auto_crawled_artifact = models.ForeignKey(
+        "AutoCrawledArtifact",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promoted_artifacts",
+    )
 
     # Timestamps
     created_at = models.DateTimeField(
@@ -558,6 +570,52 @@ class ArtifactVersionSetup(models.Model):
     )
     type = models.CharField(choices=ArtifactVersionSetupType.choices, max_length=255)
     arguments = models.JSONField()
+
+
+class CrawlRequest(models.Model):
+    """Represents a request to crawl a URL for artifacts"""
+
+    class CrawlStatus(models.TextChoices):
+        PENDING = _("pending")
+        RUNNING = _("running")
+        COMPLETE = _("complete")
+        FAILED = _("failed")
+
+    url = models.URLField()
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
+    status = models.CharField(
+        max_length=max(len(c) for c in CrawlStatus.values),
+        choices=CrawlStatus.choices,
+        default=CrawlStatus.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    crawled_data = models.TextField(null=True, blank=True)
+
+
+class AutoCrawledArtifact(models.Model):
+    """Represents an artifact discovered by a crawl, pending admin approval"""
+
+    crawl_request = models.ForeignKey(
+        "CrawlRequest",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="crawled_artifacts",
+    )
+    source_url = models.URLField()
+    origin_type = models.CharField(max_length=100)
+    title = models.CharField(max_length=settings.ARTIFACT_TITLE_MAX_CHARS)
+    abstract = models.TextField(
+        max_length=settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS, null=True, blank=True
+    )
+    citation = models.TextField(null=True, blank=True)
+    conference = models.CharField(max_length=255, null=True, blank=True)
+    authors = models.JSONField(null=True, blank=True)
+    tags = models.JSONField(null=True, blank=True)
+    extra_info = models.JSONField(null=True, blank=True)
+    approved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 # Signals

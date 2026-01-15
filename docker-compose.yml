@@ -11,6 +11,9 @@ services:
       retries: 3
     env_file:
       - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - .:/project
       - ./media:/media
@@ -21,6 +24,36 @@ services:
     command: ["runserver", "0.0.0.0:8808"]
     depends_on:
       - db
+      - redis
+      - celery
+
+  redis:
+    container_name: trovi_redis
+    image: "redis:alpine"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  celery:
+    container_name: trovi_celery
+    image: trovi-dev
+    entrypoint: ["celery"]
+    command: ["-A", "trovi", "worker", "-l", "info"]
+    volumes:
+      - .:/project
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
 
   db:
     container_name: trovi_db

@@ -618,6 +618,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "title": instance.title,
             "short_description": instance.short_description,
             "long_description": instance.long_description,
+            "citation": instance.citation,
             "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
             "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
             "owner_urn": instance.owner_urn,
