@@ -71,34 +71,28 @@ def get_soup(url, respect_robots: bool):
 def parse_zenodo(soup):
     return {
         "authors": [
-            m["content"]
-            for m in soup.find_all("meta", attrs={"name": "citation_author"})
+            m["content"] for m in soup.find_all("meta", attrs={"name": "citation_author"})
         ],
-        "abstract": (
-            clean_text(soup.find("meta", attrs={"name": "description"})["content"])
-            if soup.find("meta", attrs={"name": "description"})
-            else ""
-        ),
+        "abstract": clean_text(
+            soup.find("meta", attrs={"name": "description"})["content"]
+        )
+        if soup.find("meta", attrs={"name": "description"})
+        else "",
         "tags": [
-            m["content"]
-            for m in soup.find_all("meta", attrs={"name": "citation_keywords"})
+            m["content"] for m in soup.find_all("meta", attrs={"name": "citation_keywords"})
         ],
-        "extra_info": (
-            f"DOI: {soup.find('meta', attrs={'name': 'citation_doi'})['content']}"
-            if soup.find("meta", attrs={"name": "citation_doi"})
-            else ""
-        ),
+        "extra_info": f"DOI: {soup.find('meta', attrs={'name': 'citation_doi'})['content']}"
+        if soup.find("meta", attrs={"name": "citation_doi"})
+        else "",
     }
 
 
 def parse_github(soup):
     return {
         "authors": [],
-        "abstract": (
-            clean_text(soup.find("meta", property="og:description")["content"])
-            if soup.find("meta", property="og:description")
-            else ""
-        ),
+        "abstract": clean_text(soup.find("meta", property="og:description")["content"])
+        if soup.find("meta", property="og:description")
+        else "",
         "tags": [t.get_text().strip() for t in soup.find_all("a", class_="topic-tag")],
         "extra_info": "Source: GitHub Repository",
     }
@@ -108,9 +102,7 @@ def parse_acm(soup):
     data = {"authors": [], "abstract": "", "tags": [], "extra_info": ""}
 
     # Author parsing: Prefer detailed authors with affiliations
-    detailed_author_elements = soup.select(
-        'div.contributors-with-details div[property="author"]'
-    )
+    detailed_author_elements = soup.select('div.contributors-with-details div[property="author"]')
     if detailed_author_elements:
         for author_element in detailed_author_elements:
             name_element = author_element.select_one('div[property="name"]')
@@ -119,14 +111,8 @@ def parse_acm(soup):
             if not name:
                 continue
 
-            affiliation_element = author_element.select_one(
-                'div[property="affiliation"] span[property="name"]'
-            )
-            affiliation = (
-                clean_text(affiliation_element.get_text())
-                if affiliation_element
-                else None
-            )
+            affiliation_element = author_element.select_one('div[property="affiliation"] span[property="name"]')
+            affiliation = clean_text(affiliation_element.get_text()) if affiliation_element else None
 
             author_data = {"name": name}
             if affiliation:
@@ -138,7 +124,7 @@ def parse_acm(soup):
     if not data["authors"]:
         author_selectors = [
             'div.contributors span[property="author"]',
-            ".loa__author-name span",
+            '.loa__author-name span',
         ]
         for selector in author_selectors:
             authors = soup.select(selector)
@@ -199,7 +185,7 @@ DOMAIN_PARSERS = {
 }
 
 
-def _process_artifact(url, title, conference, respect_robots):
+def _process_artifact(url, title, conference, respect_robots, crawl_request):
     LOG.info(f"  -> Processing Artifact: {title[:40]}...")
 
     soup, final_url = get_soup(url, respect_robots)
@@ -240,15 +226,7 @@ def _process_artifact(url, title, conference, respect_robots):
         try:
             artifact = AutoCrawledArtifact.objects.get(source_url=data["source_url"])
             changed = False
-            for field in [
-                "conference",
-                "title",
-                "origin_type",
-                "abstract",
-                "authors",
-                "tags",
-                "extra_info",
-            ]:
+            for field in ["conference", "title", "origin_type", "abstract", "authors", "tags", "extra_info"]:
                 if getattr(artifact, field) != data[field]:
                     setattr(artifact, field, data[field])
                     changed = True
@@ -258,6 +236,7 @@ def _process_artifact(url, title, conference, respect_robots):
                 LOG.info(f"Updated artifact: {data['title']}")
         except AutoCrawledArtifact.DoesNotExist:
             AutoCrawledArtifact.objects.create(
+                crawl_request=crawl_request,
                 source_url=data["source_url"],
                 conference=data["conference"],
                 title=data["title"],
@@ -328,7 +307,9 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                 cols = row.find_all(["td", "th"])
                 title = clean_text(cols[0].get_text()) if cols else "Unknown Title"
 
-                _process_artifact(full_link, title, conference, respect_robots)
+                _process_artifact(
+                    full_link, title, conference, respect_robots, crawl_request
+                )
 
             # Find Next Pages
             for a in soup.find_all("a", href=True):

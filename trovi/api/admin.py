@@ -150,11 +150,19 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
         "origin_type",
         "title",
         "conference",
+        "crawl_request",
         "approved",
         "created_at",
         "updated_at",
     )
-    list_filter = ("approved", "origin_type", "conference", "created_at", "updated_at")
+    list_filter = (
+        "approved",
+        "origin_type",
+        "conference",
+        "crawl_request",
+        "created_at",
+        "updated_at",
+    )
     search_fields = ("source_url", "title", "citation", "conference")
     actions = ["approve_artifacts"]
 

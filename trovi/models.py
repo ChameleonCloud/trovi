@@ -584,6 +584,13 @@ class CrawlRequest(models.Model):
 class AutoCrawledArtifact(models.Model):
     """Represents an artifact discovered by a crawl, pending admin approval"""
 
+    crawl_request = models.ForeignKey(
+        "CrawlRequest",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="crawled_artifacts",
+    )
     source_url = models.URLField()
     origin_type = models.CharField(max_length=100)
     title = models.CharField(max_length=settings.ARTIFACT_TITLE_MAX_CHARS)
