@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
             field=models.TextField(blank=True, null=True),
         ),
         migrations.CreateModel(
-            name='CrawlRequest',
+            name="CrawlRequest",
             fields=[
                 (
                     "id",
