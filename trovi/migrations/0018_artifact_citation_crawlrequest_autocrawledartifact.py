@@ -10,43 +10,86 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('trovi', '0017_alter_artifactversionsetup_type'),
+        ("trovi", "0017_alter_artifactversionsetup_type"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='artifact',
-            name='citation',
+            model_name="artifact",
+            name="citation",
             field=models.TextField(blank=True, null=True),
         ),
         migrations.CreateModel(
             name='CrawlRequest',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('url', models.URLField()),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('running', 'Running'), ('complete', 'Complete'), ('failed', 'Failed')], default='pending', max_length=8)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('crawled_data', models.TextField(blank=True, null=True)),
-                ('requested_by', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("url", models.URLField()),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("running", "Running"),
+                            ("complete", "Complete"),
+                            ("failed", "Failed"),
+                        ],
+                        default="pending",
+                        max_length=8,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("crawled_data", models.TextField(blank=True, null=True)),
+                (
+                    "requested_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='AutoCrawledArtifact',
+            name="AutoCrawledArtifact",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('source_url', models.URLField()),
-                ('origin_type', models.CharField(max_length=100)),
-                ('title', models.CharField(max_length=140)),
-                ('abstract', models.TextField(blank=True, max_length=5000, null=True)),
-                ('citation', models.TextField(blank=True, null=True)),
-                ('conference', models.CharField(blank=True, max_length=255, null=True)),
-                ('authors', models.JSONField(blank=True, null=True)),
-                ('tags', models.JSONField(blank=True, null=True)),
-                ('extra_info', models.JSONField(blank=True, null=True)),
-                ('approved', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('crawl_request', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='crawled_artifacts', to='trovi.crawlrequest')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("source_url", models.URLField()),
+                ("origin_type", models.CharField(max_length=100)),
+                ("title", models.CharField(max_length=140)),
+                ("abstract", models.TextField(blank=True, max_length=5000, null=True)),
+                ("citation", models.TextField(blank=True, null=True)),
+                ("conference", models.CharField(blank=True, max_length=255, null=True)),
+                ("authors", models.JSONField(blank=True, null=True)),
+                ("tags", models.JSONField(blank=True, null=True)),
+                ("extra_info", models.JSONField(blank=True, null=True)),
+                ("approved", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "crawl_request",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="crawled_artifacts",
+                        to="trovi.crawlrequest",
+                    ),
+                ),
             ],
         ),
     ]

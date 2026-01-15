@@ -85,9 +85,7 @@ TROVI_SUPPORT_FULL_NAME = os.getenv(
     "TROVI_SUPPORT_FULL_NAME", "Contact Chameleon Support"
 )
 TROVI_SUPPORT_EMAIL = os.getenv("TROVI_SUPPORT_EMAIL", "help@chameleoncloud.org")
-TROVI_SUPPORT_AFFILIATION = os.getenv(
-    "TROVI_SUPPORT_AFFILIATION", "Chameleon Cloud"
-)
+TROVI_SUPPORT_AFFILIATION = os.getenv("TROVI_SUPPORT_AFFILIATION", "Chameleon Cloud")
 
 # Artifact policy
 # Max reproduction requests should ideally never be lowered, only raised.

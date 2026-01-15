@@ -230,7 +230,9 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
 
                 ArtifactAuthor.objects.create(
                     artifact=new_artifact,
-                    full_name=author_data.get("name") or settings.TROVI_SUPPORT_FULL_NAME,
+                    full_name=
+                    author_data.get("name")
+                    or settings.TROVI_SUPPORT_FULL_NAME,
                     email=author_data.get("email") or settings.TROVI_SUPPORT_EMAIL,
                     affiliation=author_data.get("affiliation"),
                 )
