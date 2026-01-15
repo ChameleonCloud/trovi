@@ -51,6 +51,17 @@ class Artifact(models.Model):
     )
     citation = models.TextField(null=True, blank=True)
 
+    # If this artifact was promoted from an auto-crawled result, link back
+    # to the originating AutoCrawledArtifact (nullable because not all
+    # Artifacts are promoted from a crawl).
+    auto_crawled_artifact = models.ForeignKey(
+        "AutoCrawledArtifact",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="promoted_artifacts",
+    )
+
     # Timestamps
     created_at = models.DateTimeField(
         default=timezone.now, editable=False, db_index=True

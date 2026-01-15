@@ -60,6 +60,7 @@ class ArtifactAdmin(admin.ModelAdmin):
     list_display = (
         "uuid",
         "title",
+        "get_auto_crawled_source",
         "visibility",
         "created_at",
         "updated_at",
@@ -76,6 +77,14 @@ class ArtifactAdmin(admin.ModelAdmin):
         ArtifactTagInline,
         ArtifactLinkInline,
     ]
+
+    def get_auto_crawled_source(self, obj):
+        if getattr(obj, "auto_crawled_artifact", None):
+            a = obj.auto_crawled_artifact
+            return f"{a.title} ({a.source_url})"
+        return ""
+
+    get_auto_crawled_source.short_description = "Crawled From"
 
 
 @admin.register(ArtifactVersion)
@@ -203,6 +212,7 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
             artifact_to_update.citation = (
                 crawled_artifact.citation or "No citation found. View source link."
             )
+            artifact_to_update.auto_crawled_artifact = crawled_artifact
             artifact_to_update.save()
             new_artifact = artifact_to_update
 
@@ -218,6 +228,7 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
                 or "No citation found. View source link.",
                 owner_urn=owner_urn,
                 visibility=Artifact.Visibility.PUBLIC,
+                auto_crawled_artifact=crawled_artifact,
             )
 
         # Create author records from the JSON data
@@ -270,6 +281,14 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
             self._create_artifact(crawled_artifact)
             crawled_artifact.approved = True
             crawled_artifact.save()
+
+    def get_auto_crawled_source(self, obj):
+        if obj.auto_crawled_artifact:
+            # show the title and source url for clarity
+            return f"{obj.auto_crawled_artifact.title} ({obj.auto_crawled_artifact.source_url})"
+        return ""
+
+    get_auto_crawled_source.short_description = "Crawled From"
 
     @transaction.atomic
     def save_model(self, request, obj, form, change):
