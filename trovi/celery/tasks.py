@@ -60,7 +60,7 @@ def sanitize_for_db(text):
         return text
 
     try:
-        return text.encode('utf-8', 'ignore').decode('utf-8', 'ignore')
+        return text.encode("utf-8", "ignore").decode("utf-8", "ignore")
     except Exception:
         return text
 
@@ -120,8 +120,7 @@ def parse_summary_page(soup):
     description = ""
 
     description_heading = soup.find(
-        ["h2", "h3"],
-        string=re.compile(r"Description of the Artifact", re.IGNORECASE)
+        ["h2", "h3"], string=re.compile(r"Description of the Artifact", re.IGNORECASE)
     )
 
     if description_heading:
@@ -237,7 +236,15 @@ DOMAIN_PARSERS = {
 }
 
 
-def _process_artifact(url, title, conference, respect_robots, crawl_request, summary_description="", errors=None):
+def _process_artifact(
+    url,
+    title,
+    conference,
+    respect_robots,
+    crawl_request,
+    summary_description="",
+    errors=None,
+):
     """Process artifact and return True if new, False if existing, None if failed."""
     if errors is None:
         errors = []
@@ -293,7 +300,9 @@ def _process_artifact(url, title, conference, respect_robots, crawl_request, sum
     data["abstract"] = sanitize_for_db(data["abstract"])
     data["extra_info"] = sanitize_for_db(data["extra_info"])
     if isinstance(data["authors"], list):
-        data["authors"] = [sanitize_for_db(a) if isinstance(a, str) else a for a in data["authors"]]
+        data["authors"] = [
+            sanitize_for_db(a) if isinstance(a, str) else a for a in data["authors"]
+        ]
     if isinstance(data["tags"], list):
         data["tags"] = [sanitize_for_db(t) for t in data["tags"]]
 
@@ -334,7 +343,9 @@ def _process_artifact(url, title, conference, respect_robots, crawl_request, sum
             LOG.info(f"Saved artifact: {data['title']}")
             return True  # New artifact
         except Exception as e:
-            error_msg = f"Error saving artifact {data.get('title', 'Unknown')}: {str(e)}"
+            error_msg = (
+                f"Error saving artifact {data.get('title', 'Unknown')}: {str(e)}"
+            )
             LOG.error(f"    ! {error_msg}")
             errors.append(error_msg)
             return None  # Error
@@ -360,14 +371,16 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
             error_msg = f"Unsupported domain: {start_domain}. Only sysartifacts.github.io is supported."
             LOG.error(f"Crawl request {crawl_request_id}: {error_msg}")
             crawl_request.status = CrawlRequest.CrawlStatus.FAILED
-            crawl_request.crawled_data = json.dumps({
-                "status": "error",
-                "artifacts_found": {},
-                "total_artifacts": 0,
-                "new_artifacts": 0,
-                "existing_artifacts": 0,
-                "errors": [error_msg]
-            })
+            crawl_request.crawled_data = json.dumps(
+                {
+                    "status": "error",
+                    "artifacts_found": {},
+                    "total_artifacts": 0,
+                    "new_artifacts": 0,
+                    "existing_artifacts": 0,
+                    "errors": [error_msg],
+                }
+            )
             crawl_request.save()
             return
 
@@ -400,7 +413,9 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
             conference = re.sub(
                 r"\s*results\s*", "", conference, flags=re.IGNORECASE
             ).strip()
-            LOG.info(f"    [Conference] Detected: {conference}, Path: {urlparse(current_url).path}")
+            LOG.info(
+                f"    [Conference] Detected: {conference}, Path: {urlparse(current_url).path}"
+            )
 
             # If we're on the root page, extract all year-based links first
             if path_parts == [] or urlparse(current_url).path.rstrip("/") == "":
@@ -411,14 +426,23 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                     if urlparse(full_next_url).netloc == start_domain:
                         path_url = urlparse(full_next_url).path.rstrip("/")
                         path_segments = [p for p in path_url.split("/") if p]
-                        is_year_link = bool(path_segments and re.match(r"^[a-z]+\d{4}$", path_segments[-1], re.I))
-                        if is_year_link and full_next_url not in visited_urls and full_next_url not in queue:
+                        is_year_link = bool(
+                            path_segments
+                            and re.match(r"^[a-z]+\d{4}$", path_segments[-1], re.I)
+                        )
+                        if (
+                            is_year_link
+                            and full_next_url not in visited_urls
+                            and full_next_url not in queue
+                        ):
                             year_links_found.append(full_next_url)
 
                 if year_links_found:
                     for link in reversed(year_links_found):
                         queue.insert(0, link)
-                    LOG.info(f"    [Root] Found {len(year_links_found)} year links: {year_links_found[:5]}")
+                    LOG.info(
+                        f"    [Root] Found {len(year_links_found)} year links: {year_links_found[:5]}"
+                    )
 
             # Find Artifacts in table rows
             rows = soup.find_all("tr")
@@ -436,11 +460,23 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                         full_link = urljoin(current_url, href)
                         if full_link not in visited_artifacts:
                             visited_artifacts.add(full_link)
-                            artifacts_by_conference[conference] = artifacts_by_conference.get(conference, 0) + 1
+                            artifacts_by_conference[conference] = (
+                                artifacts_by_conference.get(conference, 0) + 1
+                            )
                             cols = row.find_all(["td", "th"])
-                            title = clean_text(cols[0].get_text()) if cols else "Unknown Title"
+                            title = (
+                                clean_text(cols[0].get_text())
+                                if cols
+                                else "Unknown Title"
+                            )
                             result = _process_artifact(
-                                full_link, title, conference, respect_robots, crawl_request, "", errors
+                                full_link,
+                                title,
+                                conference,
+                                respect_robots,
+                                crawl_request,
+                                "",
+                                errors,
                             )
                             if result is True:
                                 new_artifacts_count += 1
@@ -462,9 +498,13 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                             # Check if this is a summary link
                             if href and "summaries/" in href:
                                 summary_url = urljoin(current_url, href)
-                                summary_soup, _ = get_soup(summary_url, respect_robots, skip_robots_check=True)
+                                summary_soup, _ = get_soup(
+                                    summary_url, respect_robots, skip_robots_check=True
+                                )
                                 if summary_soup:
-                                    summary_description = parse_summary_page(summary_soup)
+                                    summary_description = parse_summary_page(
+                                        summary_soup
+                                    )
 
                             if (
                                 href
@@ -474,16 +514,26 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                                 full_link = urljoin(current_url, href)
                                 if full_link not in visited_artifacts:
                                     visited_artifacts.add(full_link)
-                                    artifacts_by_conference[conference] = artifacts_by_conference.get(conference, 0) + 1
+                                    artifacts_by_conference[conference] = (
+                                        artifacts_by_conference.get(conference, 0) + 1
+                                    )
                                     result = _process_artifact(
-                                        full_link, title, conference, respect_robots, crawl_request, summary_description, errors
+                                        full_link,
+                                        title,
+                                        conference,
+                                        respect_robots,
+                                        crawl_request,
+                                        summary_description,
+                                        errors,
                                     )
                                     if result is True:
                                         new_artifacts_count += 1
                                     elif result is False:
                                         existing_artifacts_count += 1
 
-            current_is_year_page = len(path_parts) > 0 and re.match(r"^[a-z]+\d{4}$", path_parts[0], re.I)
+            current_is_year_page = len(path_parts) > 0 and re.match(
+                r"^[a-z]+\d{4}$", path_parts[0], re.I
+            )
 
             # Find Next Pages
             for a in soup.find_all("a", href=True):
@@ -495,19 +545,26 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                 full_next_url = urljoin(current_url, href)
                 if urlparse(full_next_url).netloc == start_domain:
                     # Skip static assets and anchors
-                    if any(ext in full_next_url for ext in [".css", ".js", ".png", ".xml"]):
+                    if any(
+                        ext in full_next_url for ext in [".css", ".js", ".png", ".xml"]
+                    ):
                         continue
 
                     # Check if this is a year link (e.g., /atc2024, /fast2023, /eurosys2024)
                     path_url = urlparse(full_next_url).path.rstrip("/")
                     path_segments = [p for p in path_url.split("/") if p]
-                    is_year_link = bool(path_segments and re.match(r"^[a-z]+\d{4}$", path_segments[-1], re.I))
+                    is_year_link = bool(
+                        path_segments
+                        and re.match(r"^[a-z]+\d{4}$", path_segments[-1], re.I)
+                    )
 
                     # Check if this looks like a results page (handles both "result" and "results")
                     is_results_link = "result" in path_url.lower()
 
                     if is_results_link:
-                        LOG.info(f"    [Results Link] Found results page: {full_next_url}")
+                        LOG.info(
+                            f"    [Results Link] Found results page: {full_next_url}"
+                        )
 
                     # Add to queue if it's new and (is a year/results link OR hasn't been visited)
                     if full_next_url not in visited_urls and full_next_url not in queue:
@@ -519,21 +576,27 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
 
             time.sleep(0.1)
 
-        LOG.info(f"Crawl request {crawl_request_id} complete. Queue had {len(queue)} remaining items")
+        LOG.info(
+            f"Crawl request {crawl_request_id} complete. Queue had {len(queue)} remaining items"
+        )
         LOG.info(f"Visited {len(visited_urls)} URLs total")
         LOG.info(f"Found: {artifacts_by_conference}")
 
         crawl_request.status = CrawlRequest.CrawlStatus.COMPLETE
-        crawl_request.crawled_data = json.dumps({
-            "status": "success",
-            "artifacts_found": artifacts_by_conference,
-            "total_artifacts": sum(artifacts_by_conference.values()),
-            "new_artifacts": new_artifacts_count,
-            "existing_artifacts": existing_artifacts_count,
-            "errors": errors if errors else []
-        })
+        crawl_request.crawled_data = json.dumps(
+            {
+                "status": "success",
+                "artifacts_found": artifacts_by_conference,
+                "total_artifacts": sum(artifacts_by_conference.values()),
+                "new_artifacts": new_artifacts_count,
+                "existing_artifacts": existing_artifacts_count,
+                "errors": errors if errors else [],
+            }
+        )
         crawl_request.save()
-        LOG.info(f"Crawl request {crawl_request_id} complete. Found: {artifacts_by_conference}")
+        LOG.info(
+            f"Crawl request {crawl_request_id} complete. Found: {artifacts_by_conference}"
+        )
 
     except CrawlRequest.DoesNotExist:
         LOG.error(f"Crawl request {crawl_request_id} not found")
@@ -543,14 +606,18 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
             crawl_request = CrawlRequest.objects.get(id=crawl_request_id)
             # Mark as COMPLETE even though there was an error, we did as much as we could
             crawl_request.status = CrawlRequest.CrawlStatus.COMPLETE
-            crawl_request.crawled_data = json.dumps({
-                "status": "error",
-                "artifacts_found": artifacts_by_conference,
-                "total_artifacts": sum(artifacts_by_conference.values()),
-                "new_artifacts": new_artifacts_count,
-                "existing_artifacts": existing_artifacts_count,
-                "errors": [str(e)] + errors if errors else [str(e)]
-            })
+            crawl_request.crawled_data = json.dumps(
+                {
+                    "status": "error",
+                    "artifacts_found": artifacts_by_conference,
+                    "total_artifacts": sum(artifacts_by_conference.values()),
+                    "new_artifacts": new_artifacts_count,
+                    "existing_artifacts": existing_artifacts_count,
+                    "errors": (
+                        [str(e)] + errors if errors else [str(e)]
+                    ),
+                }
+            )
             crawl_request.save()
             LOG.info(f"Crawl request {crawl_request_id} completed with error handling")
         except CrawlRequest.DoesNotExist:
