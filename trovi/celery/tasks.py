@@ -54,17 +54,6 @@ def clean_text(text):
     return " ".join(text.split()).strip() if text else ""
 
 
-def sanitize_for_db(text):
-    """Try to handle characters that MySQL utf8 cannot handle."""
-    if not text:
-        return text
-
-    try:
-        return text.encode("utf-8", "ignore").decode("utf-8", "ignore")
-    except Exception:
-        return text
-
-
 def get_soup(url, respect_robots: bool, skip_robots_check: bool = False):
     if respect_robots and not skip_robots_check and not robots_checker.can_fetch(url):
         LOG.warning(f"    [Blocked by Robots.txt] {url}")
@@ -295,16 +284,6 @@ def _process_artifact(
     if not found_parser:
         data["origin_type"] = domain
         data["extra_info"] = f"Resolved to external source: {domain}"
-
-    data["title"] = sanitize_for_db(data["title"])
-    data["abstract"] = sanitize_for_db(data["abstract"])
-    data["extra_info"] = sanitize_for_db(data["extra_info"])
-    if isinstance(data["authors"], list):
-        data["authors"] = [
-            sanitize_for_db(a) if isinstance(a, str) else a for a in data["authors"]
-        ]
-    if isinstance(data["tags"], list):
-        data["tags"] = [sanitize_for_db(t) for t in data["tags"]]
 
     with transaction.atomic():
         try:
