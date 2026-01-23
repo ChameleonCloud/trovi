@@ -613,9 +613,7 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                     "total_artifacts": sum(artifacts_by_conference.values()),
                     "new_artifacts": new_artifacts_count,
                     "existing_artifacts": existing_artifacts_count,
-                    "errors": (
-                        [str(e)] + errors if errors else [str(e)]
-                    ),
+                    "errors": ([str(e)] + errors if errors else [str(e)]),
                 }
             )
             crawl_request.save()
