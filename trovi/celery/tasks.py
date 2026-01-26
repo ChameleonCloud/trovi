@@ -54,14 +54,35 @@ def clean_text(text):
     return " ".join(text.split()).strip() if text else ""
 
 
+EXCLUDE_EXTENSIONS = [
+    ".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z",
+    ".iso", ".img", ".dmg", ".ova",
+    ".pkg", ".deb", ".rpm",
+    ".exe", ".msi", ".bin",
+    ".pdf",
+    ".jpg", ".jpeg", ".png", ".gif", ".svg", ".mp4", ".mp3", ".mov", ".avi", ".mkv",
+]
+
+
 def get_soup(url, respect_robots: bool, skip_robots_check: bool = False):
     if respect_robots and not skip_robots_check and not robots_checker.can_fetch(url):
         LOG.warning(f"    [Blocked by Robots.txt] {url}")
         return None, None
 
+    parsed_url = urlparse(url)
+    if any(parsed_url.path.lower().endswith(ext) for ext in EXCLUDE_EXTENSIONS):
+        LOG.warning(f"    [Get Soup] Skipping file with excluded extension for {url}")
+        return None, None
+
     try:
         resp = scraper.get(url, timeout=10)
         if resp.status_code == 200:
+            content_type = resp.headers.get("Content-Type", "")
+            if "text/html" not in content_type.lower():
+                LOG.warning(
+                    f"    [Get Soup] Skipping non-HTML content-type '{content_type}' for {url}"
+                )
+                return None, None
             return BeautifulSoup(resp.text, "html.parser"), resp.url
     except Exception as e:
         LOG.error(f"Error fetching {url}: {e}")
@@ -218,10 +239,19 @@ def parse_acm(soup):
     return data
 
 
+def parse_doi(soup):
+    """
+    Placeholder for DOI parsing logic. Will fall back to zenodo or acm parser
+    as needed based on where the DOI resolves.
+    """
+    return {}
+
+
 DOMAIN_PARSERS = {
     "zenodo.org": parse_zenodo,
     "github.com": parse_github,
     "dl.acm.org": parse_acm,
+    "doi.org": parse_doi,
 }
 
 
@@ -239,12 +269,6 @@ def _process_artifact(
         errors = []
 
     LOG.info(f"  -> Processing Artifact: {title[:40]}...")
-
-    # Only process artifacts from allowed external domains (those with parsers)
-    artifact_domain = urlparse(url).netloc.lower()
-    if artifact_domain not in DOMAIN_PARSERS:
-        LOG.warning(f"  -> Skipping artifact from disallowed domain: {artifact_domain}")
-        return None
 
     skip_robots = urlparse(url).netloc != "sysartifacts.github.io"
     soup, final_url = get_soup(url, respect_robots, skip_robots_check=skip_robots)
@@ -282,8 +306,8 @@ def _process_artifact(
             break
 
     if not found_parser:
-        data["origin_type"] = domain
-        data["extra_info"] = f"Resolved to external source: {domain}"
+        LOG.warning(f"  -> No parser found for domain: {domain}, skipping {final_url}")
+        return None
 
     with transaction.atomic():
         try:
@@ -307,20 +331,26 @@ def _process_artifact(
                 LOG.info(f"Updated artifact: {data['title']}")
             return False  # Existing artifact
         except AutoCrawledArtifact.DoesNotExist:
-            AutoCrawledArtifact.objects.create(
-                crawl_request=crawl_request,
-                source_url=data["source_url"],
-                conference=data["conference"],
-                title=data["title"],
-                origin_type=data["origin_type"],
-                abstract=data["abstract"],
-                authors=data["authors"],
-                tags=data["tags"],
-                extra_info=data["extra_info"],
-                approved=False,
-            )
-            LOG.info(f"Saved artifact: {data['title']}")
-            return True  # New artifact
+            try:
+                AutoCrawledArtifact.objects.create(
+                    crawl_request=crawl_request,
+                    source_url=data["source_url"],
+                    conference=data["conference"],
+                    title=data["title"],
+                    origin_type=data["origin_type"],
+                    abstract=data["abstract"],
+                    authors=data["authors"],
+                    tags=data["tags"],
+                    extra_info=data["extra_info"],
+                    approved=False,
+                )
+                LOG.info(f"Saved artifact: {data['title']}")
+                return True
+            except Exception as e:
+                error_msg = f"Error saving artifact '{data.get('title', 'Unknown')[:50]}': {str(e)}"
+                LOG.error(f"    ! {error_msg}")
+                errors.append(error_msg)
+                return None
         except Exception as e:
             error_msg = (
                 f"Error saving artifact {data.get('title', 'Unknown')}: {str(e)}"
@@ -470,7 +500,7 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
                     summary_description = ""
 
                     # Look for links in columns 2-3 (badges and "Available at")
-                    for col in cols[1:]:
+                    for col in cols:
                         for link in col.find_all("a", href=True):
                             href = link.get("href")
 

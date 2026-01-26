@@ -31,7 +31,7 @@ class ApiConfig(AppConfig):
             if created:
                 process_crawl_request.delay(instance.id)
 
-        post_save.connect(trigger_crawl_request, sender=CrawlRequest)
+        post_save.connect(trigger_crawl_request, sender=CrawlRequest, weak=False)
 
         # Only run if we're spinning up the server
         if "runserver" in sys.argv:
