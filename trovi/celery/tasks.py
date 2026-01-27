@@ -54,6 +54,7 @@ def clean_text(text):
     return " ".join(text.split()).strip() if text else ""
 
 
+# fmt: off
 EXCLUDE_EXTENSIONS = [
     ".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z",
     ".iso", ".img", ".dmg", ".ova",
@@ -62,6 +63,7 @@ EXCLUDE_EXTENSIONS = [
     ".pdf",
     ".jpg", ".jpeg", ".png", ".gif", ".svg", ".mp4", ".mp3", ".mov", ".avi", ".mkv",
 ]
+# fmt: on
 
 
 def get_soup(url, respect_robots: bool, skip_robots_check: bool = False):
