@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.db import transaction
 from django.conf import settings
+from django import forms
 
 from ..models import (
     Artifact,
@@ -55,6 +56,30 @@ class ArtifactLinkInline(admin.TabularInline):
     fk_name = "source_artifact"
 
 
+class ArtifactVersionSetupForm(forms.ModelForm):
+    class Meta:
+        model = ArtifactVersionSetup
+        fields = "__all__"
+        widgets = {
+            "arguments": forms.Textarea(attrs={"rows": 4, "cols": 40}),
+        }
+
+
+class ArtifactVersionSetupInline(admin.StackedInline):
+    model = ArtifactVersionSetup
+    form = ArtifactVersionSetupForm
+    extra = 0
+    fields = ("type", "arguments")
+
+
+@admin.register(ArtifactVersionSetup)
+class ArtifactVersionSetupAdmin(admin.ModelAdmin):
+    form = ArtifactVersionSetupForm
+    list_display = ("artifact_version", "type", "arguments")
+    list_filter = ("type",)
+    search_fields = ("artifact_version__artifact__title",)
+
+
 @admin.register(Artifact)
 class ArtifactAdmin(admin.ModelAdmin):
     list_display = (
@@ -95,6 +120,7 @@ class ArtifactVersionAdmin(admin.ModelAdmin):
     inlines = [
         ArtifactVersionLinkInline,
         ArtifactVersionMigrationInline,
+        ArtifactVersionSetupInline,
     ]
 
 
@@ -269,10 +295,17 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
                 artifact=new_artifact,
                 contents_urn=f"urn:trovi:contents:chameleon:{new_artifact.uuid}",
             )
+
+            # Attach our jupyterhub notebook to new artifacts
+            setup_type = ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE
+            arguments = {}
+            arguments["url"] = settings.ARTIFACT_JUPYTERHUB_DEFAULT_URL
+            arguments["repo_url"] = crawled_artifact.source_url
+
             ArtifactVersionSetup.objects.create(
                 artifact_version=version,
-                type=ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE,
-                arguments={"url": crawled_artifact.source_url},
+                type=setup_type,
+                arguments=arguments,
             )
 
     @transaction.atomic
