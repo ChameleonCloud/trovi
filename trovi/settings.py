@@ -403,6 +403,11 @@ ARTIFACT_AUTHOR_AFFILIATION_MAX_CHARS = 200
 
 ARTIFACT_LINK_LABEL_MAX_CHARS = 40
 
+ARTIFACT_JUPYTERHUB_DEFAULT_URL = os.getenv(
+    "ARTIFACT_JUPYTERHUB_DEFAULT_URL",
+    "https://github.com/ChameleonCloud/trovi_external_artifacts_deployment.git",
+)
+
 STORAGE_BACKEND_AUTH_RETRY_ATTEMPTS = 5
 
 RO_CRATE_FILENAME = "trovi.json"
