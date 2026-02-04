@@ -291,11 +291,9 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
 
         if not setup:
             # Create the initial version and setup only if it's a new artifact
-            jupyter_url = settings.ARTIFACT_JUPYTERHUB_DEFAULT_URL
-
             version = ArtifactVersion.objects.create(
                 artifact=new_artifact,
-                contents_urn=f"urn:trovi:contents:git:{jupyter_url}@HEAD",
+                contents_urn=f"urn:trovi:contents:http:{new_artifact.uuid}",
             )
 
             # Attach our jupyterhub notebook to new artifacts

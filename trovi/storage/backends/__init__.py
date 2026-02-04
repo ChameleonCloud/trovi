@@ -9,6 +9,7 @@ from trovi.storage.backends.base import StorageBackend
 from trovi.storage.backends.git import GitBackend
 from trovi.storage.backends.swift import SwiftBackend
 from trovi.storage.backends.zenodo import ZenodoBackend
+from trovi.storage.backends.http import HttpBackend
 
 # Maps backend names to
 artifact_locks = defaultdict(set)
@@ -54,5 +55,7 @@ def get_backend(
         )
     if name == "git":
         return GitBackend(name, content_type, content_id=content_id)
+    if name == "http":
+        return HttpBackend(name, content_type, content_id=content_id, version=version)
     else:
         raise ValidationError(f"Unknown storage backend: {name}")
