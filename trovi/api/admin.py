@@ -293,7 +293,7 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
             # Create the initial version and setup only if it's a new artifact
             version = ArtifactVersion.objects.create(
                 artifact=new_artifact,
-                contents_urn=f"urn:trovi:contents:chameleon:{new_artifact.uuid}",
+                contents_urn=f"urn:trovi:contents:http:{new_artifact.uuid}",
             )
 
             # Attach our jupyterhub notebook to new artifacts
