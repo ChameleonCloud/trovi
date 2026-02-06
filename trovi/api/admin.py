@@ -301,6 +301,7 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
             arguments = {}
             arguments["url"] = settings.ARTIFACT_JUPYTERHUB_DEFAULT_URL
             arguments["repo_url"] = crawled_artifact.source_url
+            arguments["protocol"] = "git"
 
             ArtifactVersionSetup.objects.create(
                 artifact_version=version,
