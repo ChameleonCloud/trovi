@@ -6,6 +6,7 @@ from typing import Hashable, Optional
 
 from trovi.storage.backends.base import StorageBackend
 from trovi.storage.links.http import HttpDownloadLink
+from trovi.storage.links.git import GitDownloadLink
 from trovi.models import ArtifactVersionSetup
 
 LOG = logging.getLogger(__name__)
@@ -31,9 +32,14 @@ class HttpBackend(StorageBackend):
         return False
 
     def get_temporary_download_url(self) -> Optional[HttpDownloadLink]:
+        return None
+
+    def get_git_remote(self):
         """
-        Expose the JupyterHub (or other) URL saved in the ArtifactVersionSetup
-        for SOURCE_CODE as the HTTP access method.
+        Resolves a git remote repository for the content.
+
+        This method returns None if it is not supported, and raises if the git
+        remote cannot be found or resolved.
         """
         try:
             setup = None
@@ -55,14 +61,14 @@ class HttpBackend(StorageBackend):
             if not setup:
                 return None
 
-            url = setup.arguments.get("url")
-            if not url:
+            repo = setup.arguments.get("url")
+
+            if not repo:
                 return None
 
-            return HttpDownloadLink(url=url, exp=datetime.max, headers={}, method="GET")
-        except Exception:
-            LOG.exception("Failed to build HttpBackend temporary URL")
-            return None
+            ref = "HEAD"
 
-    def get_git_remote(self):
-        return None
+            return GitDownloadLink(url=repo, exp=datetime.max, env={}, ref=ref)
+        except Exception:
+            LOG.exception("Failed to resolve git remote for HttpBackend")
+            return None
