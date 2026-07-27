@@ -194,6 +194,22 @@ class ArtifactViewSet(
                 "linked_artifacts",
                 "linked_from",
             )
+            .annotate(
+                unique_access_count=Count(
+                    "versions__events__event_origin",
+                    distinct=True,
+                    filter=Q(
+                        versions__events__event_type=ArtifactEvent.EventType.LAUNCH.value
+                    ),
+                ),
+                unique_cell_execution_count=Count(
+                    "versions__events__event_origin",
+                    distinct=True,
+                    filter=Q(
+                        versions__events__event_type=ArtifactEvent.EventType.CELL_EXECUTION.value
+                    ),
+                ),
+            )
         )
 
     @transaction.atomic
