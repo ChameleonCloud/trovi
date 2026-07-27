@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 from typing import Optional, Any
 
 import cmarkgfm as commonmark
@@ -49,22 +48,6 @@ LOG = logging.getLogger(__name__)
 serializers.ModelSerializer.serializer_field_mapping.update(
     {URNField: URNSerializerField}
 )
-
-
-@lru_cache(maxsize=1024)
-def _get_unique_event_count(artifact_id: str, event_type: str) -> int:
-    """
-    Cached query for counting unique events.
-    """
-    return (
-        ArtifactEvent.objects.filter(
-            artifact_version__artifact_id=artifact_id,
-            event_type=event_type,
-        )
-        .values("event_origin")
-        .distinct()
-        .count()
-    )
 
 
 class ArtifactTagSerializer(serializers.ModelSerializer):
@@ -375,14 +358,34 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     unique_cell_execution_count = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
+        if hasattr(instance, "unique_access_count"):
+            unique_access = instance.unique_access_count
+        else:
+            unique_access = (
+                ArtifactEvent.objects.filter(
+                    artifact_version__artifact=instance,
+                    event_type=ArtifactEvent.EventType.LAUNCH.value,
+                )
+                .values("event_origin")
+                .distinct()
+                .count()
+            )
+        if hasattr(instance, "unique_cell_execution_count"):
+            unique_cell = instance.unique_cell_execution_count
+        else:
+            unique_cell = (
+                ArtifactEvent.objects.filter(
+                    artifact_version__artifact=instance,
+                    event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
+                )
+                .values("event_origin")
+                .distinct()
+                .count()
+            )
         return {
             "access_count": instance.access_count,
-            "unique_access_count": _get_unique_event_count(
-                str(instance.uuid), ArtifactEvent.EventType.LAUNCH.value
-            ),
-            "unique_cell_execution_count": _get_unique_event_count(
-                str(instance.uuid), ArtifactEvent.EventType.CELL_EXECUTION.value
-            ),
+            "unique_access_count": unique_access,
+            "unique_cell_execution_count": unique_cell,
         }
 
     def create(self, validated_data):
@@ -631,7 +634,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 instance.linked_from.all(), many=True
             ).data,
             "linked_artifacts": ArtifactLinkToSerializer(
-                instance.linked_artifacts.all().order_by("order"), many=True
+                instance.linked_artifacts.all(), many=True
             ).data,
             "reproducibility": ArtifactReproducibilitySerializer(instance).data,
             "versions": ArtifactVersionSerializer(

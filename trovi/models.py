@@ -183,12 +183,10 @@ class Artifact(models.Model):
         Reports whether a user has any elevated permissions on an artifact
         The user string should be in the form of a user URN
         """
-        return (
-            token
-            and self.roles.filter(
-                user=token.to_urn(), role__in=ArtifactRole.RoleType.values
-            ).exists()
-        )
+        if not token:
+            return False
+        urn = token.to_urn()
+        return any(r.user == urn for r in self.roles.all())
 
     def can_be_viewed_by(self, token: Optional[JWT]) -> bool:
         """

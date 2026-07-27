@@ -1,6 +1,6 @@
 import shlex
 from django.db import models
-from django.db.models import F, Q, Count
+from django.db.models import F, Q
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.plumbing import (
     build_parameter_type,
@@ -48,28 +48,6 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     ) -> models.QuerySet:
 
         prepared_query = queryset.annotate(date=F("created_at"))
-
-        # Only annotate expensive aggregates if we are actually sorting by them.
-        # This prevents massive joins on the Event table for every single list request.
-        sort_by = request.query_params.get(self.ordering_param, "")
-
-        if "unique_access_count" in sort_by or "unique_cell_execution_count" in sort_by:
-            prepared_query = prepared_query.annotate(
-                unique_access_count=Count(
-                    "versions__events__event_origin",
-                    distinct=True,
-                    filter=Q(
-                        versions__events__event_type=ArtifactEvent.EventType.LAUNCH.value
-                    ),
-                ),
-                unique_cell_execution_count=Count(
-                    "versions__events__event_origin",
-                    distinct=True,
-                    filter=Q(
-                        versions__events__event_type=ArtifactEvent.EventType.CELL_EXECUTION.value
-                    ),
-                ),
-            )
 
         # The prepared query from above will be sorted properly using the
         # sort_by url param in the super call here

@@ -1,7 +1,7 @@
 import sys
 
 from django.apps import AppConfig
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save
 
 
 class ApiConfig(AppConfig):
@@ -10,16 +10,6 @@ class ApiConfig(AppConfig):
 
     def ready(self):
         # These have to be imported here to avoid circular dependencies
-        from trovi.models import ArtifactEvent
-        from trovi.api.serializers import _get_unique_event_count
-
-        def _clear_cache(sender, instance: ArtifactEvent, **kwargs):
-            """Clear cache when artifact events are created or deleted."""
-            _get_unique_event_count.cache_clear()
-
-        post_save.connect(_clear_cache, sender=ArtifactEvent)
-        post_delete.connect(_clear_cache, sender=ArtifactEvent)
-
         # Register signal to trigger crawl request processing
         from trovi.models import CrawlRequest
         from trovi.celery.tasks import process_crawl_request
