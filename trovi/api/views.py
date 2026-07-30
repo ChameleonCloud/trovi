@@ -2,7 +2,8 @@ import logging
 from functools import cache
 
 from django.db import transaction, models
-from django.db.models import Count, Q
+from django.db.models import Count, Q, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
@@ -195,19 +196,31 @@ class ArtifactViewSet(
                 "linked_from",
             )
             .annotate(
-                unique_access_count=Count(
-                    "versions__events__event_origin",
-                    distinct=True,
-                    filter=Q(
-                        versions__events__event_type=ArtifactEvent.EventType.LAUNCH.value
+                unique_access_count=Coalesce(
+                    Subquery(
+                        ArtifactEvent.objects.filter(
+                            artifact_version__artifact=OuterRef("pk"),
+                            event_type=ArtifactEvent.EventType.LAUNCH.value,
+                        )
+                        .order_by()
+                        .values("artifact_version__artifact")
+                        .annotate(c=Count("event_origin", distinct=True))
+                        .values("c")
                     ),
+                    0,
                 ),
-                unique_cell_execution_count=Count(
-                    "versions__events__event_origin",
-                    distinct=True,
-                    filter=Q(
-                        versions__events__event_type=ArtifactEvent.EventType.CELL_EXECUTION.value
+                unique_cell_execution_count=Coalesce(
+                    Subquery(
+                        ArtifactEvent.objects.filter(
+                            artifact_version__artifact=OuterRef("pk"),
+                            event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
+                        )
+                        .order_by()
+                        .values("artifact_version__artifact")
+                        .annotate(c=Count("event_origin", distinct=True))
+                        .values("c")
                     ),
+                    0,
                 ),
             )
         )
