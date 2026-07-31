@@ -49,6 +49,12 @@ class ListArtifactsPagination(LimitOffsetPagination):
     def paginate_queryset(
         self, queryset: QuerySet, request: Request, view: views.View = None
     ) -> list[Artifact]:
+        # Add pk as a stable tiebreaker so cursor-based pagination is deterministic
+        # when the primary sort field (e.g. unique_access_count) has many ties.
+        existing_order = list(queryset.query.order_by)
+        if "pk" not in existing_order and "-pk" not in existing_order:
+            queryset = queryset.order_by(*(existing_order or ["updated_at"]), "pk")
+
         after = request.query_params.get(self.offset_query_param)
         if after:
             # Use values_list to get the UUIDs. This avoids getting full Artifact
