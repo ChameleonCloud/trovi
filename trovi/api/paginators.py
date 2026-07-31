@@ -38,6 +38,14 @@ class ListArtifactsPagination(LimitOffsetPagination):
     def get_offset(self, request: Request) -> int:
         return self.offset
 
+    def get_count(self, queryset: QuerySet) -> int:
+        # Strip annotations (e.g. correlated subqueries for unique_access_count)
+        # before counting — they are only needed in the SELECT, not for COUNT(*).
+        try:
+            return queryset.values("pk").order_by().count()
+        except (AttributeError, TypeError):
+            return len(queryset)
+
     def paginate_queryset(
         self, queryset: QuerySet, request: Request, view: views.View = None
     ) -> list[Artifact]:
@@ -51,8 +59,11 @@ class ListArtifactsPagination(LimitOffsetPagination):
             except ValueError:
                 raise NotFound(f"Artifact with uuid {after} not found in query.")
 
-        if self.limit is None:
-            self.limit = queryset.count()
+        # Only pre-compute the limit when no explicit limit param is given,
+        # so get_limit() doesn't raise. Use get_count() to avoid re-running
+        # the expensive annotated query.
+        if not request.query_params.get(self.limit_query_param):
+            self.limit = self.get_count(queryset)
 
         return super(ListArtifactsPagination, self).paginate_queryset(
             queryset, request, view
