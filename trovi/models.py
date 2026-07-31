@@ -451,6 +451,14 @@ class ArtifactEvent(models.Model):
             except (Artifact.DoesNotExist, ArtifactVersion.DoesNotExist):
                 pass
 
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["artifact_version", "event_type", "event_origin"],
+                name="ae_version_type_origin_idx",
+            )
+        ]
+
 
 class ArtifactTag(models.Model):
     """Represents a searchable and sortable tag which can be applied to any artifact"""
