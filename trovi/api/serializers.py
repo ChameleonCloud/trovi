@@ -363,7 +363,7 @@ class ArtifactMetricsSerializer(serializers.Serializer):
         else:
             unique_access = (
                 ArtifactEvent.objects.filter(
-                    artifact_version__artifact=instance,
+                    artifact=instance,
                     event_type=ArtifactEvent.EventType.LAUNCH.value,
                 )
                 .values("event_origin")
@@ -375,7 +375,7 @@ class ArtifactMetricsSerializer(serializers.Serializer):
         else:
             unique_cell = (
                 ArtifactEvent.objects.filter(
-                    artifact_version__artifact=instance,
+                    artifact=instance,
                     event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
                 )
                 .values("event_origin")

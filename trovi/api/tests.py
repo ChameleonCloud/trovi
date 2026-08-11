@@ -37,6 +37,7 @@ from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
 from trovi.models import (
     Artifact,
+    ArtifactEvent,
     ArtifactTag,
     ArtifactVersion,
     ArtifactAuthor,
@@ -1328,6 +1329,55 @@ class TestDeleteArtifactVersion(TestCase, APITest):
             response.status_code,
             status.HTTP_403_FORBIDDEN,
             msg="Deleted artifact version with DOI",
+        )
+
+    def test_delete_version_events_survive(self):
+        before = ArtifactEvent.objects.filter(artifact=artifact_don_quixote).count()
+
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(artifact_don_quixote.uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
+        )
+
+        # Events must still be linked to the artifact after version deletion
+        self.assertEqual(
+            before,
+            ArtifactEvent.objects.filter(artifact=artifact_don_quixote).count(),
+        )
+        # The deleted version's events are now orphaned (artifact_version=NULL)
+        self.assertGreater(
+            ArtifactEvent.objects.filter(
+                artifact=artifact_don_quixote, artifact_version__isnull=True
+            ).count(),
+            0,
+        )
+
+    def test_delete_version_artifact_metrics_unchanged(self):
+        before = self.client.get(
+            self.get_artifact_path(str(artifact_don_quixote.uuid))
+        ).json()["metrics"]
+
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(artifact_don_quixote.uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
+        )
+
+        after = self.client.get(
+            self.get_artifact_path(str(artifact_don_quixote.uuid))
+        ).json()["metrics"]
+
+        self.assertEqual(before["unique_access_count"], after["unique_access_count"])
+        self.assertEqual(
+            before["unique_cell_execution_count"],
+            after["unique_cell_execution_count"],
         )
 
 
