@@ -193,6 +193,9 @@ class RootStorageDownloadPermission(TroviPermission):
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactVersion
     ) -> bool:
+        sharing_key = request.query_params.get("sharing_key")
+        if sharing_key and sharing_key == obj.artifact.sharing_key:
+            return True
         token = JWT.from_request(request)
         return obj.can_be_viewed_by(token)
 
