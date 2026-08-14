@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import F
 from django.db.models.functions import Lower
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -417,9 +417,13 @@ class ArtifactEvent(models.Model):
         FORK = _("fork")
         CELL_EXECUTION = _("cell_execution")
 
+    # Direct link to the parent artifact (preserved when a version is deleted)
+    artifact = models.ForeignKey(
+        Artifact, models.CASCADE, related_name="events", null=True
+    )
     # The artifact version this event is for
     artifact_version = models.ForeignKey(
-        ArtifactVersion, models.CASCADE, related_name="events", null=True
+        ArtifactVersion, models.SET_NULL, related_name="events", null=True
     )
 
     # The type of event
@@ -433,6 +437,15 @@ class ArtifactEvent(models.Model):
 
     # The time at which the event occurred
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
+
+    @staticmethod
+    def set_artifact(instance: "ArtifactEvent", **_):
+        """
+        Ensures the artifact FK is always populated from the version's parent,
+        so events survive version deletion and remain queryable at the artifact level
+        """
+        if instance.artifact_id is None and instance.artifact_version_id is not None:
+            instance.artifact_id = instance.artifact_version.artifact_id
 
     @staticmethod
     def incr_access_count(instance: "ArtifactEvent", created: bool = False, **_):
@@ -456,7 +469,11 @@ class ArtifactEvent(models.Model):
             models.Index(
                 fields=["artifact_version", "event_type", "event_origin"],
                 name="ae_version_type_origin_idx",
-            )
+            ),
+            models.Index(
+                fields=["artifact", "event_type", "event_origin"],
+                name="ae_artifact_type_origin_idx",
+            ),
         ]
 
 
@@ -625,6 +642,7 @@ class AutoCrawledArtifact(models.Model):
 
 
 # Signals
+pre_save.connect(ArtifactEvent.set_artifact, sender=ArtifactEvent)
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)
 post_save.connect(ArtifactEvent.incr_access_count, sender=ArtifactEvent)
 post_delete.connect(ArtifactVersion.delete_access_count, sender=ArtifactVersion)

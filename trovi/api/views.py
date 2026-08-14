@@ -199,11 +199,11 @@ class ArtifactViewSet(
                 unique_access_count=Coalesce(
                     Subquery(
                         ArtifactEvent.objects.filter(
-                            artifact_version__artifact=OuterRef("pk"),
+                            artifact=OuterRef("pk"),
                             event_type=ArtifactEvent.EventType.LAUNCH.value,
                         )
                         .order_by()
-                        .values("artifact_version__artifact")
+                        .values("artifact")
                         .annotate(c=Count("event_origin", distinct=True))
                         .values("c")
                     ),
@@ -212,11 +212,11 @@ class ArtifactViewSet(
                 unique_cell_execution_count=Coalesce(
                     Subquery(
                         ArtifactEvent.objects.filter(
-                            artifact_version__artifact=OuterRef("pk"),
+                            artifact=OuterRef("pk"),
                             event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
                         )
                         .order_by()
-                        .values("artifact_version__artifact")
+                        .values("artifact")
                         .annotate(c=Count("event_origin", distinct=True))
                         .values("c")
                     ),
