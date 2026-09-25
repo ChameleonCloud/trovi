@@ -1,6 +1,4 @@
-ARG PY_IMG_TAG=3.9-bookworm
-
-FROM python:${PY_IMG_TAG} AS base
+FROM python:3.9-bookworm AS base
 
 WORKDIR /project
 

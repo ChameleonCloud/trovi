@@ -11,20 +11,17 @@ DOCKER_IMAGE_LATEST ?= trovi:latest
 DOCKER_DEV_IMAGE ?= trovi-dev:$(DOCKER_TAG)
 DOCKER_DEV_IMAGE_LATEST ?= trovi-dev:latest
 DOCKER_DIR ?= docker
-PY_IMG_TAG ?= 3.9.7
 
 .env:
 	cp .env.sample .env
 
 .PHONY: build
 build: .env
-	docker build --build-arg PY_IMG_TAG=$(PY_IMG_TAG) \
-				 -t $(DOCKER_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target release .
+	docker build -t $(DOCKER_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target release .
 	docker tag $(DOCKER_IMAGE) $(DOCKER_IMAGE_LATEST)
 
 build-dev: .env
-	docker build --build-arg PY_IMG_TAG=$(PY_IMG_TAG) \
-				 -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target dev .
+	docker build -t $(DOCKER_DEV_IMAGE) -f $(DOCKER_DIR)/Dockerfile --target dev .
 	docker tag $(DOCKER_DEV_IMAGE) $(DOCKER_DEV_IMAGE_LATEST)
 
 .PHONY: publish
