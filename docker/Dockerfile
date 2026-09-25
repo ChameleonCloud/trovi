@@ -1,4 +1,4 @@
-ARG PY_IMG_TAG=3.9.7
+ARG PY_IMG_TAG=3.9-bookworm
 
 FROM python:${PY_IMG_TAG} AS base
 
@@ -10,8 +10,9 @@ VOLUME ["/static"]
 COPY poetry.lock pyproject.toml /project/
 ENV POETRY_VIRTUALENVS_CREATE=false
 
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install --no-install-recommends -y \
-  default-mysql-client=1.0.7 \
+  default-mysql-client \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
