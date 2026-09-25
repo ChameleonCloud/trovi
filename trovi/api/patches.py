@@ -42,6 +42,17 @@ class ArtifactPatchMixin:
         "relation": None,
         "linked_artifact": None,
     }
+    _artifact_video_description = {
+        "url": None,
+    }
+    _artifact_publication_description = {
+        "title": None,
+        "authors": None,
+        "venue": None,
+        "year": None,
+        "doi": None,
+        "url": None,
+    }
 
     def _int_key_only(self, desired_key: Any, value: Any = None) -> Any:
         """
@@ -73,6 +84,14 @@ class ArtifactPatchMixin:
                 "tags": self.walker(self._int_key_only),
                 "authors": self.walker(
                     lambda a: self._int_key_only(a, self._artifact_author_description)
+                ),
+                "videos": self.walker(
+                    lambda a: self._int_key_only(a, self._artifact_video_description)
+                ),
+                "publications": self.walker(
+                    lambda a: self._int_key_only(
+                        a, self._artifact_publication_description
+                    )
                 ),
                 # linked_projects is mutable, but only admins can modify it
                 # this is enforced by the ArtifactSerializer

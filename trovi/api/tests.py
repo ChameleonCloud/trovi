@@ -41,6 +41,8 @@ from trovi.models import (
     ArtifactTag,
     ArtifactVersion,
     ArtifactAuthor,
+    ArtifactVideo,
+    ArtifactPublication,
     ArtifactRole,
 )
 from util.decorators import timed_lru_cache
@@ -51,6 +53,9 @@ from util.test import (
     make_admin,
     role_don_quixote_don,
     role_don_quixote_admin,
+    video_don_quixote_1,
+    video_don_quixote_2,
+    publication_don_quixote,
 )
 from util.types import DummyRequest
 
@@ -688,6 +693,20 @@ class TestCreateArtifact(TestCase, APITest):
                     "email": "no-reply@fabric-testbed.net",
                 },
             ],
+            "videos": [
+                {"url": "https://www.youtube.com/watch?v=oHg5SJYRHA0"},
+                {"url": "https://vimeo.com/123456789"},
+            ],
+            "publications": [
+                {
+                    "title": "A Study of Testing CreateObject",
+                    "authors": "Cloudly, L.; FABulous, R.",
+                    "venue": "SC'26",
+                    "year": 2026,
+                    "doi": "10.1145/1234567.8901234",
+                    "url": "https://example.org/paper.pdf",
+                },
+            ],
             "visibility": "public",
             # "linked_projects": [  TODO eventually, users will be allowed to set this
             #     "urn:trovi:chameleon:CH-1111",
@@ -891,6 +910,23 @@ class TestUpdateArtifact(TestCase, APITest):
                     "path": "/linked_projects/-",
                     "value": "urn:trovi:chameleon:CH-99999",
                 },
+                {
+                    "op": "replace",
+                    "path": "/videos",
+                    "value": [{"url": "https://www.youtube.com/watch?v=patched"}],
+                },
+                {
+                    "op": "add",
+                    "path": "/publications/-",
+                    "value": {
+                        "title": "Patching Considered Harmful",
+                        "authors": "Patch, P.",
+                        "venue": "PatchConf",
+                        "year": 2026,
+                        "doi": "10.9999/patch.1",
+                        "url": "https://example.org/patch.pdf",
+                    },
+                },
             ]
         }
 
@@ -987,7 +1023,21 @@ class TestUpdateArtifact(TestCase, APITest):
         if forced:
             self.assertEqual(new_donq["created_at"], new_timestamp, msg=diff_msg)
 
+        self.assertListEqual(
+            new_donq["videos"], patch["patch"][6]["value"], msg=diff_msg
+        )
+        target_publication = patch["patch"][7]["value"]
+        self.assertIn(target_publication, new_donq["publications"], msg=diff_msg)
+
         # Test that nothing unexpected changed
+        new_donq_as_json.pop("videos")
+        old_donq_as_json.pop("videos")
+        old_donq_as_json["publications"] = [
+            p for p in old_donq_as_json["publications"] if p != target_publication
+        ]
+        new_donq_as_json["publications"] = [
+            p for p in new_donq_as_json["publications"] if p != target_publication
+        ]
         new_donq_as_json.pop("updated_at")
         old_donq_as_json.pop("updated_at")
         new_donq_as_json.pop("short_description")
@@ -1052,6 +1102,301 @@ class TestUpdateArtifact(TestCase, APITest):
     @override_settings(ARTIFACT_ALLOW_ADMIN_FORCED_WRITES=True)
     def test_update_artifact_force(self):
         self.test_update_artifact(forced=True)
+
+
+class TestArtifactVideosAndPublications(TestCase, APITest):
+    """
+    Covers the video and publication metadata collections, which are read via
+    the artifact representation and written via JSON Patch on the artifact.
+    """
+
+    def patch_artifact(self, ops: list[dict]) -> Response:
+        return self.client.put(
+            self.update_artifact_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"patch": ops},
+        )
+
+    def create_artifact(self, body: dict) -> Response:
+        return self.client.post(
+            self.create_artifact_path(),
+            content_type="application/json",
+            data=body,
+        )
+
+    def minimal_artifact(self) -> dict:
+        return {
+            "title": "Videos and publications",
+            "short_description": "Testing new metadata collections.",
+            "long_description": "Testing new metadata collections.",
+            "authors": [
+                {
+                    "full_name": "Dr. Leon Cloudly",
+                    "affiliation": "Chameleon Cloud",
+                    "email": "no-reply@chameleoncloud.org",
+                }
+            ],
+            "visibility": "public",
+        }
+
+    def test_representation_shape(self):
+        # Both collections appear on reads, and expose exactly the writable
+        # keys -- no id, artifact, or server-assigned order leakage
+        artifact_don_quixote.refresh_from_db()
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+
+        self.assertIn("videos", body)
+        self.assertIn("publications", body)
+        self.assertIn(
+            publication_don_quixote.title,
+            [p["title"] for p in body["publications"]],
+        )
+        for video in body["videos"]:
+            self.assertSetEqual(set(video), {"url"})
+        for publication in body["publications"]:
+            self.assertSetEqual(
+                set(publication),
+                {"title", "authors", "venue", "year", "doi", "url"},
+            )
+
+    def test_representation_respects_order(self):
+        # Ordering comes from the explicit order column, not insertion luck
+        artifact_don_quixote.refresh_from_db()
+        response = self.client.get(self.get_artifact_path(artifact_don_quixote.uuid))
+        self.assertEqual(
+            [v["url"] for v in response.json()["videos"]],
+            [
+                video_don_quixote_1.url,
+                video_don_quixote_2.url,
+            ],
+        )
+
+    def test_create_without_videos_or_publications(self):
+        # Both collections are optional, so existing clients and the RO-Crate
+        # importer are unaffected
+        response = self.create_artifact(self.minimal_artifact())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
+        body = response.json()
+        self.assertListEqual(body["videos"], [])
+        self.assertListEqual(body["publications"], [])
+
+    def test_create_persists_videos_and_publications(self):
+        body = self.minimal_artifact()
+        body["videos"] = [
+            {"url": "https://youtu.be/aaaaaaaaaaa"},
+            {"url": "https://youtu.be/bbbbbbbbbbb"},
+        ]
+        body["publications"] = [
+            {
+                "title": "A Paper",
+                "authors": "Author, A.",
+                "venue": "Venue",
+                "year": 2024,
+                "doi": "10.1145/1.2",
+                "url": "https://example.org/a.pdf",
+            }
+        ]
+        response = self.create_artifact(body)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
+
+        artifact = Artifact.objects.get(uuid=response.json()["uuid"])
+        self.assertListEqual(
+            [v.url for v in artifact.videos.all()],
+            ["https://youtu.be/aaaaaaaaaaa", "https://youtu.be/bbbbbbbbbbb"],
+        )
+        self.assertListEqual([v.order for v in artifact.videos.all()], [0, 1])
+        self.assertEqual(artifact.publications.count(), 1)
+
+    def test_create_rejects_non_http_video_url(self):
+        for url in (
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "ftp://example.org/video.mp4",
+        ):
+            with self.subTest(url=url):
+                body = self.minimal_artifact()
+                body["videos"] = [{"url": url}]
+                response = self.create_artifact(body)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                    f"{url} should be rejected",
+                )
+
+    def test_create_rejects_unknown_video_field(self):
+        # strict_schema rejects keys that are not writable, including the
+        # server-assigned order
+        for extra in (
+            {"provider": "youtube"},
+            {"order": 5},
+            {"title": "no longer a field"},
+            {"description": "no longer a field"},
+        ):
+            with self.subTest(extra=extra):
+                body = self.minimal_artifact()
+                body["videos"] = [{"url": "https://youtu.be/ccccccccccc", **extra}]
+                response = self.create_artifact(body)
+                self.assertEqual(
+                    response.status_code, status.HTTP_400_BAD_REQUEST, response.json()
+                )
+
+    def test_create_normalizes_doi(self):
+        for given in (
+            "https://doi.org/10.1145/1.2",
+            "http://dx.doi.org/10.1145/1.2",
+            "doi:10.1145/1.2",
+            "  10.1145/1.2  ",
+        ):
+            with self.subTest(doi=given):
+                body = self.minimal_artifact()
+                body["publications"] = [{"title": "P", "doi": given}]
+                response = self.create_artifact(body)
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_201_CREATED,
+                    response.json(),
+                )
+                self.assertEqual(
+                    response.json()["publications"][0]["doi"], "10.1145/1.2"
+                )
+
+    def test_create_rejects_invalid_doi(self):
+        for given in ("not-a-doi", "11.1145/x", "10.1/"):
+            with self.subTest(doi=given):
+                body = self.minimal_artifact()
+                body["publications"] = [{"title": "P", "doi": given}]
+                self.assertEqual(
+                    self.create_artifact(body).status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+
+    def test_patch_replaces_without_orphaning(self):
+        # The regression guard for clear() vs delete(): a nullable FK would
+        # leave the old rows behind with a NULL artifact_id
+        artifact_don_quixote.refresh_from_db()
+        before = ArtifactVideo.objects.count()
+        existing = artifact_don_quixote.videos.count()
+
+        for url in ("https://youtu.be/ddddddddddd", "https://youtu.be/eeeeeeeeeee"):
+            response = self.patch_artifact(
+                [{"op": "replace", "path": "/videos", "value": [{"url": url}]}]
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+            self.assertEqual([v["url"] for v in response.json()["videos"]], [url])
+
+        self.assertEqual(ArtifactVideo.objects.count(), before - existing + 1)
+
+    def test_patch_replaces_publications_without_orphaning(self):
+        artifact_don_quixote.refresh_from_db()
+        before = ArtifactPublication.objects.count()
+        existing = artifact_don_quixote.publications.count()
+
+        for title in ("first", "second"):
+            response = self.patch_artifact(
+                [
+                    {
+                        "op": "replace",
+                        "path": "/publications",
+                        "value": [{"title": title}],
+                    }
+                ]
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+
+        self.assertEqual(ArtifactPublication.objects.count(), before - existing + 1)
+
+    def test_patch_clears_collection(self):
+        artifact_don_quixote.refresh_from_db()
+        response = self.patch_artifact(
+            [{"op": "replace", "path": "/videos", "value": []}]
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertListEqual(response.json()["videos"], [])
+        self.assertEqual(artifact_don_quixote.videos.count(), 0)
+
+    def test_patch_reorders(self):
+        artifact_don_quixote.refresh_from_db()
+        urls = {
+            "A": "https://youtu.be/fffffffffff",
+            "B": "https://youtu.be/ggggggggggg",
+            "C": "https://youtu.be/hhhhhhhhhhh",
+        }
+        for expected in (["A", "B", "C"], ["C", "A", "B"]):
+            self.patch_artifact(
+                [
+                    {
+                        "op": "replace",
+                        "path": "/videos",
+                        "value": [{"url": urls[k]} for k in expected],
+                    }
+                ]
+            )
+            # Re-fetch rather than trusting the write response, so this
+            # exercises Meta.ordering rather than in-memory order
+            response = self.client.get(
+                self.get_artifact_path(artifact_don_quixote.uuid)
+            )
+            self.assertListEqual(
+                [v["url"] for v in response.json()["videos"]],
+                [urls[k] for k in expected],
+            )
+
+    def test_patch_indexed_subpath(self):
+        artifact_don_quixote.refresh_from_db()
+        new_url = "https://youtu.be/iiiiiiiiiii"
+        response = self.patch_artifact(
+            [{"op": "replace", "path": "/videos/0/url", "value": new_url}]
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual(response.json()["videos"][0]["url"], new_url)
+
+    def test_patch_non_integer_index_is_rejected(self):
+        artifact_don_quixote.refresh_from_db()
+        for path in ("/videos/x", "/publications/x"):
+            with self.subTest(path=path):
+                response = self.patch_artifact(
+                    [{"op": "replace", "path": path, "value": "x"}]
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                    f"{path} returned {response.status_code}",
+                )
+
+    def test_patch_rejects_bad_url(self):
+        # Validators still fire on the patch path, where strict_schema's
+        # unknown-key check is relaxed
+        artifact_don_quixote.refresh_from_db()
+        response = self.patch_artifact(
+            [
+                {
+                    "op": "replace",
+                    "path": "/videos",
+                    "value": [{"url": "javascript:alert(1)"}],
+                }
+            ]
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_patch_publications(self):
+        artifact_don_quixote.refresh_from_db()
+        value = [
+            {
+                "title": "Replaced",
+                "authors": "A, B",
+                "venue": "V",
+                "year": 2020,
+                "doi": "10.1145/9.9",
+                "url": "https://example.org/r.pdf",
+            }
+        ]
+        response = self.patch_artifact(
+            [{"op": "replace", "path": "/publications", "value": value}]
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertListEqual(response.json()["publications"], value)
 
 
 class TestCreateArtifactVersion(TestCase, APITest):

@@ -502,6 +502,56 @@ class ArtifactAuthor(models.Model):
     email = models.EmailField(max_length=settings.EMAIL_ADDRESS_MAX_CHARS)
 
 
+class ArtifactVideo(models.Model):
+    """Represents an externally hosted video associated with an artifact"""
+
+    class Meta:
+        # Videos are replaced wholesale on every write, so an explicit order
+        # column is what keeps their display order stable. The id tiebreak
+        # covers rows added via the admin inline, which all default to 0.
+        ordering = ["order", "id"]
+
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="videos")
+    url = models.URLField(
+        max_length=settings.ARTIFACT_VIDEO_URL_MAX_CHARS,
+        validators=[validators.URLValidator(schemes=["http", "https"])],
+    )
+    order = models.PositiveIntegerField(default=0)
+
+
+class ArtifactPublication(models.Model):
+    """Represents a publication associated with an artifact"""
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="publications")
+    title = models.CharField(max_length=settings.ARTIFACT_PUBLICATION_TITLE_MAX_CHARS)
+    # Free text, because publication authors are display-only. They are not
+    # Trovi users and need no affiliation or email.
+    authors = models.TextField(
+        max_length=settings.ARTIFACT_PUBLICATION_AUTHORS_MAX_CHARS,
+        blank=True,
+        null=True,
+    )
+    venue = models.CharField(
+        max_length=settings.ARTIFACT_PUBLICATION_VENUE_MAX_CHARS, blank=True, null=True
+    )
+    # Publication dates are routinely known only to the year
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Stored as a bare DOI, e.g. "10.1145/3555776.3577766"
+    doi = models.CharField(
+        max_length=settings.ARTIFACT_PUBLICATION_DOI_MAX_CHARS, blank=True, null=True
+    )
+    url = models.URLField(
+        max_length=settings.ARTIFACT_PUBLICATION_URL_MAX_CHARS,
+        blank=True,
+        null=True,
+        validators=[validators.URLValidator(schemes=["http", "https"])],
+    )
+    order = models.PositiveIntegerField(default=0)
+
+
 class ArtifactProject(models.Model):
     """Represents the project associated with an artifact"""
 

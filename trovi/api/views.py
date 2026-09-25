@@ -168,6 +168,8 @@ class ArtifactViewSet(
             .get_queryset()
             .prefetch_related(
                 "authors",
+                "videos",
+                "publications",
                 "tags",
                 "linked_projects",
                 "roles",

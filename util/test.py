@@ -21,6 +21,8 @@ from trovi.models import (
     Artifact,
     ArtifactVersion,
     ArtifactAuthor,
+    ArtifactVideo,
+    ArtifactPublication,
     ArtifactEvent,
     ArtifactVersionLink,
     ArtifactTag,
@@ -132,6 +134,14 @@ def fake_link_urn() -> str:
     )
 
 
+def fake_video_url() -> str:
+    return f"https://www.youtube.com/watch?v={fake.lexify('???????????')}"
+
+
+def fake_doi() -> str:
+    return f"10.{fake.random_int(1000, 9999)}/{fake.slug()}"
+
+
 def fake_tag() -> str:
     return cut_string(
         random.choice(
@@ -220,6 +230,26 @@ role_don_quixote_don = ArtifactRole(
     assigned_by=artifact_don_quixote.owner_urn,
     role=ArtifactRole.RoleType.ADMINISTRATOR,
 )
+video_don_quixote_1 = ArtifactVideo(
+    artifact=artifact_don_quixote,
+    url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    order=0,
+)
+video_don_quixote_2 = ArtifactVideo(
+    artifact=artifact_don_quixote,
+    url="https://www.youtube.com/watch?v=oHg5SJYRHA0",
+    order=1,
+)
+publication_don_quixote = ArtifactPublication(
+    artifact=artifact_don_quixote,
+    title="Don Quixote",
+    authors="Miguel de Cervantes",
+    venue="N/A",
+    year=1605,
+    doi="10.1605/quixote.1",
+    url="https://example.org/quixote.pdf",
+    order=0,
+)
 don_quixote = [
     artifact_don_quixote,
     version_don_quixote_1,
@@ -233,6 +263,9 @@ don_quixote = [
     link_don_quixote_dataset,
     role_don_quixote_admin,
     role_don_quixote_don,
+    video_don_quixote_1,
+    video_don_quixote_2,
+    publication_don_quixote,
 ]
 
 
@@ -268,6 +301,30 @@ def generate_fake_artifact() -> list[models.Model]:
             email=fake_email(),
         )
         for _ in range(0, random.randint(1, 10))
+    ]
+    artifact_videos = [
+        ArtifactVideo(artifact=artifact, url=fake_video_url(), order=i)
+        for i in range(random.randint(0, 3))
+    ]
+    artifact_publications = [
+        ArtifactPublication(
+            artifact=artifact,
+            title=cut_string(
+                fake.sentence(), settings.ARTIFACT_PUBLICATION_TITLE_MAX_CHARS
+            ),
+            authors=cut_string(
+                "; ".join(fake.name() for _ in range(3)),
+                settings.ARTIFACT_PUBLICATION_AUTHORS_MAX_CHARS,
+            ),
+            venue=cut_string(
+                fake.company(), settings.ARTIFACT_PUBLICATION_VENUE_MAX_CHARS
+            ),
+            year=random.randint(1990, 2026),
+            doi=fake_doi(),
+            url=fake_video_url(),
+            order=i,
+        )
+        for i in range(random.randint(0, 2))
     ]
     artifact_events = [
         ArtifactEvent(
@@ -309,6 +366,8 @@ def generate_fake_artifact() -> list[models.Model]:
         [
             artifact_versions,
             artifact_authors,
+            artifact_videos,
+            artifact_publications,
             artifact_events,
             artifact_links,
         ],
