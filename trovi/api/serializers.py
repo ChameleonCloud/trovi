@@ -1,5 +1,7 @@
 import logging
+import re
 from typing import Optional, Any
+from urllib.parse import urlparse
 
 import cmarkgfm as commonmark
 from django.conf import settings
@@ -33,6 +35,8 @@ from trovi.models import (
     ArtifactLink,
     ArtifactTag,
     ArtifactAuthor,
+    ArtifactVideo,
+    ArtifactPublication,
     ArtifactProject,
     ArtifactVersion,
     ArtifactVersionLink,
@@ -97,6 +101,108 @@ class ArtifactAuthorSerializer(serializers.ModelSerializer):
             "full_name": instance.full_name,
             "affiliation": instance.affiliation,
             "email": instance.email,
+        }
+
+
+DOI_PATTERN = re.compile(r"^10\.\d{4,9}/\S+$")
+DOI_URL_PREFIXES = (
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+    "doi:",
+)
+
+
+def validate_http_url(url: Optional[str]) -> Optional[str]:
+    """
+    Restricts a URL to http(s).
+
+    The models declare a URLValidator with the same restriction, but DRF strips
+    a model's URLValidator from a URLField and substitutes its own, whose
+    default schemes also include ftp and ftps. These URLs are rendered as
+    anchor hrefs and iframe sources, so the scheme has to be re-checked here.
+    """
+    if not url:
+        return url
+    if urlparse(url).scheme.lower() not in ("http", "https"):
+        raise ValidationError(f"{url} must be an http(s) URL.")
+    return url
+
+
+class OrderedChildListSerializer(serializers.ListSerializer):
+    """
+    Assigns each child a stable display order based on its position in the
+    request body. Artifact sub-collections are replaced wholesale on every
+    write, so without this their display order is whatever the database
+    happens to return.
+    """
+
+    def create(self, validated_data: list) -> list:
+        for index, attrs in enumerate(validated_data):
+            attrs["order"] = index
+        return super(OrderedChildListSerializer, self).create(validated_data)
+
+
+@allow_force
+@strict_schema
+class ArtifactVideoSerializer(serializers.ModelSerializer):
+    """
+    Description of a single video associated with an artifact
+    """
+
+    class Meta:
+        model = ArtifactVideo
+        exclude = ["id", "artifact", "order"]
+        list_serializer_class = OrderedChildListSerializer
+
+    def validate_url(self, url: Optional[str]) -> Optional[str]:
+        return validate_http_url(url)
+
+    def to_representation(self, instance: ArtifactVideo) -> dict:
+        return {"url": instance.url}
+
+
+@allow_force
+@strict_schema
+class ArtifactPublicationSerializer(serializers.ModelSerializer):
+    """
+    Description of a single publication associated with an artifact
+    """
+
+    class Meta:
+        model = ArtifactPublication
+        exclude = ["id", "artifact", "order"]
+        list_serializer_class = OrderedChildListSerializer
+
+    def validate_url(self, url: Optional[str]) -> Optional[str]:
+        return validate_http_url(url)
+
+    def validate_doi(self, doi: Optional[str]) -> Optional[str]:
+        """
+        Accepts a bare DOI or a resolver-prefixed one, and stores the bare DOI.
+        Normalization has to stay idempotent, as already-normalized values are
+        re-validated on update.
+        """
+        if not doi:
+            return doi
+        normalized = doi.strip()
+        for prefix in DOI_URL_PREFIXES:
+            if normalized.lower().startswith(prefix):
+                normalized = normalized[len(prefix) :]
+                break
+        if not DOI_PATTERN.match(normalized):
+            raise ValidationError(f"{doi} is not a valid DOI.")
+        return normalized
+
+    def to_representation(self, instance: ArtifactPublication) -> dict:
+        return {
+            "title": instance.title,
+            "authors": instance.authors,
+            "venue": instance.venue,
+            "year": instance.year,
+            "doi": instance.doi,
+            "url": instance.url,
         }
 
 
@@ -590,6 +696,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
     # Related fields used for validating on writes
     tags = ArtifactTagSerializer(many=True, required=False)
     authors = ArtifactAuthorSerializer(many=True, required=False)
+    videos = ArtifactVideoSerializer(many=True, required=False)
+    publications = ArtifactPublicationSerializer(many=True, required=False)
     roles = ArtifactRoleSerializer(many=True, read_only=True)
     linked_projects = ArtifactProjectSerializer(many=True, required=False)
     linked_artifacts = ArtifactLinkToSerializer(many=True, required=False)
@@ -624,6 +732,10 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "citation": instance.citation,
             "tags": ArtifactTagSerializer(instance.tags.all(), many=True).data,
             "authors": ArtifactAuthorSerializer(instance.authors.all(), many=True).data,
+            "videos": ArtifactVideoSerializer(instance.videos.all(), many=True).data,
+            "publications": ArtifactPublicationSerializer(
+                instance.publications.all(), many=True
+            ).data,
             "owner_urn": instance.owner_urn,
             "roles": ArtifactRoleSerializer(instance.roles.all(), many=True).data,
             "visibility": instance.visibility,
@@ -651,6 +763,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
         # All nested fields have to be manually created, so that is done here
         tags = [t["tag"] for t in validated_data.pop("tags", [])]
         authors = validated_data.pop("authors", [])
+        videos = validated_data.pop("videos", [])
+        publications = validated_data.pop("publications", [])
         linked_projects = validated_data.pop("linked_projects", [])
         version = validated_data.pop("version", {})
         reproducibility = validated_data.pop("reproducibility", {})
@@ -671,6 +785,18 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 )
                 author_serializer.is_valid(raise_exception=True)
                 artifact.authors.add(*author_serializer.save())
+            if videos:
+                video_serializer = ArtifactVideoSerializer(
+                    data=videos, many=True, context=self.context
+                )
+                video_serializer.is_valid(raise_exception=True)
+                video_serializer.save(artifact=artifact)
+            if publications:
+                publication_serializer = ArtifactPublicationSerializer(
+                    data=publications, many=True, context=self.context
+                )
+                publication_serializer.is_valid(raise_exception=True)
+                publication_serializer.save(artifact=artifact)
             if linked_projects:
                 project_serializer = ArtifactProjectSerializer(
                     data=linked_projects, many=True, context=self.context
@@ -712,6 +838,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
             )
         # All nested fields have to be manually updated, so that is done here
         authors = validated_data.pop("authors", None)
+        videos = validated_data.pop("videos", None)
+        publications = validated_data.pop("publications", None)
         linked_projects = validated_data.pop("linked_projects", None)
         if linked_projects is not None:
             linked_projects = [p["urn"] for p in linked_projects]
@@ -732,6 +860,25 @@ class ArtifactSerializer(serializers.ModelSerializer):
                 )
                 author_serializer.is_valid(raise_exception=True)
                 instance.authors.add(*author_serializer.save())
+
+            # Videos and publications are replaced wholesale, since JSON Patch
+            # resolves nested collections as a shallow diff. Unlike clear(),
+            # delete() does not leave orphaned rows behind.
+            if videos is not None:
+                instance.videos.all().delete()
+                video_serializer = ArtifactVideoSerializer(
+                    data=videos, many=True, context=self.context
+                )
+                video_serializer.is_valid(raise_exception=True)
+                video_serializer.save(artifact=instance)
+
+            if publications is not None:
+                instance.publications.all().delete()
+                publication_serializer = ArtifactPublicationSerializer(
+                    data=publications, many=True, context=self.context
+                )
+                publication_serializer.is_valid(raise_exception=True)
+                publication_serializer.save(artifact=instance)
 
             if tags is not None:
                 tag_serializer = ArtifactTagSerializer(

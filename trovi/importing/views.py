@@ -81,6 +81,8 @@ class ArtifactImportView(TroviAPIViewSet):
                 }
                 artifact_data["authors"] = []
                 artifact_data["tags"] = []
+                artifact_data["videos"] = []
+                artifact_data["publications"] = []
 
                 # Save the github file to a temp file
                 contents = repo.get_contents(settings.RO_CRATE_FILENAME)
@@ -118,6 +120,35 @@ class ArtifactImportView(TroviAPIViewSet):
                                     "arguments": obj.get("trovi_arguments"),
                                 }
                             )
+
+                    # A property holding a single value comes back as a bare
+                    # entity, which is the form the spec's examples use
+                    videos = crate.get("video", [])
+                    if not isinstance(videos, list):
+                        videos = [videos]
+                    for v in videos:
+                        # Externally hosted videos are commonly the entity id
+                        artifact_data["videos"].append({"url": v.get("url") or v.id})
+
+                    citations = crate.get("citation", [])
+                    if not isinstance(citations, list):
+                        citations = [citations]
+                    for c in citations:
+                        venue = c.get("isPartOf")
+                        artifact_data["publications"].append(
+                            {
+                                "title": c.get("name"),
+                                "authors": "; ".join(
+                                    a.get("name") for a in c.get("author", [])
+                                ),
+                                "venue": venue.get("name") if venue else None,
+                                # Often a full date, but Trovi stores the year
+                                "year": c.get("datePublished", "")[:4] or None,
+                                "doi": c.get("identifier"),
+                                "url": c.get("url"),
+                            }
+                        )
+
                     return artifact_data
             except GithubException:
                 raise drf_exceptions.ValidationError(

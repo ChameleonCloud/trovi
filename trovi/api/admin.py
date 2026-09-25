@@ -11,6 +11,8 @@ from ..models import (
     ArtifactEvent,
     ArtifactTag,
     ArtifactAuthor,
+    ArtifactVideo,
+    ArtifactPublication,
     ArtifactProject,
     ArtifactVersionLink,
     ArtifactRole,
@@ -22,6 +24,16 @@ from ..models import (
 
 class ArtifactAuthorInline(admin.TabularInline):
     model = ArtifactAuthor
+    extra = 0
+
+
+class ArtifactVideoInline(admin.TabularInline):
+    model = ArtifactVideo
+    extra = 0
+
+
+class ArtifactPublicationInline(admin.TabularInline):
+    model = ArtifactPublication
     extra = 0
 
 
@@ -97,6 +109,8 @@ class ArtifactAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     inlines = [
         ArtifactAuthorInline,
+        ArtifactVideoInline,
+        ArtifactPublicationInline,
         ArtifactProjectInline,
         ArtifactRoleInline,
         ArtifactTagInline,
@@ -148,6 +162,19 @@ class ArtifactTagAdmin(admin.ModelAdmin):
 class ArtifactAuthorAdmin(admin.ModelAdmin):
     list_display = ("artifact", "full_name", "affiliation", "email")
     search_fields = ("full_name", "affiliation", "email")
+
+
+@admin.register(ArtifactVideo)
+class ArtifactVideoAdmin(admin.ModelAdmin):
+    list_display = ("artifact", "url", "order")
+    search_fields = ("url",)
+
+
+@admin.register(ArtifactPublication)
+class ArtifactPublicationAdmin(admin.ModelAdmin):
+    list_display = ("artifact", "title", "venue", "year", "doi")
+    search_fields = ("title", "authors", "venue", "doi")
+    list_filter = ("year",)
 
 
 @admin.register(ArtifactProject)
