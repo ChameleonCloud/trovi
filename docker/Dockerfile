@@ -17,8 +17,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 # Use pip to install poetry. We don't use virtualenvs in the build context.
 # Therefore, the vendored install provides no additional isolation.
 RUN \
-  pip install --no-cache-dir "poetry~=1.1" && \
-  poetry install --no-dev --no-root && \
+  pip install --no-cache-dir "poetry~=2.2" && \
+  poetry install --without dev --no-root && \
+  rm -rf /root/.cache/pypoetry && \
   mkdir /var/log/django
 
 EXPOSE 80 443
@@ -26,7 +27,7 @@ EXPOSE 80 443
 FROM base AS dev
 
 # dev only
-RUN poetry install
+RUN poetry install --no-root && rm -rf /root/.cache/pypoetry
 
 FROM base AS release
 
