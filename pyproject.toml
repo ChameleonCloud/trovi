@@ -21,7 +21,7 @@ django-cors-headers = "^4.9.0"
 pygithub = "^2.5.0"
 rocrate = "^0.14.2"
 celery = "^5.6.3"
-redis = "^5.0.1"
+redis = "^8.1.0"
 beautifulsoup4 = "^4.12.3"
 cloudscraper = "^1.2.71"
 
