@@ -5,7 +5,7 @@ description = "A collection of shared artifacts"
 authors = ["Chameleon Cloud <contact@chameleoncloud.org>"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.12"
 Django = "^4.2"
 djangorestframework = "^3.14.0"
 mysqlclient = "^2.2.0"
