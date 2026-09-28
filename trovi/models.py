@@ -11,7 +11,6 @@ from django.db.models import F
 from django.db.models.functions import Lower
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from trovi.common.tokens import JWT
@@ -86,8 +85,8 @@ class Artifact(models.Model):
 
     # Sharing metadata
     class Visibility(models.TextChoices):
-        PUBLIC = _("public")
-        PRIVATE = _("private")
+        PUBLIC = "public"
+        PRIVATE = "private"
 
     visibility = models.CharField(
         max_length=max(len(v) for v, _ in Visibility.choices),
@@ -366,14 +365,14 @@ class ArtifactVersionMigration(models.Model):
     """
 
     class MigrationBackends(models.TextChoices):
-        CHAMELEON = _("chameleon")
-        ZENODO = _("zenodo")
+        CHAMELEON = "chameleon"
+        ZENODO = "zenodo"
 
     class MigrationStatus(models.TextChoices):
-        QUEUED = _("queued")
-        IN_PROGRESS = _("in_progress")
-        SUCCESS = _("success")
-        ERROR = _("error")
+        QUEUED = "queued"
+        IN_PROGRESS = "in_progress"
+        SUCCESS = "success"
+        ERROR = "error"
 
     artifact_version = models.ForeignKey(
         ArtifactVersion, models.CASCADE, related_name="migrations"
@@ -412,10 +411,10 @@ class ArtifactEvent(models.Model):
     """Represents an event occurring on an artifact"""
 
     class EventType(models.TextChoices):
-        LAUNCH = _("launch")
-        CITE = _("cite")
-        FORK = _("fork")
-        CELL_EXECUTION = _("cell_execution")
+        LAUNCH = "launch"
+        CITE = "cite"
+        FORK = "fork"
+        CELL_EXECUTION = "cell_execution"
 
     # Direct link to the parent artifact (preserved when a version is deleted)
     artifact = models.ForeignKey(
@@ -590,8 +589,8 @@ class ArtifactRole(models.Model):
         ]
 
     class RoleType(models.TextChoices):
-        ADMINISTRATOR = _("administrator")
-        COLLABORATOR = _("collaborator")
+        ADMINISTRATOR = "administrator"
+        COLLABORATOR = "collaborator"
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="roles")
     user = URNField(max_length=settings.URN_MAX_CHARS)
@@ -671,11 +670,11 @@ class ArtifactVersionSetup(models.Model):
         ]
 
     class ArtifactVersionSetupType(models.TextChoices):
-        JUPYTERHUB = _("jupyterhub")
-        ISOLATED_JUPYTER = _("isolated_jupyter")
-        SOURCE_CODE = _("source_code")
-        IMAGE = _("image")
-        HEAT_TEMPLATE = _("heat_template")
+        JUPYTERHUB = "jupyterhub"
+        ISOLATED_JUPYTER = "isolated_jupyter"
+        SOURCE_CODE = "source_code"
+        IMAGE = "image"
+        HEAT_TEMPLATE = "heat_template"
 
     artifact_version = models.ForeignKey(
         ArtifactVersion, models.CASCADE, related_name="setupSteps"
@@ -688,10 +687,10 @@ class CrawlRequest(models.Model):
     """Represents a request to crawl a URL for artifacts"""
 
     class CrawlStatus(models.TextChoices):
-        PENDING = _("pending")
-        RUNNING = _("running")
-        COMPLETE = _("complete")
-        FAILED = _("failed")
+        PENDING = "pending"
+        RUNNING = "running"
+        COMPLETE = "complete"
+        FAILED = "failed"
 
     url = models.URLField()
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE)
