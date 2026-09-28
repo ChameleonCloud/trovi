@@ -19,7 +19,7 @@ on:
     branches: [ main ]
   schedule:
     # Run every day at 9 AM CDT
-    - cron: '* 14 * * *'
+    - cron: '0 14 * * *'
 
 jobs:
   analyze:

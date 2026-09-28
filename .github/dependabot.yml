@@ -8,7 +8,7 @@ updates:
       interval: "monthly"
   # Maintain dependencies for Docker
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/docker"
     schedule:
       interval: "monthly"
   # Maintain dependencies for Python, supports pip, pipenv, pip-compile, and poetry
