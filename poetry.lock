@@ -915,22 +915,21 @@ referencing = ">=0.31.0"
 
 [[package]]
 name = "keystoneauth1"
-version = "5.9.1"
+version = "5.17.0"
 description = "Authentication Library for OpenStack Identity"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "keystoneauth1-5.9.1-py3-none-any.whl", hash = "sha256:71b98835aec72a01f71c5b919c3193dac95342555e89aa35c86d3d86c4ff5f73"},
-    {file = "keystoneauth1-5.9.1.tar.gz", hash = "sha256:fb0c66d842d5b964752264fff20b3b4ab73610d66d9b8d20d0dcf796ba09dc43"},
+    {file = "keystoneauth1-5.17.0-py3-none-any.whl", hash = "sha256:28201a5299d4fabc478dda28e523a0d12777cda47e53b234772d15d3e0771736"},
+    {file = "keystoneauth1-5.17.0.tar.gz", hash = "sha256:82359acc20c754fcb22818e090e2fea647e4c5c1137a6addb4984e9fba708ab3"},
 ]
 
 [package.dependencies]
 iso8601 = ">=2.0.0"
 os-service-types = ">=1.2.0"
-pbr = ">=2.0.0"
 requests = ">=2.14.2"
-stevedore = ">=1.20.0"
+stevedore = ">=5.9.1"
 typing-extensions = ">=4.12"
 
 [package.extras]
@@ -938,7 +937,6 @@ betamax = ["PyYAML (>=3.13)", "betamax (>=0.7.0)", "fixtures (>=3.0.0)"]
 kerberos = ["requests-kerberos (>=0.8.0)"]
 oauth1 = ["oauthlib (>=0.6.2)"]
 saml2 = ["lxml (>=4.2.0)"]
-test = ["PyYAML (>=3.12)", "bandit (>=1.7.6,<1.8.0)", "betamax (>=0.7.0)", "coverage (>=4.0)", "fixtures (>=3.0.0)", "flake8-docstrings (>=1.7.0,<1.8.0)", "flake8-import-order (>=0.18.2,<0.19.0)", "hacking (>=6.1.0,<6.2.0)", "lxml (>=4.2.0)", "oauthlib (>=0.6.2)", "oslo.config (>=5.2.0)", "oslo.utils (>=3.33.0)", "oslotest (>=3.2.0)", "requests-kerberos (>=0.8.0)", "requests-mock (>=1.2.0)", "stestr (>=1.0.0)", "testresources (>=2.0.0)", "testtools (>=2.2.0)"]
 
 [[package]]
 name = "kombu"
@@ -1591,18 +1589,15 @@ doc = ["furo", "sphinx"]
 
 [[package]]
 name = "stevedore"
-version = "5.4.0"
+version = "5.9.1"
 description = "Manage dynamic plugins for Python applications"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "stevedore-5.4.0-py3-none-any.whl", hash = "sha256:b0be3c4748b3ea7b854b265dcb4caa891015e442416422be16f8b31756107857"},
-    {file = "stevedore-5.4.0.tar.gz", hash = "sha256:79e92235ecb828fe952b6b8b0c6c87863248631922c8e8e0fa5b17b232c4514d"},
+    {file = "stevedore-5.9.1-py3-none-any.whl", hash = "sha256:5c8ff3a9f336cc1a06ac0f597bc79d11a2f950bfd32e290ca56b5a301fafafbf"},
+    {file = "stevedore-5.9.1.tar.gz", hash = "sha256:e97a2667923efda926e8713fde6a73616df68210a3cbc6f02b48967b676fd8bf"},
 ]
-
-[package.dependencies]
-pbr = ">=2.0.0"
 
 [[package]]
 name = "typing-extensions"
@@ -1779,4 +1774,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "5c6b0ceff9c0195d08c88804303242e5f3c5a2786a269692395454ffe74278b4"
+content-hash = "ef272ed7ca6b9c5fbaeade5c2a575db0039f1587ede3f42bdffb3e4519cc0d21"
