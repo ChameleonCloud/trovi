@@ -640,18 +640,18 @@ django = ">=4.2"
 
 [[package]]
 name = "djangorestframework"
-version = "3.17.2"
+version = "3.18.1"
 description = "Web APIs for Django, made easy."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "djangorestframework-3.17.2-py3-none-any.whl", hash = "sha256:cb0546a7415d5b46c04e0f4fe0a54b2109f4fdd5e83ca773c8c6183a6493d042"},
-    {file = "djangorestframework-3.17.2.tar.gz", hash = "sha256:89ed713b6dc83e1539f214b7d10808ae19bb8511004beba886225da6d5c9dafa"},
+    {file = "djangorestframework-3.18.1-py3-none-any.whl", hash = "sha256:f1409d698967aaf82d5d98d76b549c8fba8bd92ebd0d83d24454508f72168dc2"},
+    {file = "djangorestframework-3.18.1.tar.gz", hash = "sha256:605d79fa2ec2f02905492e5ea13d903c2d842d0b4c915a57f7bf02ab9f3c91dd"},
 ]
 
 [package.dependencies]
-django = ">=4.2"
+django = ">=5.2"
 
 [[package]]
 name = "drf-extensions"
@@ -1678,4 +1678,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "74db0f5451c6e02b0e121f1441af67f53aa39ab1ddb8d20655c5ca94d7bf5d61"
+content-hash = "5f412f71d88412d700e24a22bc3ec890d240bc368d43ce94908d069aca591adc"
