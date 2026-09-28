@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Hashable, Any, Mapping, Optional
 from urllib.parse import urljoin
 
@@ -158,7 +158,8 @@ class SwiftBackend(StorageBackend):
         endpoint = self.keystone.get_endpoint()
         account = endpoint[endpoint.index("/v1/") :]
         exp = int(
-            datetime.utcnow().timestamp() + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
+            datetime.now(timezone.utc).timestamp()
+            + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
         )
         hmac_body = f"GET\n{exp}\n{account + path}"
         key = settings.CHAMELEON_SWIFT_TEMP_URL_KEY

@@ -1,6 +1,6 @@
 import operator
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache, wraps, partial
 from threading import Lock
 from typing import Callable, Type, Any
@@ -31,12 +31,12 @@ def timed_lru_cache(
         lock = lock_type()
         f = lru_cache(maxsize=maxsize, typed=typed)(f)
         f.delta = timedelta(seconds=timeout)
-        f.expiration = datetime.utcnow() + f.delta
+        f.expiration = datetime.now(timezone.utc) + f.delta
 
         @wraps(f)
         def wrapped(*args, **kwargs):
             with lock:
-                if (now := datetime.utcnow()) >= f.expiration:
+                if (now := datetime.now(timezone.utc)) >= f.expiration:
                     f.cache_clear()
                     f.expiration = now + f.delta
                 return f(*args, **kwargs)

@@ -1,6 +1,6 @@
 import logging
 from abc import abstractmethod, ABC
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Collection
 
 from django.conf import settings
@@ -134,7 +134,7 @@ class IdentityProviderClient(ABC):
             if introspection and not introspection.active:
                 raise InvalidGrant("Subject token revoked.")
 
-        now = int(datetime.utcnow().timestamp())
+        now = int(datetime.now(timezone.utc).timestamp())
 
         return JWT(
             azp=self.subject_iss_to_trovi_azp(subject_token),
