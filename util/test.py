@@ -15,7 +15,6 @@ import faker.config
 from django.conf import settings
 from django.db import models, transaction, IntegrityError
 from django.test.runner import DiscoverRunner
-from django.utils import timezone
 
 from trovi.models import (
     Artifact,
@@ -346,7 +345,7 @@ def generate_fake_artifact() -> list[models.Model]:
                 None
                 if not verified
                 else fake.date_time_between(
-                    datetime.date.min, datetime.date.max, timezone.utc
+                    datetime.date.min, datetime.date.max, datetime.timezone.utc
                 )
             ),
         }
