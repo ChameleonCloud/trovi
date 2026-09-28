@@ -1,5 +1,3 @@
-version: "3.5"
-
 services:
   trovi:
     container_name: trovi_web_test
