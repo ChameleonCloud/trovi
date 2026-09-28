@@ -18,7 +18,7 @@ from trovi.importing.serializers import ArtifactImportSerializer
 from rest_framework.response import Response
 from rest_framework import exceptions as drf_exceptions
 from giturlparse import parse
-from github import Github, GithubException
+from github import Auth, Github, GithubException
 
 from rocrate.rocrate import ROCrate
 from rocrate.model.metadata import Metadata
@@ -61,7 +61,7 @@ class ArtifactImportView(TroviAPIViewSet):
             )
 
         with Github(
-            login_or_token=settings.GITHUB_ACCESS_TOKEN,
+            auth=Auth.Token(token) if (token := settings.GITHUB_ACCESS_TOKEN) else None,
         ) as g:
             repo_name = f"{parsed_git_url.owner}/{parsed_git_url.repo}"
             try:
