@@ -5,7 +5,7 @@ from rest_framework import permissions, views, generics, status
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact, ArtifactVersion, ArtifactRole
+from trovi.models import Artifact, ArtifactVersion, ArtifactRole, ArtifactComment
 
 LOG = logging.getLogger(__name__)
 
@@ -145,6 +145,26 @@ class ArtifactRoleOwnerRolesPermission(TroviPermission):
         self, request: Request, view: views.View, obj: ArtifactRole
     ) -> bool:
         return obj.user != obj.artifact.owner_urn
+
+
+class ArtifactCommentEditPermission(TroviPermission):
+    message = "Only the author of a comment can edit it"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactComment
+    ) -> bool:
+        token = JWT.from_request(request)
+        return token and obj.user == token.to_urn()
+
+
+class ArtifactCommentDestroyPermission(TroviPermission):
+    message = "Only the author of a comment or an artifact admin can delete it"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: ArtifactComment
+    ) -> bool:
+        token = JWT.from_request(request)
+        return token and (obj.user == token.to_urn() or obj.artifact.has_admin(token))
 
 
 class ArtifactVersionDestroyDOIPermission(TroviPermission):

@@ -32,6 +32,11 @@ from trovi.api.urls import (
     MigrateArtifactVersion,
     AssignArtifactRole,
     UnassignArtifactRole,
+    ListArtifactComment,
+    CreateArtifactComment,
+    UpdateArtifactComment,
+    DeleteArtifactComment,
+    ReviewArtifactComment,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.common.tokens import TokenTypes, JWT
@@ -44,6 +49,7 @@ from trovi.models import (
     ArtifactVideo,
     ArtifactPublication,
     ArtifactRole,
+    ArtifactComment,
 )
 from util.decorators import timed_lru_cache
 from util.test import (
@@ -184,6 +190,40 @@ class APITest(SimpleTestCase):
                 args=[artifact_uuid],
             )
             + f"?user={user}&role={role}",
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def list_artifact_comments_path(
+        self, artifact_uuid: str, is_admin: bool = False
+    ) -> str:
+        scopes = [JWT.Scopes.ARTIFACTS_READ]
+        if is_admin:
+            scopes.append(JWT.Scopes.TROVI_ADMIN)
+        return self.authenticate_url(
+            reverse(ListArtifactComment, args=[artifact_uuid]), scopes=scopes
+        )
+
+    def create_artifact_comment_path(self, artifact_uuid: str) -> str:
+        return self.authenticate_url(
+            reverse(CreateArtifactComment, args=[artifact_uuid]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def update_artifact_comment_path(self, artifact_uuid: str, comment_id: int) -> str:
+        return self.authenticate_url(
+            reverse(UpdateArtifactComment, args=[artifact_uuid, comment_id]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def delete_artifact_comment_path(self, artifact_uuid: str, comment_id: int) -> str:
+        return self.authenticate_url(
+            reverse(DeleteArtifactComment, args=[artifact_uuid, comment_id]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def review_artifact_comment_path(self, artifact_uuid: str, comment_id: int) -> str:
+        return self.authenticate_url(
+            reverse(ReviewArtifactComment, args=[artifact_uuid, comment_id]),
             scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
 
@@ -2131,3 +2171,362 @@ class TestUnassignArtifactRole(TestCase, APITest):
             status.HTTP_403_FORBIDDEN,
             "Unassigned admin role from owner",
         )
+
+
+class TestCreateArtifactComment(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def test_create_comment(self):
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Are they giants?"},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, response.content
+        )
+
+        body = response.json()
+        self.assertEqual(body["user"], role_don_quixote_admin.user)
+        self.assertEqual(body["decision"], ArtifactComment.Decision.APPROVED)
+        self.assertIsNone(body["parent"])
+        self.assertIsNone(body["version"])
+        self.assertTrue(artifact_don_quixote.comments.filter(pk=body["id"]).exists())
+
+    def test_create_reply(self):
+        parent = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "parent": parent.pk},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, response.content
+        )
+        self.assertEqual(response.json()["parent"], parent.pk)
+
+    def test_create_comment_on_version(self):
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "version": version_don_quixote_1.slug},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, response.content
+        )
+        self.assertEqual(response.json()["version"], version_don_quixote_1.slug)
+
+    def test_create_comment_unknown_version(self):
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "version": "1605-01-16"},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_create_reply_other_artifact(self):
+        other_artifact = Artifact.objects.exclude(
+            uuid=artifact_don_quixote.uuid
+        ).first()
+        parent = other_artifact.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "parent": parent.pk},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_create_reply_hidden_parent(self):
+        artifact_don_quixote.roles.all().delete()
+        parent = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Windmills, sir.",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "parent": parent.pk},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_create_comment_invalid_field(self):
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!", "decision": "approved"},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_create_comment_no_write_scope(self):
+        response = self.client.post(
+            self.authenticate_url(
+                reverse(CreateArtifactComment, args=[artifact_don_quixote.uuid])
+            ),
+            content_type="application/json",
+            data={"description": "Giants!"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestListArtifactComments(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def list_comment_ids(self, url: str = None) -> set[int]:
+        response = self.client.get(
+            url or self.list_artifact_comments_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return {c["id"] for c in response.json()}
+
+    def test_list_comments(self):
+        top = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        reply = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!", parent=top
+        )
+        response = self.client.get(
+            self.list_artifact_comments_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        comments = {c["id"]: c for c in response.json()}
+        self.assertEqual(set(comments), {top.pk, reply.pk})
+        self.assertIsNone(comments[top.pk]["parent"])
+        self.assertEqual(comments[reply.pk]["parent"], top.pk)
+
+    def test_rejected_hidden_from_others(self):
+        artifact_don_quixote.roles.all().delete()
+        rejected = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Windmills, sir.",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        self.assertNotIn(rejected.pk, self.list_comment_ids())
+
+    def test_rejected_visible_to_author(self):
+        artifact_don_quixote.roles.all().delete()
+        rejected = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user,
+            description="Giants!",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        self.assertIn(rejected.pk, self.list_comment_ids())
+
+    def test_rejected_visible_to_artifact_admin(self):
+        rejected = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Windmills, sir.",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        self.assertIn(rejected.pk, self.list_comment_ids())
+
+    def test_rejected_visible_to_trovi_admin(self):
+        artifact_don_quixote.roles.all().delete()
+        rejected = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Windmills, sir.",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        self.assertIn(
+            rejected.pk,
+            self.list_comment_ids(
+                self.list_artifact_comments_path(
+                    artifact_don_quixote.uuid, is_admin=True
+                )
+            ),
+        )
+
+    def test_rejected_hidden_from_unauthenticated(self):
+        approved = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        rejected = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Giants!",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        visible = self.list_comment_ids(
+            reverse(ListArtifactComment, args=[artifact_don_quixote.uuid])
+        )
+        self.assertIn(approved.pk, visible)
+        self.assertNotIn(rejected.pk, visible)
+
+    def test_list_comments_private_artifact(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        artifact_don_quixote.roles.all().delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(
+            self.list_artifact_comments_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestUpdateArtifactComment(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def test_edit_comment(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        self.assertIsNone(comment.updated_at)
+        response = self.client.patch(
+            self.update_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"description": "Giants, surely."},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["description"], "Giants, surely.")
+
+        comment.refresh_from_db()
+        self.assertEqual(comment.description, "Giants, surely.")
+        self.assertGreater(comment.updated_at, comment.created_at)
+
+    def test_edit_other_users_comment(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.patch(
+            self.update_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"description": "Giants!"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_edit_immutable_fields(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        for data in ({"parent": None}, {"decision": "approved"}):
+            response = self.client.patch(
+                self.update_artifact_comment_path(
+                    artifact_don_quixote.uuid, comment.pk
+                ),
+                content_type="application/json",
+                data=data,
+            )
+            self.assertEqual(
+                response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+            )
+
+
+class TestDeleteArtifactComment(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def test_delete_comment_with_replies(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        reply = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir.", parent=comment
+        )
+        response = self.client.delete(
+            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            ArtifactComment.objects.filter(pk__in=[comment.pk, reply.pk]).exists()
+        )
+
+    def test_delete_as_artifact_admin(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.delete(
+            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ArtifactComment.objects.filter(pk=comment.pk).exists())
+
+    def test_delete_other_users_comment(self):
+        artifact_don_quixote.roles.all().delete()
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.delete(
+            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ArtifactComment.objects.filter(pk=comment.pk).exists())
+
+
+class TestReviewArtifactComment(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def test_reject_comment(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.review_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={
+                "decision": ArtifactComment.Decision.REJECTED,
+                "decision_comment": "Heresy.",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        body = response.json()
+        self.assertEqual(body["decision"], ArtifactComment.Decision.REJECTED)
+        self.assertEqual(body["reviewer"], role_don_quixote_admin.user)
+        self.assertIsNotNone(body["reviewed_at"])
+        self.assertEqual(body["decision_comment"], "Heresy.")
+
+        comment.refresh_from_db()
+        self.assertEqual(comment.decision, ArtifactComment.Decision.REJECTED)
+
+    def test_review_does_not_mark_edited(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.review_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"decision": ArtifactComment.Decision.REJECTED},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertIsNone(response.json()["updated_at"])
+
+        comment.refresh_from_db()
+        self.assertIsNone(comment.updated_at)
+
+    def test_review_requires_decision(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.review_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"decision_comment": "Heresy."},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_review_non_admin(self):
+        artifact_don_quixote.roles.all().delete()
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        response = self.client.post(
+            self.review_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"decision": ArtifactComment.Decision.REJECTED},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

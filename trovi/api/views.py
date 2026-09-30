@@ -32,6 +32,7 @@ from trovi.api.filters import (
     sharing_key_parameter,
     ArtifactRoleFilter,
     ArtifactRoleOrderingFilter,
+    ArtifactCommentVisibilityFilter,
 )
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.serializers import (
@@ -41,6 +42,9 @@ from trovi.api.serializers import (
     ArtifactVersionMetricsSerializer,
     ArtifactVersionMigrationSerializer,
     ArtifactRoleSerializer,
+    ArtifactCommentSerializer,
+    ArtifactCommentEditSerializer,
+    ArtifactCommentReviewSerializer,
 )
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
@@ -55,11 +59,19 @@ from trovi.common.permissions import (
     ArtifactVersionDestroyDOIPermission,
     ArtifactWriteMetricsScopePermission,
     ArtifactRoleOwnerRolesPermission,
+    ArtifactCommentEditPermission,
+    ArtifactCommentDestroyPermission,
 )
 from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
-from trovi.models import Artifact, ArtifactVersion, ArtifactRole, ArtifactEvent
+from trovi.models import (
+    Artifact,
+    ArtifactVersion,
+    ArtifactRole,
+    ArtifactEvent,
+    ArtifactComment,
+)
 from trovi.storage.serializers import StorageRequestSerializer
 
 LOG = logging.getLogger(__name__)
@@ -346,6 +358,72 @@ class ArtifactRoleViewSet(
         role.delete()
         LOG.info(f"Unassigned Role: {user} from {role_type} on {artifact.uuid}")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[sharing_key_parameter],
+        description="List the comments on an Artifact visible to the requesting user.",
+    ),
+    create=extend_schema(description="Comment on an Artifact or reply to a comment."),
+    partial_update=extend_schema(
+        description="Edit the text of your own comment.",
+        responses=ArtifactCommentSerializer,
+    ),
+    destroy=extend_schema(
+        description="Delete a comment and all of its replies.",
+        responses={status.HTTP_204_NO_CONTENT: None},
+    ),
+    review=extend_schema(
+        description="Approve or reject a comment on your Artifact.",
+        responses=ArtifactCommentSerializer,
+    ),
+)
+@method_decorator(transaction.atomic, name="create")
+@method_decorator(transaction.atomic, name="update")
+@method_decorator(transaction.atomic, name="destroy")
+class ArtifactCommentViewSet(
+    NestedViewSetMixin,
+    TroviAPIViewSet,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+):
+    """
+    Implements all endpoints at /artifacts/<uuid>/comments
+    """
+
+    queryset = ArtifactComment.objects.select_related("artifact_version")
+    parser_classes = [JSONParser]
+    serializer_class = ArtifactCommentSerializer
+    patch_serializer_class = ArtifactCommentEditSerializer
+    filter_backends = [ArtifactCommentVisibilityFilter]
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [ParentArtifactViewPermission]
+    list_permission_classes = [ArtifactReadScopePermission]
+    create_permission_classes = [ArtifactWriteScopePermission]
+    update_permission_classes = [
+        ArtifactWriteScopePermission,
+        ArtifactCommentEditPermission,
+    ]
+    destroy_permission_classes = [
+        ArtifactWriteScopePermission,
+        ArtifactCommentDestroyPermission,
+    ]
+
+    @action(
+        methods=["post"],
+        detail=True,
+        url_name="review",
+        serializer_class=ArtifactCommentReviewSerializer,
+        permission_classes=[
+            ArtifactWriteScopePermission,
+            ParentArtifactAdminPermission,
+        ],
+    )
+    def review(self, request: Request, *args, **kwargs) -> Response:
+        return self.update(request, *args, **kwargs)
 
 
 @extend_schema_view(

@@ -601,6 +601,44 @@ class ArtifactRole(models.Model):
     )
 
 
+class ArtifactComment(models.Model):
+    """Represents a threaded comment on an artifact"""
+
+    class Meta:
+        ordering = ["created_at"]
+
+    class Decision(models.TextChoices):
+        PENDING = _("pending")
+        APPROVED = _("approved")
+        REJECTED = _("rejected")
+
+    artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="comments")
+    artifact_version = models.ForeignKey(
+        ArtifactVersion,
+        models.SET_NULL,
+        related_name="comments",
+        null=True,
+        blank=True,
+    )
+    parent = models.ForeignKey(
+        "self", models.CASCADE, related_name="replies", null=True, blank=True
+    )
+
+    user = URNField(max_length=settings.URN_MAX_CHARS)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(null=True, blank=True, editable=False)
+    description = models.TextField(max_length=settings.ARTIFACT_COMMENT_MAX_CHARS)
+
+    decision = models.CharField(
+        choices=Decision.choices,
+        max_length=max(len(c) for c in Decision.values),
+        default=Decision.APPROVED,
+    )
+    reviewer = URNField(max_length=settings.URN_MAX_CHARS, null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    decision_comment = models.TextField(null=True, blank=True)
+
+
 class ArtifactLink(models.Model):
     """Represents a link between two artifacts"""
 

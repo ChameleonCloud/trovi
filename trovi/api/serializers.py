@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import (
@@ -43,6 +44,7 @@ from trovi.models import (
     ArtifactEvent,
     ArtifactVersionMigration,
     ArtifactRole,
+    ArtifactComment,
     ArtifactVersionSetup,
 )
 from util.types import JSON
@@ -627,6 +629,150 @@ class ArtifactRoleSerializer(ArtifactChildSerializer):
             "user": instance.user,
             "role": instance.role,
         }
+
+
+@extend_schema_serializer(exclude_fields=["artifact"])
+@strict_schema
+class ArtifactCommentSerializer(ArtifactChildSerializer):
+    """
+    Describes a single comment in an Artifact's comment thread
+    """
+
+    class Meta:
+        model = ArtifactComment
+        fields = [
+            "id",
+            "artifact",
+            "parent",
+            "version",
+            "description",
+            "user",
+            "created_at",
+            "updated_at",
+            "decision",
+            "reviewer",
+            "reviewed_at",
+            "decision_comment",
+        ]
+        read_only_fields = [
+            "id",
+            "user",
+            "created_at",
+            "updated_at",
+            "decision",
+            "reviewer",
+            "reviewed_at",
+            "decision_comment",
+        ]
+
+    version = serializers.CharField(
+        source="artifact_version", required=False, write_only=True
+    )
+
+    def validate_version(self, slug: str) -> ArtifactVersion:
+        artifact_uuid = self.context["view"].kwargs.get("parent_lookup_artifact")
+        try:
+            return ArtifactVersion.objects.get(
+                artifact=artifact_uuid, slug__iexact=slug
+            )
+        except ArtifactVersion.DoesNotExist:
+            raise ValidationError(f"Unknown version {slug}")
+
+    def validate_parent(
+        self, parent: Optional[ArtifactComment]
+    ) -> Optional[ArtifactComment]:
+        view = self.context["view"]
+        if (
+            parent
+            and not view.filter_queryset(view.get_queryset())
+            .filter(pk=parent.pk)
+            .exists()
+        ):
+            raise ValidationError(f"Unknown parent comment {parent.pk}")
+        return parent
+
+    def create(self, validated_data: dict) -> ArtifactComment:
+        validated_data["user"] = get_requesting_user_urn(self)
+        comment = super(ArtifactCommentSerializer, self).create(validated_data)
+        LOG.info(f"New comment {comment.pk} by {comment.user} on {comment.artifact_id}")
+        return comment
+
+    def to_representation(self, instance: ArtifactComment) -> dict[str, JSON]:
+        return {
+            "id": instance.pk,
+            "parent": instance.parent_id,
+            "version": (
+                instance.artifact_version.slug if instance.artifact_version else None
+            ),
+            "user": instance.user,
+            "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
+            "updated_at": (
+                instance.updated_at.strftime(settings.DATETIME_FORMAT)
+                if instance.updated_at
+                else None
+            ),
+            "description": instance.description,
+            "decision": instance.decision,
+            "reviewer": instance.reviewer,
+            "reviewed_at": (
+                instance.reviewed_at.strftime(settings.DATETIME_FORMAT)
+                if instance.reviewed_at
+                else None
+            ),
+            "decision_comment": instance.decision_comment,
+        }
+
+
+@strict_schema
+class ArtifactCommentEditSerializer(serializers.ModelSerializer):
+    """
+    Edits the text of an existing comment
+    """
+
+    class Meta:
+        model = ArtifactComment
+        fields = ["description"]
+
+    def update(
+        self, instance: ArtifactComment, validated_data: dict
+    ) -> ArtifactComment:
+        validated_data["updated_at"] = timezone.now()
+        return super(ArtifactCommentEditSerializer, self).update(
+            instance, validated_data
+        )
+
+    def to_representation(self, instance: ArtifactComment) -> dict[str, JSON]:
+        return ArtifactCommentSerializer(context=self.context).to_representation(
+            instance
+        )
+
+
+@strict_schema
+class ArtifactCommentReviewSerializer(serializers.ModelSerializer):
+    """
+    Records a moderation decision on a comment
+    """
+
+    class Meta:
+        model = ArtifactComment
+        fields = ["decision", "decision_comment"]
+        extra_kwargs = {"decision": {"required": True}}
+
+    def update(
+        self, instance: ArtifactComment, validated_data: dict
+    ) -> ArtifactComment:
+        validated_data["reviewer"] = get_requesting_user_urn(self)
+        validated_data["reviewed_at"] = timezone.now()
+        comment = super(ArtifactCommentReviewSerializer, self).update(
+            instance, validated_data
+        )
+        LOG.info(f"Comment {comment.pk} {comment.decision} by {comment.reviewer}")
+        return comment
+
+    def to_representation(self, instance: ArtifactComment) -> dict[str, JSON]:
+        return ArtifactCommentSerializer(context=self.context).to_representation(
+            instance
+        )
 
 
 @allow_force
