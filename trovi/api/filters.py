@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact, ArtifactRole, ArtifactEvent, ArtifactComment
+from trovi.models import Artifact, ArtifactRole, ArtifactComment
 from util.types import JSON
 
 sharing_key_parameter = OpenApiParameter(
