@@ -3,6 +3,7 @@ from trovi.api.views import (
     ArtifactVersionViewSet,
     MigrateArtifactVersionViewSet,
     ArtifactRoleViewSet,
+    ArtifactCommentViewSet,
 )
 from trovi.common.routers import TroviRouter
 
@@ -28,6 +29,13 @@ artifact_route.register(
     parents_query_lookups=["artifact"],
 )
 
+artifact_route.register(
+    "comments",
+    ArtifactCommentViewSet,
+    basename="artifact-comment",
+    parents_query_lookups=["artifact"],
+)
+
 urlpatterns = router.get_urls()
 
 # Because of how Django URL configuration works, we can't have multiple views at the
@@ -48,3 +56,9 @@ MigrateArtifactVersion = "migrate-artifact-version-list"
 AssignArtifactRole = "artifact-role-list"
 UnassignArtifactRole = "artifact-role-list"
 ListArtifactRole = "artifact-role-list"
+
+ListArtifactComment = "artifact-comment-list"
+CreateArtifactComment = "artifact-comment-list"
+UpdateArtifactComment = "artifact-comment-detail"
+DeleteArtifactComment = "artifact-comment-detail"
+ReviewArtifactComment = "artifact-comment-review"

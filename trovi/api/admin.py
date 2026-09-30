@@ -16,6 +16,7 @@ from ..models import (
     ArtifactProject,
     ArtifactVersionLink,
     ArtifactRole,
+    ArtifactComment,
     CrawlRequest,
     AutoCrawledArtifact,
     ArtifactVersionSetup,
@@ -195,6 +196,13 @@ class ArtifactRoleAdmin(admin.ModelAdmin):
     list_display = ("artifact", "user", "role", "assigned_by")
     search_fields = ("user", "assigned_by")
     list_filter = ("role",)
+
+
+@admin.register(ArtifactComment)
+class ArtifactCommentAdmin(admin.ModelAdmin):
+    list_display = ("artifact", "user", "decision", "created_at", "reviewer")
+    list_filter = ("decision", "created_at")
+    search_fields = ("description", "user")
 
 
 @admin.register(CrawlRequest)

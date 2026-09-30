@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
-from trovi.models import Artifact, ArtifactRole, ArtifactEvent
+from trovi.models import Artifact, ArtifactRole, ArtifactEvent, ArtifactComment
 from util.types import JSON
 
 sharing_key_parameter = OpenApiParameter(
@@ -305,6 +305,31 @@ class ArtifactRoleOrderingFilter(filters.OrderingFilter):
 
     def get_schema_operation_parameters(self, view: views.View) -> list:
         return []
+
+
+class ArtifactCommentVisibilityFilter(filters.BaseFilterBackend):
+    """
+    Hides unapproved comments from everyone except their authors
+    and the artifact's administrators
+    """
+
+    def filter_queryset(
+        self, request: Request, queryset: models.QuerySet, view: views.View
+    ) -> models.QuerySet:
+        approved = Q(decision=ArtifactComment.Decision.APPROVED)
+        token = JWT.from_request(request)
+        if not token:
+            return queryset.filter(approved)
+        if token.is_admin():
+            return queryset
+        user_urn = token.to_urn()
+        if ArtifactRole.objects.filter(
+            artifact=view.kwargs.get("parent_lookup_artifact"),
+            user=user_urn,
+            role=ArtifactRole.RoleType.ADMINISTRATOR,
+        ).exists():
+            return queryset
+        return queryset.filter(approved | Q(user=user_urn))
 
 
 class ArtifactOwnerFilter(filters.BaseFilterBackend):
