@@ -653,6 +653,7 @@ class ArtifactCommentSerializer(ArtifactChildSerializer):
             "reviewer",
             "reviewed_at",
             "decision_comment",
+            "deleted",
         ]
         read_only_fields = [
             "id",
@@ -668,6 +669,28 @@ class ArtifactCommentSerializer(ArtifactChildSerializer):
     version = serializers.CharField(
         source="artifact_version", required=False, write_only=True
     )
+    deleted = serializers.SerializerMethodField()
+
+    def get_deleted(self, instance: ArtifactComment) -> bool:
+        return instance.deleted_at is not None
+
+    def can_moderate(self) -> bool:
+        """
+        Reports whether the requesting user may read comments which are not
+        publicly visible. Cached because ``many=True`` reuses one child serializer,
+        so the role lookup runs once per request rather than once per comment.
+        """
+        if not hasattr(self, "_can_moderate"):
+            token = JWT.from_request(self.context.get("request"))
+            self._can_moderate = bool(token) and (
+                token.is_admin()
+                or ArtifactRole.objects.filter(
+                    artifact=self.context["view"].kwargs.get("parent_lookup_artifact"),
+                    user=token.to_urn(),
+                    role=ArtifactRole.RoleType.ADMINISTRATOR,
+                ).exists()
+            )
+        return self._can_moderate
 
     def validate_version(self, slug: str) -> ArtifactVersion:
         artifact_uuid = self.context["view"].kwargs.get("parent_lookup_artifact")
@@ -684,8 +707,12 @@ class ArtifactCommentSerializer(ArtifactChildSerializer):
         view = self.context["view"]
         if (
             parent
-            and not view.filter_queryset(view.get_queryset())
-            .filter(pk=parent.pk)
+            and not view.get_queryset()
+            .filter(
+                pk=parent.pk,
+                decision=ArtifactComment.Decision.APPROVED,
+                deleted_at__isnull=True,
+            )
             .exists()
         ):
             raise ValidationError(f"Unknown parent comment {parent.pk}")
@@ -697,29 +724,47 @@ class ArtifactCommentSerializer(ArtifactChildSerializer):
         LOG.info(f"New comment {comment.pk} by {comment.user} on {comment.artifact_id}")
         return comment
 
+    def readable_in_full(self, instance: ArtifactComment) -> bool:
+        """
+        A deleted comment's text is withheld from everyone; the row survives only to
+        keep its replies reachable. An unapproved comment is still readable by its
+        author and by anyone who can moderate the Artifact.
+        """
+        if instance.deleted_at:
+            return False
+        if instance.decision == ArtifactComment.Decision.APPROVED:
+            return True
+        return instance.user == get_requesting_user_urn(self) or self.can_moderate()
+
     def to_representation(self, instance: ArtifactComment) -> dict[str, JSON]:
+        # Removed comments are serialized as a stub so that their replies stay
+        # reachable. The key set never changes, only which values are populated.
+        stub = not self.readable_in_full(instance)
         return {
             "id": instance.pk,
             "parent": instance.parent_id,
             "version": (
-                instance.artifact_version.slug if instance.artifact_version else None
+                None
+                if stub or not instance.artifact_version
+                else instance.artifact_version.slug
             ),
-            "user": instance.user,
+            "user": None if stub else instance.user,
             "created_at": instance.created_at.strftime(settings.DATETIME_FORMAT),
             "updated_at": (
-                instance.updated_at.strftime(settings.DATETIME_FORMAT)
-                if instance.updated_at
-                else None
+                None
+                if stub or not instance.updated_at
+                else instance.updated_at.strftime(settings.DATETIME_FORMAT)
             ),
-            "description": instance.description,
+            "description": None if stub else instance.description,
             "decision": instance.decision,
-            "reviewer": instance.reviewer,
+            "deleted": instance.deleted_at is not None,
+            "reviewer": None if stub else instance.reviewer,
             "reviewed_at": (
-                instance.reviewed_at.strftime(settings.DATETIME_FORMAT)
-                if instance.reviewed_at
-                else None
+                None
+                if stub or not instance.reviewed_at
+                else instance.reviewed_at.strftime(settings.DATETIME_FORMAT)
             ),
-            "decision_comment": instance.decision_comment,
+            "decision_comment": None if stub else instance.decision_comment,
         }
 
 

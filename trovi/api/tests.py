@@ -2284,12 +2284,19 @@ class TestCreateArtifactComment(TestCase, APITest):
 class TestListArtifactComments(TestCase, APITest):
     other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
 
-    def list_comment_ids(self, url: str = None) -> set[int]:
+    def list_comments(self, url: str = None) -> dict[int, dict]:
         response = self.client.get(
             url or self.list_artifact_comments_path(artifact_don_quixote.uuid)
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
-        return {c["id"] for c in response.json()}
+        return {c["id"]: c for c in response.json()}
+
+    def list_comment_ids(self, url: str = None) -> set[int]:
+        return set(self.list_comments(url))
+
+    def assertStub(self, comment: dict):
+        for field in ("user", "description", "decision_comment", "reviewer"):
+            self.assertIsNone(comment[field], f"{field} leaked on a stub")
 
     def test_list_comments(self):
         top = artifact_don_quixote.comments.create(
@@ -2308,49 +2315,54 @@ class TestListArtifactComments(TestCase, APITest):
         self.assertIsNone(comments[top.pk]["parent"])
         self.assertEqual(comments[reply.pk]["parent"], top.pk)
 
-    def test_rejected_hidden_from_others(self):
+    def test_rejected_redacted_for_others(self):
         artifact_don_quixote.roles.all().delete()
         rejected = artifact_don_quixote.comments.create(
             user=self.other_user,
             description="Windmills, sir.",
             decision=ArtifactComment.Decision.REJECTED,
+            decision_comment="Heresy.",
         )
-        self.assertNotIn(rejected.pk, self.list_comment_ids())
+        comment = self.list_comments()[rejected.pk]
+        self.assertStub(comment)
+        self.assertEqual(comment["decision"], ArtifactComment.Decision.REJECTED)
+        self.assertFalse(comment["deleted"])
 
-    def test_rejected_visible_to_author(self):
+    def test_rejected_readable_by_author(self):
         artifact_don_quixote.roles.all().delete()
         rejected = artifact_don_quixote.comments.create(
             user=role_don_quixote_admin.user,
             description="Giants!",
             decision=ArtifactComment.Decision.REJECTED,
+            decision_comment="Heresy.",
         )
-        self.assertIn(rejected.pk, self.list_comment_ids())
+        comment = self.list_comments()[rejected.pk]
+        self.assertEqual(comment["description"], "Giants!")
+        self.assertEqual(comment["decision_comment"], "Heresy.")
 
-    def test_rejected_visible_to_artifact_admin(self):
+    def test_rejected_readable_by_artifact_admin(self):
         rejected = artifact_don_quixote.comments.create(
             user=self.other_user,
             description="Windmills, sir.",
             decision=ArtifactComment.Decision.REJECTED,
         )
-        self.assertIn(rejected.pk, self.list_comment_ids())
+        self.assertEqual(
+            self.list_comments()[rejected.pk]["description"], "Windmills, sir."
+        )
 
-    def test_rejected_visible_to_trovi_admin(self):
+    def test_rejected_readable_by_trovi_admin(self):
         artifact_don_quixote.roles.all().delete()
         rejected = artifact_don_quixote.comments.create(
             user=self.other_user,
             description="Windmills, sir.",
             decision=ArtifactComment.Decision.REJECTED,
         )
-        self.assertIn(
-            rejected.pk,
-            self.list_comment_ids(
-                self.list_artifact_comments_path(
-                    artifact_don_quixote.uuid, is_admin=True
-                )
-            ),
+        comments = self.list_comments(
+            self.list_artifact_comments_path(artifact_don_quixote.uuid, is_admin=True)
         )
+        self.assertEqual(comments[rejected.pk]["description"], "Windmills, sir.")
 
-    def test_rejected_hidden_from_unauthenticated(self):
+    def test_rejected_redacted_for_unauthenticated(self):
         approved = artifact_don_quixote.comments.create(
             user=self.other_user, description="Windmills, sir."
         )
@@ -2358,12 +2370,30 @@ class TestListArtifactComments(TestCase, APITest):
             user=self.other_user,
             description="Giants!",
             decision=ArtifactComment.Decision.REJECTED,
+            decision_comment="Heresy.",
         )
-        visible = self.list_comment_ids(
+        comments = self.list_comments(
             reverse(ListArtifactComment, args=[artifact_don_quixote.uuid])
         )
-        self.assertIn(approved.pk, visible)
-        self.assertNotIn(rejected.pk, visible)
+        self.assertEqual(comments[approved.pk]["description"], "Windmills, sir.")
+        self.assertStub(comments[rejected.pk])
+
+    def test_reply_under_rejected_parent_stays_readable(self):
+        artifact_don_quixote.roles.all().delete()
+        parent = artifact_don_quixote.comments.create(
+            user=self.other_user,
+            description="Windmills, sir.",
+            decision=ArtifactComment.Decision.REJECTED,
+        )
+        reply = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Giants!", parent=parent
+        )
+        comments = self.list_comments(
+            reverse(ListArtifactComment, args=[artifact_don_quixote.uuid])
+        )
+        self.assertStub(comments[parent.pk])
+        self.assertEqual(comments[reply.pk]["description"], "Giants!")
+        self.assertEqual(comments[reply.pk]["parent"], parent.pk)
 
     def test_list_comments_private_artifact(self):
         artifact_don_quixote.refresh_from_db()
@@ -2428,30 +2458,97 @@ class TestUpdateArtifactComment(TestCase, APITest):
 class TestDeleteArtifactComment(TestCase, APITest):
     other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
 
-    def test_delete_comment_with_replies(self):
+    def delete_comment(self, comment_id: int):
+        response = self.client.delete(
+            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment_id)
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def list_comments(self) -> dict[int, dict]:
+        response = self.client.get(
+            reverse(ListArtifactComment, args=[artifact_don_quixote.uuid])
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        return {c["id"]: c for c in response.json()}
+
+    def test_delete_comment_preserves_replies(self):
         comment = artifact_don_quixote.comments.create(
             user=role_don_quixote_admin.user, description="Giants!"
         )
         reply = artifact_don_quixote.comments.create(
             user=self.other_user, description="Windmills, sir.", parent=comment
         )
-        response = self.client.delete(
-            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment.pk)
+        self.delete_comment(comment.pk)
+
+        self.assertEqual(
+            ArtifactComment.objects.filter(pk__in=[comment.pk, reply.pk]).count(), 2
         )
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(
-            ArtifactComment.objects.filter(pk__in=[comment.pk, reply.pk]).exists()
+        comment.refresh_from_db()
+        self.assertIsNotNone(comment.deleted_at)
+
+        comments = self.list_comments()
+        self.assertTrue(comments[comment.pk]["deleted"])
+        self.assertIsNone(comments[comment.pk]["description"])
+        self.assertEqual(comments[reply.pk]["description"], "Windmills, sir.")
+        self.assertEqual(comments[reply.pk]["parent"], comment.pk)
+
+    def test_deleted_body_withheld_from_author(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        self.delete_comment(comment.pk)
+        response = self.client.get(
+            self.list_artifact_comments_path(artifact_don_quixote.uuid)
+        )
+        body = {c["id"]: c for c in response.json()}[comment.pk]
+        self.assertIsNone(body["description"])
+        self.assertIsNone(body["user"])
+
+    def test_delete_is_idempotent(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        self.delete_comment(comment.pk)
+        comment.refresh_from_db()
+        first_deleted_at = comment.deleted_at
+
+        self.delete_comment(comment.pk)
+        comment.refresh_from_db()
+        self.assertEqual(comment.deleted_at, first_deleted_at)
+
+    def test_edit_deleted_comment(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        self.delete_comment(comment.pk)
+        response = self.client.patch(
+            self.update_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"description": "Giants, surely."},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_reply_to_deleted_comment(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        self.delete_comment(comment.pk)
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Windmills, sir.", "parent": comment.pk},
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
         )
 
     def test_delete_as_artifact_admin(self):
         comment = artifact_don_quixote.comments.create(
             user=self.other_user, description="Windmills, sir."
         )
-        response = self.client.delete(
-            self.delete_artifact_comment_path(artifact_don_quixote.uuid, comment.pk)
-        )
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertFalse(ArtifactComment.objects.filter(pk=comment.pk).exists())
+        self.delete_comment(comment.pk)
+        comment.refresh_from_db()
+        self.assertIsNotNone(comment.deleted_at)
 
     def test_delete_other_users_comment(self):
         artifact_don_quixote.roles.all().delete()

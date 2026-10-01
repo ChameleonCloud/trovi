@@ -148,13 +148,13 @@ class ArtifactRoleOwnerRolesPermission(TroviPermission):
 
 
 class ArtifactCommentEditPermission(TroviPermission):
-    message = "Only the author of a comment can edit it"
+    message = "Only the author of a comment can edit it, and not once it is deleted"
 
     def has_object_permission(
         self, request: Request, view: views.View, obj: ArtifactComment
     ) -> bool:
         token = JWT.from_request(request)
-        return token and obj.user == token.to_urn()
+        return token and obj.user == token.to_urn() and not obj.deleted_at
 
 
 class ArtifactCommentDestroyPermission(TroviPermission):

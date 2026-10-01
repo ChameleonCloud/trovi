@@ -627,6 +627,7 @@ class ArtifactComment(models.Model):
     user = URNField(max_length=settings.URN_MAX_CHARS)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(null=True, blank=True, editable=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(max_length=settings.ARTIFACT_COMMENT_MAX_CHARS)
 
     decision = models.CharField(
