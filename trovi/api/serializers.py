@@ -763,6 +763,7 @@ class ArtifactCommentReviewSerializer(serializers.ModelSerializer):
     ) -> ArtifactComment:
         validated_data["reviewer"] = get_requesting_user_urn(self)
         validated_data["reviewed_at"] = timezone.now()
+        validated_data.setdefault("decision_comment", None)
         comment = super(ArtifactCommentReviewSerializer, self).update(
             instance, validated_data
         )
