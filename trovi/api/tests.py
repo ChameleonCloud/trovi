@@ -2506,6 +2506,39 @@ class TestReviewArtifactComment(TestCase, APITest):
         comment.refresh_from_db()
         self.assertIsNone(comment.updated_at)
 
+    def test_approve_clears_rejection_reason(self):
+        comment = artifact_don_quixote.comments.create(
+            user=self.other_user, description="Windmills, sir."
+        )
+        for data in (
+            {
+                "decision": ArtifactComment.Decision.REJECTED,
+                "decision_comment": "Heresy.",
+            },
+            {"decision": ArtifactComment.Decision.APPROVED},
+        ):
+            response = self.client.post(
+                self.review_artifact_comment_path(
+                    artifact_don_quixote.uuid, comment.pk
+                ),
+                content_type="application/json",
+                data=data,
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        comment.refresh_from_db()
+        self.assertIsNone(comment.decision_comment)
+
+        # Once approved, the comment is readable by anyone, so a leftover
+        # moderation reason would be public
+        response = self.client.get(
+            reverse(ListArtifactComment, args=[artifact_don_quixote.uuid])
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        public = {c["id"]: c for c in response.json()}
+        self.assertIn(comment.pk, public)
+        self.assertIsNone(public[comment.pk]["decision_comment"])
+
     def test_review_requires_decision(self):
         comment = artifact_don_quixote.comments.create(
             user=self.other_user, description="Windmills, sir."
