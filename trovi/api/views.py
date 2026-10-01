@@ -4,6 +4,7 @@ from functools import cache
 from django.db import transaction, models
 from django.db.models import Count, Q, OuterRef, Subquery
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
@@ -32,7 +33,6 @@ from trovi.api.filters import (
     sharing_key_parameter,
     ArtifactRoleFilter,
     ArtifactRoleOrderingFilter,
-    ArtifactCommentVisibilityFilter,
 )
 from trovi.api.paginators import ListArtifactsPagination
 from trovi.api.serializers import (
@@ -371,7 +371,8 @@ class ArtifactRoleViewSet(
         responses=ArtifactCommentSerializer,
     ),
     destroy=extend_schema(
-        description="Delete a comment and all of its replies.",
+        description="Delete a comment. Its replies are preserved, and the comment "
+        "itself remains as a placeholder in the thread.",
         responses={status.HTTP_204_NO_CONTENT: None},
     ),
     review=extend_schema(
@@ -398,7 +399,6 @@ class ArtifactCommentViewSet(
     parser_classes = [JSONParser]
     serializer_class = ArtifactCommentSerializer
     patch_serializer_class = ArtifactCommentEditSerializer
-    filter_backends = [ArtifactCommentVisibilityFilter]
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [ParentArtifactViewPermission]
     list_permission_classes = [ArtifactReadScopePermission]
@@ -411,6 +411,13 @@ class ArtifactCommentViewSet(
         ArtifactWriteScopePermission,
         ArtifactCommentDestroyPermission,
     ]
+
+    def perform_destroy(self, instance: ArtifactComment):
+        # Comments are soft-deleted so that replies underneath them stay reachable.
+        # Repeated deletes are no-ops rather than errors.
+        if not instance.deleted_at:
+            instance.deleted_at = timezone.now()
+            instance.save(update_fields=["deleted_at"])
 
     @action(
         methods=["post"],
