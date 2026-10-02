@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Hashable, Optional
 
 from trovi.storage.links.git import GitDownloadLink
@@ -73,7 +73,6 @@ class StorageBackend(io.BufferedIOBase, ABC):
     def readable(self) -> bool:
         return not self.closed and self.bytes_read < len(self.buffer)
 
-    @abstractmethod
     def update_length(self) -> int:
         """
         Fetches the size, in bytes, of the artifact in storage. If the artifact
@@ -88,7 +87,6 @@ class StorageBackend(io.BufferedIOBase, ABC):
     def __bool__(self) -> bool:
         return True
 
-    @abstractmethod
     def generate_content_id(self) -> Hashable:
         """
         Generates a new content identifier, which should be guaranteed unique.
@@ -106,7 +104,6 @@ class StorageBackend(io.BufferedIOBase, ABC):
         else:
             self.content_id = self.generate_content_id()
 
-    @abstractmethod
     def cleanup(self):
         """
         Performs cleanup operations during close.
@@ -132,7 +129,6 @@ class StorageBackend(io.BufferedIOBase, ABC):
         if self.buffer:
             self.upload()
 
-    @abstractmethod
     def update_closed_status(self) -> bool:
         """
         Fetches whether the artifact in storage is closed. If the artifact hasn't been
@@ -150,13 +146,11 @@ class StorageBackend(io.BufferedIOBase, ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    @abstractmethod
     def download(self):
         """
         Downloads remote bytes into local buffer
         """
 
-    @abstractmethod
     def upload(self):
         """
         Uploads local buffer to remote storage

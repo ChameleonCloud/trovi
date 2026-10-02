@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from django.conf import settings
@@ -22,7 +22,7 @@ from util.types import JSON
                     azp=(email := "user@example.com"),
                     aud=[url := "https://example.com"],
                     iss=url,
-                    iat=int(datetime.utcnow().timestamp()),
+                    iat=int(datetime.now(timezone.utc).timestamp()),
                     sub=email,
                     exp=(exp := int(datetime(year=2049, month=7, day=6).timestamp())),
                     alg=JWT.Algorithm.HS256.value,
@@ -46,7 +46,7 @@ from util.types import JSON
                     azp=email,
                     aud=settings.TROVI_FQDN,
                     iss=settings.TROVI_FQDN,
-                    iat=int(datetime.utcnow().timestamp()),
+                    iat=int(datetime.now(timezone.utc).timestamp()),
                     sub=email,
                     exp=exp,
                     scope=example_scope,

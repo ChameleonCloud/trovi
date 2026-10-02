@@ -1,10 +1,10 @@
 import logging
 from abc import abstractmethod, ABC
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Collection
 
 from django.conf import settings
-from jose.backends.base import Key
+from jwt import PyJWK
 
 from trovi.common.exceptions import (
     InvalidScope,
@@ -134,7 +134,7 @@ class IdentityProviderClient(ABC):
             if introspection and not introspection.active:
                 raise InvalidGrant("Subject token revoked.")
 
-        now = int(datetime.utcnow().timestamp())
+        now = int(datetime.now(timezone.utc).timestamp())
 
         return JWT(
             azp=self.subject_iss_to_trovi_azp(subject_token),
@@ -161,7 +161,7 @@ class IdentityProviderClient(ABC):
         """
 
     @abstractmethod
-    def refresh_signing_keys(self) -> list[Key]:
+    def refresh_signing_keys(self) -> list[PyJWK]:
         """
         Attempt one time to refresh the Identity Provider's signing keys.
         """
@@ -171,11 +171,11 @@ class IdentityProviderClient(ABC):
     @retry(
         n=settings.AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_ATTEMPTS,
         cond=lambda keys: isinstance(keys, list)
-        and all(isinstance(k, Key) for k in keys),
+        and all(isinstance(k, PyJWK) for k in keys),
         wait=settings.AUTH_IDP_SIGNING_KEY_REFRESH_RETRY_SECONDS,
         msg="Failed to refresh token signing key from Identity Provider.",
     )
-    def signing_keys(self) -> list[Key]:
+    def signing_keys(self) -> list[PyJWK]:
         """
         Retains a cached copy of the Identity Provider's signing keys. Lazily refreshes
         every 5 minutes.
