@@ -607,9 +607,9 @@ class ArtifactComment(models.Model):
         ordering = ["created_at"]
 
     class Decision(models.TextChoices):
-        PENDING = _("pending")
-        APPROVED = _("approved")
-        REJECTED = _("rejected")
+        PENDING = "pending"
+        APPROVED = "approved"
+        REJECTED = "rejected"
 
     artifact = models.ForeignKey(Artifact, models.CASCADE, related_name="comments")
     artifact_version = models.ForeignKey(
