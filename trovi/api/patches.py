@@ -104,6 +104,7 @@ class ArtifactPatchMixin:
                 # this is enforced by the ArtifactSerializer
                 "owner_urn": None,
                 "visibility": None,
+                "comments_enabled": None,
             },
         )
         error = (

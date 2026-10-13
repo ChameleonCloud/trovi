@@ -167,6 +167,19 @@ class ArtifactCommentDestroyPermission(TroviPermission):
         return token and (obj.user == token.to_urn() or obj.artifact.has_admin(token))
 
 
+class ArtifactCommentsEnabledPermission(TroviPermission):
+    message = "Comments are disabled for this artifact"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: Artifact
+    ) -> bool:
+        return obj.comments_enabled
+
+
+class ParentArtifactCommentsEnabledPermission(BaseParentArtifactPermission):
+    parent_permission = ArtifactCommentsEnabledPermission
+
+
 class ArtifactVersionDestroyDOIPermission(TroviPermission):
     message = "Artifact Versions with associated DOIs cannot be deleted!"
 

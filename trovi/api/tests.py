@@ -1143,6 +1143,35 @@ class TestUpdateArtifact(TestCase, APITest):
     def test_update_artifact_force(self):
         self.test_update_artifact(forced=True)
 
+    def disable_comments(self) -> Response:
+        return self.client.put(
+            self.authenticate_url(
+                reverse(UpdateArtifact, args=[artifact_don_quixote.uuid]),
+                scopes=[JWT.Scopes.ARTIFACTS_READ, JWT.Scopes.ARTIFACTS_WRITE],
+            ),
+            content_type="application/json",
+            data={
+                "patch": [
+                    {"op": "replace", "path": "/comments_enabled", "value": False}
+                ]
+            },
+        )
+
+    def test_disable_comments(self):
+        response = self.disable_comments()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertFalse(response.json()["comments_enabled"])
+        self.assertFalse(
+            Artifact.objects.get(uuid=artifact_don_quixote.uuid).comments_enabled
+        )
+
+    def test_disable_comments_collaborator(self):
+        artifact_don_quixote.roles.filter(user=role_don_quixote_admin.user).update(
+            role=ArtifactRole.RoleType.COLLABORATOR
+        )
+        response = self.disable_comments()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
 
 class TestArtifactVideosAndPublications(TestCase, APITest):
     """
@@ -2280,6 +2309,17 @@ class TestCreateArtifactComment(TestCase, APITest):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_create_comment_disabled(self):
+        Artifact.objects.filter(uuid=artifact_don_quixote.uuid).update(
+            comments_enabled=False
+        )
+        response = self.client.post(
+            self.create_artifact_comment_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={"description": "Giants!"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class TestListArtifactComments(TestCase, APITest):
     other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
@@ -2406,6 +2446,15 @@ class TestListArtifactComments(TestCase, APITest):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_list_comments_disabled(self):
+        Artifact.objects.filter(uuid=artifact_don_quixote.uuid).update(
+            comments_enabled=False
+        )
+        response = self.client.get(
+            self.list_artifact_comments_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class TestUpdateArtifactComment(TestCase, APITest):
     other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
@@ -2453,6 +2502,20 @@ class TestUpdateArtifactComment(TestCase, APITest):
             self.assertEqual(
                 response.status_code, status.HTTP_400_BAD_REQUEST, response.content
             )
+
+    def test_edit_comment_disabled(self):
+        comment = artifact_don_quixote.comments.create(
+            user=role_don_quixote_admin.user, description="Giants!"
+        )
+        Artifact.objects.filter(uuid=artifact_don_quixote.uuid).update(
+            comments_enabled=False
+        )
+        response = self.client.patch(
+            self.update_artifact_comment_path(artifact_don_quixote.uuid, comment.pk),
+            content_type="application/json",
+            data={"description": "Giants, surely."},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class TestDeleteArtifactComment(TestCase, APITest):
