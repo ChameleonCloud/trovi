@@ -101,6 +101,8 @@ class Artifact(models.Model):
         validators=[validate_sharing_key],
     )
 
+    comments_enabled = models.BooleanField(default=True)
+
     def save(self, *args, **kwargs) -> "Artifact":
         # For forced updates, the datetime is received as a string.
         # This ensures a datetime is stored

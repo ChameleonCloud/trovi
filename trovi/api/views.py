@@ -61,6 +61,7 @@ from trovi.common.permissions import (
     ArtifactRoleOwnerRolesPermission,
     ArtifactCommentEditPermission,
     ArtifactCommentDestroyPermission,
+    ParentArtifactCommentsEnabledPermission,
 )
 from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
@@ -401,11 +402,18 @@ class ArtifactCommentViewSet(
     patch_serializer_class = ArtifactCommentEditSerializer
     authentication_classes = [TroviTokenAuthentication]
     permission_classes = [ParentArtifactViewPermission]
-    list_permission_classes = [ArtifactReadScopePermission]
-    create_permission_classes = [ArtifactWriteScopePermission]
+    list_permission_classes = [
+        ArtifactReadScopePermission,
+        ParentArtifactCommentsEnabledPermission,
+    ]
+    create_permission_classes = [
+        ArtifactWriteScopePermission,
+        ParentArtifactCommentsEnabledPermission,
+    ]
     update_permission_classes = [
         ArtifactWriteScopePermission,
         ArtifactCommentEditPermission,
+        ParentArtifactCommentsEnabledPermission,
     ]
     destroy_permission_classes = [
         ArtifactWriteScopePermission,

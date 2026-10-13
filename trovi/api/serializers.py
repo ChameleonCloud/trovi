@@ -931,6 +931,7 @@ class ArtifactSerializer(serializers.ModelSerializer):
             "owner_urn": instance.owner_urn,
             "roles": ArtifactRoleSerializer(instance.roles.all(), many=True).data,
             "visibility": instance.visibility,
+            "comments_enabled": instance.comments_enabled,
             "linked_projects": ArtifactProjectSerializer(
                 instance.linked_projects.all(), many=True
             ).data,
