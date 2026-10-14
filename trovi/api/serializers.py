@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
+from django.db.models import Count
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
@@ -464,6 +465,8 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     access_count = serializers.IntegerField(read_only=True)
     unique_access_count = serializers.IntegerField(read_only=True)
     unique_cell_execution_count = serializers.IntegerField(read_only=True)
+    recent_access_count = serializers.IntegerField(read_only=True)
+    recent_unique_access_count = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         if hasattr(instance, "unique_access_count"):
@@ -490,10 +493,26 @@ class ArtifactMetricsSerializer(serializers.Serializer):
                 .distinct()
                 .count()
             )
+        if hasattr(instance, "recent_access_count"):
+            recent_access = instance.recent_access_count
+            recent_unique_access = instance.recent_unique_access_count
+        else:
+            recent = ArtifactEvent.objects.filter(
+                artifact=instance,
+                event_type=ArtifactEvent.EventType.LAUNCH.value,
+                timestamp__gte=timezone.now()
+                - timezone.timedelta(days=settings.ARTIFACT_RECENT_METRICS_DAYS),
+            ).aggregate(
+                access=Count("pk"), unique_access=Count("event_origin", distinct=True)
+            )
+            recent_access = recent["access"]
+            recent_unique_access = recent["unique_access"]
         return {
             "access_count": instance.access_count,
             "unique_access_count": unique_access,
             "unique_cell_execution_count": unique_cell,
+            "recent_access_count": recent_access,
+            "recent_unique_access_count": recent_unique_access,
         }
 
     def create(self, validated_data):

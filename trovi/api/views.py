@@ -1,6 +1,7 @@
 import logging
 from functools import cache
 
+from django.conf import settings
 from django.db import transaction, models
 from django.db.models import Count, Q, OuterRef, Subquery
 from django.db.models.functions import Coalesce
@@ -142,6 +143,8 @@ class ArtifactViewSet(
         "access_count",
         "unique_access_count",
         "unique_cell_execution_count",
+        "recent_access_count",
+        "recent_unique_access_count",
     ]
     authentication_classes = [TroviTokenAuthentication]
     # Individual visibility checks are handled by the visibility filter
@@ -176,6 +179,16 @@ class ArtifactViewSet(
         Optimize the queryset by prefetching all related objects needed during
         serialization to avoid N+1 queries.
         """
+        recent_launches = (
+            ArtifactEvent.objects.filter(
+                artifact=OuterRef("pk"),
+                event_type=ArtifactEvent.EventType.LAUNCH.value,
+                timestamp__gte=timezone.now()
+                - timezone.timedelta(days=settings.ARTIFACT_RECENT_METRICS_DAYS),
+            )
+            .order_by()
+            .values("artifact")
+        )
         return (
             super()
             .get_queryset()
@@ -234,6 +247,17 @@ class ArtifactViewSet(
                         .values("artifact")
                         .annotate(c=Count("event_origin", distinct=True))
                         .values("c")
+                    ),
+                    0,
+                ),
+                recent_access_count=Coalesce(
+                    Subquery(recent_launches.annotate(c=Count("pk")).values("c")), 0
+                ),
+                recent_unique_access_count=Coalesce(
+                    Subquery(
+                        recent_launches.annotate(
+                            c=Count("event_origin", distinct=True)
+                        ).values("c")
                     ),
                     0,
                 ),

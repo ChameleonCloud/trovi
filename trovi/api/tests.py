@@ -20,6 +20,7 @@ from trovi.api.serializers import (
     ArtifactSerializer,
     ArtifactVersionSerializer,
     ArtifactLinkToSerializer,
+    ArtifactMetricsSerializer,
 )
 from trovi.api.urls import (
     ListArtifact,
@@ -597,6 +598,84 @@ class TestListArtifactsEmpty(TestListArtifacts):
     def setUpClass(cls):
         TestCase.setUpClass()
         Artifact.objects.all().delete()
+
+
+class TestRecentArtifactMetrics(TestCase, APITest):
+    expected_metrics = {
+        "access_count": 4,
+        "unique_access_count": 3,
+        "unique_cell_execution_count": 1,
+        "recent_access_count": 3,
+        "recent_unique_access_count": 2,
+    }
+
+    def setUp(self):
+        super().setUp()
+        launch = ArtifactEvent.EventType.LAUNCH
+        days = settings.ARTIFACT_RECENT_METRICS_DAYS
+        self.recent = self.create_artifact_with_events(
+            [
+                (launch, "a", 0),
+                (launch, "a", 0),
+                (launch, "b", days - 1),
+                (launch, "c", days + 1),
+                (ArtifactEvent.EventType.CELL_EXECUTION, "d", 0),
+            ]
+        )
+        self.stale = self.create_artifact_with_events(
+            [(launch, user, days + 1) for user in ("e", "f", "g", "h")]
+        )
+
+    def create_artifact_with_events(
+        self, events: list[tuple[ArtifactEvent.EventType, str, int]]
+    ) -> Artifact:
+        """Creates a public artifact with (event type, user, days ago) events"""
+        artifact = Artifact.objects.create(
+            title="Recent Metrics",
+            short_description="An artifact for testing recent metrics.",
+            owner_urn="urn:trovi:user:chameleon:testuser1",
+            visibility=Artifact.Visibility.PUBLIC,
+        )
+        version = artifact.versions.create(
+            contents_urn=f"urn:trovi:contents:chameleon:{uuid.uuid4()}"
+        )
+        for event_type, user, days_ago in events:
+            event = version.events.create(
+                event_type=event_type,
+                event_origin=f"urn:trovi:user:chameleon:{user}",
+            )
+            ArtifactEvent.objects.filter(pk=event.pk).update(
+                timestamp=timezone.now() - timezone.timedelta(days=days_ago)
+            )
+        return artifact
+
+    def get_sorted_uuids(self, sort_by: str) -> list[str]:
+        """Lists artifacts by sort_by, asserting that its values are descending"""
+        response = self.client.get(f"{self.list_artifact_path()}&sort_by={sort_by}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        artifacts = response.json()["artifacts"]
+        values = [a["metrics"][sort_by] for a in artifacts]
+        self.assertListEqual(values, sorted(values, reverse=True), sort_by)
+        return [a["uuid"] for a in artifacts]
+
+    def test_recent_metrics(self):
+        response = self.client.get(self.get_artifact_path(str(self.recent.uuid)))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertDictEqual(response.json()["metrics"], self.expected_metrics)
+
+    def test_recent_metrics_unannotated(self):
+        artifact = Artifact.objects.get(uuid=self.recent.uuid)
+        self.assertDictEqual(
+            ArtifactMetricsSerializer(artifact).data, self.expected_metrics
+        )
+
+    def test_sort_by_recent(self):
+        recent, stale = str(self.recent.uuid), str(self.stale.uuid)
+        for sort_by in ("recent_access_count", "recent_unique_access_count"):
+            uuids = self.get_sorted_uuids(sort_by)
+            self.assertLess(uuids.index(recent), uuids.index(stale), sort_by)
+        uuids = self.get_sorted_uuids("unique_access_count")
+        self.assertLess(uuids.index(stale), uuids.index(recent))
 
 
 class TestGetArtifact(TestCase, APITest):
