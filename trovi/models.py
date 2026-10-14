@@ -472,8 +472,8 @@ class ArtifactEvent(models.Model):
                 name="ae_version_type_origin_idx",
             ),
             models.Index(
-                fields=["artifact", "event_type", "event_origin"],
-                name="ae_artifact_type_origin_idx",
+                fields=["artifact", "event_type", "event_origin", "timestamp"],
+                name="ae_artifact_type_origin_ts_idx",
             ),
         ]
 

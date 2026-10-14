@@ -92,6 +92,8 @@ TROVI_SUPPORT_AFFILIATION = os.getenv("TROVI_SUPPORT_AFFILIATION", "Chameleon Cl
 # Lowering the value will require complex custom migration logic
 ARTIFACT_SHARING_MAX_REPRO_REQUESTS = 10
 
+ARTIFACT_RECENT_METRICS_DAYS = 90
+
 #####
 #
 # Email Configuration
