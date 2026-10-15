@@ -607,6 +607,7 @@ class TestRecentArtifactMetrics(TestCase, APITest):
         "unique_cell_execution_count": 1,
         "recent_access_count": 3,
         "recent_unique_access_count": 2,
+        "recent_window_days": settings.ARTIFACT_RECENT_METRICS_DAYS,
     }
 
     def setUp(self):
@@ -668,6 +669,14 @@ class TestRecentArtifactMetrics(TestCase, APITest):
         self.assertDictEqual(
             ArtifactMetricsSerializer(artifact).data, self.expected_metrics
         )
+
+    def test_recent_metrics_window(self):
+        with self.settings(ARTIFACT_RECENT_METRICS_DAYS=30):
+            response = self.client.get(self.get_artifact_path(str(self.recent.uuid)))
+        metrics = response.json()["metrics"]
+        self.assertEqual(metrics["recent_window_days"], 30)
+        self.assertEqual(metrics["recent_access_count"], 2)
+        self.assertEqual(metrics["recent_unique_access_count"], 1)
 
     def test_sort_by_recent(self):
         recent, stale = str(self.recent.uuid), str(self.stale.uuid)
