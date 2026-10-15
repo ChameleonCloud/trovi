@@ -467,6 +467,7 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     unique_cell_execution_count = serializers.IntegerField(read_only=True)
     recent_access_count = serializers.IntegerField(read_only=True)
     recent_unique_access_count = serializers.IntegerField(read_only=True)
+    recent_window_days = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         if hasattr(instance, "unique_access_count"):
@@ -513,6 +514,7 @@ class ArtifactMetricsSerializer(serializers.Serializer):
             "unique_cell_execution_count": unique_cell,
             "recent_access_count": recent_access,
             "recent_unique_access_count": recent_unique_access,
+            "recent_window_days": settings.ARTIFACT_RECENT_METRICS_DAYS,
         }
 
     def create(self, validated_data):
