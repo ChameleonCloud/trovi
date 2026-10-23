@@ -731,6 +731,19 @@ class AutoCrawledArtifact(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class UserProfile(models.Model):
+    """Contact details and preferences for a user, refreshed from their IdP token"""
+
+    urn = URNField(max_length=settings.URN_MAX_CHARS, unique=True)
+    email = models.EmailField(max_length=settings.EMAIL_ADDRESS_MAX_CHARS)
+    full_name = models.CharField(
+        max_length=settings.ARTIFACT_AUTHOR_NAME_MAX_CHARS, blank=True
+    )
+    keycloak_sub = models.CharField(max_length=255, blank=True)
+    comment_notifications = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 # Signals
 pre_save.connect(ArtifactEvent.set_artifact, sender=ArtifactEvent)
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)

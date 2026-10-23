@@ -8,9 +8,16 @@ from urllib.robotparser import RobotFileParser
 import cloudscraper
 from bs4 import BeautifulSoup
 from celery import shared_task
+from django.conf import settings
+from django.core.mail import send_mass_mail
 from django.db import transaction
 
-from trovi.models import AutoCrawledArtifact, CrawlRequest
+from trovi.models import (
+    ArtifactComment,
+    AutoCrawledArtifact,
+    CrawlRequest,
+    UserProfile,
+)
 
 LOG = getLogger(__name__)
 
@@ -633,3 +640,39 @@ def process_crawl_request(crawl_request_id: int, respect_robots: bool = True):
             LOG.error(
                 f"Could not update status for non-existent crawl request {crawl_request_id}"
             )
+
+
+@shared_task(name="CommentNotification")
+def send_comment_notification(comment_id: int):
+    """
+    Emails the artifact owner, and the author of the parent comment for replies,
+    about a new comment. Users without a profile, or who opted out, are skipped.
+    """
+    comment = ArtifactComment.objects.select_related("artifact", "parent").get(
+        pk=comment_id
+    )
+    artifact = comment.artifact
+    recipients = {artifact.owner_urn}
+    if comment.parent:
+        recipients.add(comment.parent.user)
+    recipients.discard(comment.user)
+    profiles = UserProfile.objects.filter(
+        urn__in=recipients, comment_notifications=True
+    )
+    commenter = (
+        UserProfile.objects.filter(urn=comment.user, full_name__gt="")
+        .values_list("full_name", flat=True)
+        .first()
+    ) or comment.user.split(":")[-1]
+
+    action = "replied to a comment" if comment.parent else "commented"
+    subject = f'New {"reply" if comment.parent else "comment"} on "{artifact.title}"'
+    dashboard = f"https://{settings.TROVI_FQDN}/dashboard"
+    body = (
+        f'{commenter} {action} on "{artifact.title}":\n\n'
+        f"{comment.description}\n\n"
+        f"View the discussion: {dashboard}/artifacts/{artifact.uuid}\n\n"
+        f"Manage email preferences: {dashboard}/settings\n"
+    )
+    sent = send_mass_mail([(subject, body, None, [p.email]) for p in profiles])
+    LOG.info(f"Sent {sent} notifications for comment {comment_id}")

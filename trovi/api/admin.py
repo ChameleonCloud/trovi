@@ -20,6 +20,7 @@ from ..models import (
     CrawlRequest,
     AutoCrawledArtifact,
     ArtifactVersionSetup,
+    UserProfile,
 )
 
 
@@ -203,6 +204,13 @@ class ArtifactCommentAdmin(admin.ModelAdmin):
     list_display = ("artifact", "user", "decision", "created_at", "reviewer")
     list_filter = ("decision", "created_at")
     search_fields = ("description", "user")
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("urn", "email", "full_name", "comment_notifications", "updated_at")
+    list_filter = ("comment_notifications",)
+    search_fields = ("urn", "email", "full_name")
 
 
 @admin.register(CrawlRequest)

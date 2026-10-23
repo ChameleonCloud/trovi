@@ -104,7 +104,11 @@ EMAIL_HOST = os.getenv("SMTP_HOST", "localhost")
 EMAIL_PORT = os.getenv("SMTP_PORT", 25)
 EMAIL_HOST_USER = os.getenv("SMTP_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", f"no-reply@{TROVI_FQDN}")
+TROVI_COMMENT_NOTIFICATIONS_ENABLED = (
+    os.getenv("TROVI_COMMENT_NOTIFICATIONS_ENABLED", "true").lower() == "true"
+)
 
 # User News Outage Notification
 OUTAGE_NOTIFICATION_EMAIL = os.getenv("OUTAGE_NOTIFICATION_EMAIL", "")
