@@ -2,11 +2,12 @@ import copy
 import json
 import os
 import random
-from unittest import skipIf
+from unittest import mock, skipIf
 from urllib.parse import urlencode
 import uuid
 
 from django.conf import settings
+from django.core import mail
 from django.db import models
 from django.http import JsonResponse
 from django.test import TestCase, override_settings, SimpleTestCase
@@ -40,6 +41,7 @@ from trovi.api.urls import (
     ReviewArtifactComment,
 )
 from trovi.auth.providers import get_client_by_name
+from trovi.celery.tasks import send_comment_notification
 from trovi.common.tokens import TokenTypes, JWT
 from trovi.models import (
     Artifact,
@@ -51,6 +53,7 @@ from trovi.models import (
     ArtifactPublication,
     ArtifactRole,
     ArtifactComment,
+    UserProfile,
 )
 from util.decorators import timed_lru_cache
 from util.test import (
@@ -2407,6 +2410,52 @@ class TestCreateArtifactComment(TestCase, APITest):
             data={"description": "Giants!"},
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestCommentNotifications(TestCase):
+    owner = artifact_don_quixote.owner_urn
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+    third_user = "urn:trovi:user:chameleon:dulcinea@toboso.gov"
+
+    def setUp(self):
+        for urn in (self.owner, self.other_user, self.third_user):
+            UserProfile.objects.create(urn=urn, email=urn.split(":")[-1])
+
+    def comment(self, user: str, parent: ArtifactComment = None) -> ArtifactComment:
+        return artifact_don_quixote.comments.create(
+            user=user, description="Giants!", parent=parent
+        )
+
+    def recipients(self) -> list[str]:
+        return sorted(r for message in mail.outbox for r in message.to)
+
+    def test_comment_notifies_owner(self):
+        send_comment_notification(self.comment(self.other_user).pk)
+        self.assertEqual(self.recipients(), ["donquixote@rosinante.io"])
+        self.assertIn("Giants!", mail.outbox[0].body)
+        self.assertIn(str(artifact_don_quixote.uuid), mail.outbox[0].body)
+
+    def test_reply_notifies_owner_and_parent_author(self):
+        parent = self.comment(self.other_user)
+        send_comment_notification(self.comment(self.third_user, parent).pk)
+        self.assertEqual(
+            self.recipients(), ["donquixote@rosinante.io", "sancho@rocinante.io"]
+        )
+        self.assertIn("New reply", mail.outbox[0].subject)
+
+    def test_own_comment_not_notified(self):
+        send_comment_notification(self.comment(self.owner).pk)
+        self.assertEqual(mail.outbox, [])
+
+    def test_opted_out_recipient(self):
+        UserProfile.objects.filter(urn=self.owner).update(comment_notifications=False)
+        send_comment_notification(self.comment(self.other_user).pk)
+        self.assertEqual(mail.outbox, [])
+
+    def test_recipient_without_profile(self):
+        UserProfile.objects.filter(urn=self.owner).delete()
+        send_comment_notification(self.comment(self.other_user).pk)
+        self.assertEqual(mail.outbox, [])
 
 
 class TestListArtifactComments(TestCase, APITest):

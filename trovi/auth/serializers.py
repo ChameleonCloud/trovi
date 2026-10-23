@@ -9,6 +9,7 @@ from rest_framework.exceptions import ValidationError
 from trovi.auth import providers
 from trovi.common.serializers import strict_schema
 from trovi.common.tokens import JWT, TokenTypes
+from trovi.models import UserProfile
 from util.types import JSON
 
 
@@ -104,6 +105,16 @@ class TokenGrantRequestSerializer(serializers.Serializer):
         requested_scope = validated_data.get("scope")
 
         trovi_token = provider.exchange_token(validated_token, requested_scope)
+
+        if email := validated_token.additional_claims.get("email"):
+            UserProfile.objects.update_or_create(
+                urn=trovi_token.to_urn(),
+                defaults={
+                    "email": email,
+                    "full_name": validated_token.additional_claims.get("name", ""),
+                    "keycloak_sub": validated_token.sub,
+                },
+            )
 
         return trovi_token
 

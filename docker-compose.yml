@@ -12,6 +12,8 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - TROVI_COMMENT_NOTIFICATIONS_ENABLED=true
+      - DEFAULT_FROM_EMAIL=no-reply@localhost
     volumes:
       - .:/project
       - ./media:/media
@@ -36,6 +38,13 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
 
+  mail:
+    container_name: trovi_mail
+    image: mailhog/mailhog:v1.0.1
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:8026:8025"
+
   celery:
     container_name: trovi_celery
     image: trovi-dev
@@ -46,12 +55,13 @@ services:
     depends_on:
       - db
       - redis
+      - mail
     env_file:
       - .env
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-
+      - DEFAULT_FROM_EMAIL=no-reply@localhost
 
   db:
     container_name: trovi_db

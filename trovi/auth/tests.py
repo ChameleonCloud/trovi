@@ -10,6 +10,7 @@ from rest_framework.reverse import reverse
 
 from trovi.auth import providers
 from trovi.common.tokens import TokenTypes
+from trovi.models import UserProfile
 
 
 class AuthTestCase(TestCase):
@@ -111,6 +112,14 @@ class TestTokenGrant(AuthTestCase):
                 token["exp"], token["iat"] + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS
             )
             self.assertEqual(token["scope"], response_data["scope"])
+
+            # Test user profile recorded from the subject token
+            subject = jwt.decode(valid_token, options={"verify_signature": False})
+            profile = UserProfile.objects.get(
+                urn=f"urn:trovi:user:{token['azp']}:{token['sub']}"
+            )
+            self.assertEqual(profile.email, subject["email"])
+            self.assertEqual(profile.keycloak_sub, subject["sub"])
 
     def test_introspection(self):
         # TODO
