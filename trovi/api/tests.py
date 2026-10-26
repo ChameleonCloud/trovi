@@ -2,7 +2,7 @@ import copy
 import json
 import os
 import random
-from unittest import mock, skipIf
+from unittest import skipIf
 from urllib.parse import urlencode
 import uuid
 
@@ -39,6 +39,8 @@ from trovi.api.urls import (
     UpdateArtifactComment,
     DeleteArtifactComment,
     ReviewArtifactComment,
+    ListArtifactVerification,
+    CreateArtifactVerification,
 )
 from trovi.auth.providers import get_client_by_name
 from trovi.celery.tasks import send_comment_notification
@@ -228,6 +230,17 @@ class APITest(SimpleTestCase):
     def review_artifact_comment_path(self, artifact_uuid: str, comment_id: int) -> str:
         return self.authenticate_url(
             reverse(ReviewArtifactComment, args=[artifact_uuid, comment_id]),
+            scopes=[JWT.Scopes.ARTIFACTS_WRITE],
+        )
+
+    def list_artifact_verifications_path(self, artifact_uuid: str) -> str:
+        return self.authenticate_url(
+            reverse(ListArtifactVerification, args=[artifact_uuid])
+        )
+
+    def create_artifact_verification_path(self, artifact_uuid: str) -> str:
+        return self.authenticate_url(
+            reverse(CreateArtifactVerification, args=[artifact_uuid]),
             scopes=[JWT.Scopes.ARTIFACTS_WRITE],
         )
 
@@ -611,6 +624,8 @@ class TestRecentArtifactMetrics(TestCase, APITest):
         "recent_access_count": 3,
         "recent_unique_access_count": 2,
         "recent_window_days": settings.ARTIFACT_RECENT_METRICS_DAYS,
+        "verified_count": 0,
+        "verify_failed_count": 0,
     }
 
     def setUp(self):
@@ -2860,3 +2875,196 @@ class TestReviewArtifactComment(TestCase, APITest):
             data={"decision": ArtifactComment.Decision.REJECTED},
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestCreateArtifactVerification(TestCase, APITest):
+    def verify(self, data: dict) -> Response:
+        return self.client.post(
+            self.create_artifact_verification_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data=data,
+        )
+
+    def test_create_verification(self):
+        artifact_don_quixote.roles.all().delete()
+        for verified, event_type in (
+            (True, ArtifactEvent.EventType.VERIFY),
+            (False, ArtifactEvent.EventType.VERIFY_FAILED),
+        ):
+            response = self.verify(
+                {"version": version_don_quixote_1.slug, "verified": verified}
+            )
+            self.assertEqual(
+                response.status_code, status.HTTP_201_CREATED, response.content
+            )
+            body = response.json()
+            self.assertEqual(body["user"], role_don_quixote_admin.user)
+            self.assertEqual(body["version"], version_don_quixote_1.slug)
+            self.assertEqual(body["verified"], verified)
+            self.assertTrue(
+                version_don_quixote_1.events.filter(
+                    event_type=event_type, event_origin=role_don_quixote_admin.user
+                ).exists()
+            )
+
+    def test_create_verification_by_author(self):
+        response = self.verify(
+            {"version": version_don_quixote_1.slug, "verified": True}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_verification_unknown_version(self):
+        artifact_don_quixote.roles.all().delete()
+        for data in ({"version": "1605-01-16", "verified": True}, {"verified": True}):
+            response = self.verify(data)
+            self.assertEqual(
+                response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+            )
+
+    def test_create_verification_invalid_field(self):
+        artifact_don_quixote.roles.all().delete()
+        response = self.verify(
+            {
+                "version": version_don_quixote_1.slug,
+                "verified": True,
+                "event_type": ArtifactEvent.EventType.LAUNCH,
+            }
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST, response.content
+        )
+
+    def test_create_verification_no_write_scope(self):
+        artifact_don_quixote.roles.all().delete()
+        response = self.client.post(
+            self.authenticate_url(
+                reverse(CreateArtifactVerification, args=[artifact_don_quixote.uuid])
+            ),
+            content_type="application/json",
+            data={"version": version_don_quixote_1.slug, "verified": True},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_verification_requires_launch(self):
+        artifact_don_quixote.roles.all().delete()
+        data = {"version": version_don_quixote_1.slug, "verified": True}
+        with self.settings(ARTIFACT_VERIFICATION_REQUIRES_LAUNCH=True):
+            self.assertEqual(self.verify(data).status_code, status.HTTP_403_FORBIDDEN)
+            version_don_quixote_2.events.create(
+                event_type=ArtifactEvent.EventType.LAUNCH,
+                event_origin=role_don_quixote_admin.user,
+            )
+            self.assertEqual(self.verify(data).status_code, status.HTTP_201_CREATED)
+
+
+class TestListArtifactVerifications(TestCase, APITest):
+    other_user = "urn:trovi:user:chameleon:sancho@rocinante.io"
+
+    def test_list_latest_verifications(self):
+        verify = ArtifactEvent.EventType.VERIFY
+        failed = ArtifactEvent.EventType.VERIFY_FAILED
+        for version, user, event_type in (
+            (version_don_quixote_1, self.other_user, verify),
+            (version_don_quixote_1, self.other_user, failed),
+            (version_don_quixote_2, self.other_user, verify),
+            (version_don_quixote_1, role_don_quixote_don.user, failed),
+            (version_don_quixote_1, role_don_quixote_don.user, verify),
+        ):
+            version.events.create(event_type=event_type, event_origin=user)
+
+        response = self.client.get(
+            self.list_artifact_verifications_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertCountEqual(
+            [(v["version"], v["user"], v["verified"]) for v in response.json()],
+            [
+                (version_don_quixote_1.slug, self.other_user, False),
+                (version_don_quixote_2.slug, self.other_user, True),
+                (version_don_quixote_1.slug, role_don_quixote_don.user, True),
+            ],
+        )
+
+    def test_list_verifications_private_artifact(self):
+        artifact_don_quixote.refresh_from_db()
+        artifact_don_quixote.visibility = Artifact.Visibility.PRIVATE
+        artifact_don_quixote.roles.all().delete()
+        artifact_don_quixote.save()
+
+        response = self.client.get(
+            self.list_artifact_verifications_path(artifact_don_quixote.uuid)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestArtifactVerificationMetrics(TestCase, APITest):
+    def setUp(self):
+        super().setUp()
+        self.artifact = Artifact.objects.create(
+            title="Verification Metrics",
+            short_description="An artifact for testing verification metrics.",
+            owner_urn="urn:trovi:user:chameleon:testuser1",
+            visibility=Artifact.Visibility.PUBLIC,
+        )
+        self.v1, self.v2 = (
+            self.artifact.versions.create(
+                contents_urn=f"urn:trovi:contents:chameleon:{uuid.uuid4()}"
+            )
+            for _ in range(2)
+        )
+        verify = ArtifactEvent.EventType.VERIFY
+        failed = ArtifactEvent.EventType.VERIFY_FAILED
+        for version, user, event_type in (
+            (self.v1, "a", verify),
+            (self.v1, "a", failed),
+            (self.v1, "b", verify),
+            (self.v1, "b", verify),
+            (self.v2, "a", verify),
+            (self.v2, "c", failed),
+            (self.v2, "c", verify),
+        ):
+            version.events.create(
+                event_type=event_type, event_origin=f"urn:trovi:user:chameleon:{user}"
+            )
+        self.expected_versions = {self.v1.slug: (1, 1), self.v2.slug: (2, 0)}
+
+    def test_verification_metrics(self):
+        response = self.client.get(self.get_artifact_path(str(self.artifact.uuid)))
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        body = response.json()
+        self.assertEqual(body["metrics"]["verified_count"], 3)
+        self.assertEqual(body["metrics"]["verify_failed_count"], 1)
+        self.assertDictEqual(
+            {
+                v["slug"]: (
+                    v["metrics"]["verified_count"],
+                    v["metrics"]["verify_failed_count"],
+                )
+                for v in body["versions"]
+            },
+            self.expected_versions,
+        )
+
+    def test_verification_metrics_unannotated(self):
+        metrics = ArtifactMetricsSerializer(
+            Artifact.objects.get(uuid=self.artifact.uuid)
+        ).data
+        self.assertEqual(metrics["verified_count"], 3)
+        self.assertEqual(metrics["verify_failed_count"], 1)
+        self.assertDictEqual(
+            {
+                v.slug: (v.verified_count, v.verify_failed_count)
+                for v in ArtifactVersion.objects.filter(artifact=self.artifact)
+            },
+            self.expected_versions,
+        )
+
+    def test_sort_by_verified_count(self):
+        response = self.client.get(
+            f"{self.list_artifact_path()}&sort_by=verified_count"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        artifacts = response.json()["artifacts"]
+        values = [a["metrics"]["verified_count"] for a in artifacts]
+        self.assertListEqual(values, sorted(values, reverse=True))
+        self.assertEqual(artifacts[0]["uuid"], str(self.artifact.uuid))

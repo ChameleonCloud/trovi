@@ -7,7 +7,7 @@ from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import F
+from django.db.models import F, Max
 from django.db.models.functions import Lower
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.utils import timezone
@@ -268,6 +268,34 @@ class ArtifactVersion(models.Model):
             .count()
         )
 
+    @property
+    def verified_count(self) -> int:
+        """
+        :return: The number of users whose latest verification of this artifact
+        version succeeded
+        """
+        return self.count_latest_verifications(ArtifactEvent.EventType.VERIFY)
+
+    @property
+    def verify_failed_count(self) -> int:
+        """
+        :return: The number of users whose latest verification of this artifact
+        version failed
+        """
+        return self.count_latest_verifications(ArtifactEvent.EventType.VERIFY_FAILED)
+
+    def count_latest_verifications(self, event_type: str) -> int:
+        if hasattr(self, "latest_verification_events"):
+            return sum(
+                event.event_type == event_type
+                for event in self.latest_verification_events
+            )
+        return (
+            ArtifactEvent.latest_verifications()
+            .filter(artifact_version=self, event_type=event_type)
+            .count()
+        )
+
     def has_doi(self) -> bool:
         """
         Determines if this version has a DOI (Digital Object Identifier), in which
@@ -417,6 +445,8 @@ class ArtifactEvent(models.Model):
         CITE = "cite"
         FORK = "fork"
         CELL_EXECUTION = "cell_execution"
+        VERIFY = "verify"
+        VERIFY_FAILED = "verify_failed"
 
     # Direct link to the parent artifact (preserved when a version is deleted)
     artifact = models.ForeignKey(
@@ -447,6 +477,29 @@ class ArtifactEvent(models.Model):
         """
         if instance.artifact_id is None and instance.artifact_version_id is not None:
             instance.artifact_id = instance.artifact_version.artifact_id
+
+    @staticmethod
+    def latest_verifications() -> models.QuerySet:
+        """
+        Each user's most recent verification event on each artifact version.
+        Users may change their answer, and only their latest one counts.
+        """
+        # Not correlated with the outer query, so MariaDB materializes it once
+        # per query rather than re-running it for every row
+        newest = (
+            ArtifactEvent.objects.filter(
+                event_type__in=[
+                    ArtifactEvent.EventType.VERIFY,
+                    ArtifactEvent.EventType.VERIFY_FAILED,
+                ],
+                artifact_version__isnull=False,
+            )
+            .order_by()
+            .values("artifact_version", "event_origin")
+            .annotate(newest=Max("pk"))
+            .values("newest")
+        )
+        return ArtifactEvent.objects.filter(pk__in=newest)
 
     @staticmethod
     def incr_access_count(instance: "ArtifactEvent", created: bool = False, **_):

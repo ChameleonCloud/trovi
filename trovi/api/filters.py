@@ -42,6 +42,7 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
         "unique_cell_execution_count",
         "recent_access_count",
         "recent_unique_access_count",
+        "verified_count",
     ]
     ordering_description = _("The criteria by which to sort the Artifacts.")
 

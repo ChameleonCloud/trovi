@@ -180,6 +180,19 @@ class ParentArtifactCommentsEnabledPermission(BaseParentArtifactPermission):
     parent_permission = ArtifactCommentsEnabledPermission
 
 
+class ArtifactNonAuthorPermission(TroviPermission):
+    message = "Users with a role on an artifact cannot verify it"
+
+    def has_object_permission(
+        self, request: Request, view: views.View, obj: Artifact
+    ) -> bool:
+        return not obj.gives_permission_to(JWT.from_request(request))
+
+
+class ParentArtifactNonAuthorPermission(BaseParentArtifactPermission):
+    parent_permission = ArtifactNonAuthorPermission
+
+
 class ArtifactVersionDestroyDOIPermission(TroviPermission):
     message = "Artifact Versions with associated DOIs cannot be deleted!"
 
