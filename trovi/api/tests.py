@@ -40,9 +40,8 @@ from trovi.api.urls import (
     DeleteArtifactComment,
     ReviewArtifactComment,
 )
-from trovi.auth.providers import get_client_by_name
 from trovi.celery.tasks import send_comment_notification
-from trovi.common.tokens import TokenTypes, JWT
+from trovi.common.tokens import JWT
 from trovi.models import (
     Artifact,
     ArtifactEvent,
@@ -57,6 +56,7 @@ from trovi.models import (
 )
 from util.decorators import timed_lru_cache
 from util.test import (
+    TEST_USERNAME,
     artifact_don_quixote,
     version_don_quixote_1,
     version_don_quixote_2,
@@ -82,36 +82,18 @@ class APITest(SimpleTestCase):
 
     @timed_lru_cache(timeout=settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS)
     def get_test_token(self, scope: str = None) -> str:
-        provider_name = "CHAMELEON_KEYCLOAK"
-        keycloak = get_client_by_name(provider_name)
-        test_username = os.getenv(f"{provider_name}_TEST_USER_USERNAME")
-        test_password = os.getenv(f"{provider_name}_TEST_USER_PASSWORD")
-        test_client_id = os.getenv(f"{provider_name}_TEST_CLIENT_ID")
-        test_client_secret = os.getenv(f"{provider_name}_TEST_CLIENT_SECRET")
-
-        valid_token = keycloak.get_user_token(
-            test_username, test_password, test_client_id, test_client_secret
-        )
-
-        requesting_scope = scope if scope else JWT.Scopes.ARTIFACTS_READ
-
-        response = self.client.post(
-            reverse("TokenGrant"),
-            content_type="application/json",
-            data={
-                "grant_type": "token_exchange",
-                "subject_token": valid_token,
-                "subject_token_type": TokenTypes.JWT_TOKEN_TYPE.value,
-                "scope": requesting_scope,
-            },
-        )
-
-        body = response.json()
-
-        if response.status_code != status.HTTP_201_CREATED:
-            self.fail(json.dumps(body))
-
-        return response.json()["access_token"]
+        now = int(timezone.now().timestamp())
+        return JWT(
+            azp="chameleon",
+            aud=[settings.TROVI_FQDN],
+            iss=settings.TROVI_FQDN,
+            iat=now,
+            exp=now + settings.AUTH_TROVI_TOKEN_LIFESPAN_SECONDS,
+            sub=TEST_USERNAME,
+            scope=[JWT.Scopes(s) for s in (scope or JWT.Scopes.ARTIFACTS_READ).split()],
+            alg=settings.AUTH_TROVI_TOKEN_SIGNING_ALGORITHM,
+            key=settings.AUTH_TROVI_TOKEN_SIGNING_KEY,
+        ).to_jws()
 
     def authenticate_url(self, url: str, scopes: list[JWT.Scopes] = None) -> str:
         scopes = scopes or [JWT.Scopes.ARTIFACTS_READ]

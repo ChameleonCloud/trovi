@@ -1,5 +1,4 @@
 import io
-import os
 import random
 import tarfile
 import uuid
@@ -18,7 +17,12 @@ from trovi.api.tests import APITest
 from trovi.common.tokens import JWT
 from trovi.models import ArtifactVersionMigration, Artifact
 from trovi.storage.urls import StoreContents, RetrieveContents
-from util.test import version_don_quixote_1, version_don_quixote_2, artifact_don_quixote
+from util.test import (
+    TEST_USER_URN,
+    version_don_quixote_1,
+    version_don_quixote_2,
+    artifact_don_quixote,
+)
 
 
 class StorageTest(APITest):
@@ -300,7 +304,7 @@ class TestMigrateArtifactVersion(TransactionTestCase, StorageTest):
 
     def test_migrate_storage(self):
         artifact_don_quixote.refresh_from_db()
-        artifact_don_quixote.owner_urn = f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}"
+        artifact_don_quixote.owner_urn = TEST_USER_URN
         artifact_don_quixote.save()
         response = self.client.post(
             self.migrate_artifact_version_path(

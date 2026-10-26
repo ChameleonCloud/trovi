@@ -6,7 +6,6 @@ having to reference dicts with strings repeatedly in tests.
 
 import datetime
 import logging
-import os
 import random
 from typing import Union, Optional, Iterable, Any
 from uuid import uuid4
@@ -38,6 +37,9 @@ logging.getLogger("faker.factory").setLevel(logging.INFO)
 fake = faker.Faker(faker.config.AVAILABLE_LOCALES)
 
 CHI_SITES = ["TACC", "UC", "NU"]
+
+TEST_USERNAME = "cervantes@chameleoncloud.org"
+TEST_USER_URN = f"urn:trovi:user:chameleon:{TEST_USERNAME}"
 
 
 def fake_email() -> str:
@@ -219,7 +221,7 @@ link_don_quixote_image = ArtifactVersionLink(
 )
 role_don_quixote_admin = ArtifactRole(
     artifact=artifact_don_quixote,
-    user=f"urn:trovi:user:chameleon:{os.getenv('CHAMELEON_KEYCLOAK_TEST_USER_USERNAME')}",
+    user=TEST_USER_URN,
     assigned_by="urn:trovi:user:chameleon:donq@rosinante.io",
     role=ArtifactRole.RoleType.ADMINISTRATOR,
 )
