@@ -94,6 +94,12 @@ ARTIFACT_SHARING_MAX_REPRO_REQUESTS = 10
 
 ARTIFACT_RECENT_METRICS_DAYS = int(os.getenv("ARTIFACT_RECENT_METRICS_DAYS", 90))
 
+# Whether artifact verification requires a launch to be present. We may want to
+# disable this once we have "generic" artifacts.
+ARTIFACT_VERIFICATION_REQUIRES_LAUNCH = (
+    os.getenv("ARTIFACT_VERIFICATION_REQUIRES_LAUNCH", "true").lower() == "true"
+)
+
 #####
 #
 # Email Configuration

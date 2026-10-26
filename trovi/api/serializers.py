@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
@@ -379,6 +379,8 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         min_value=1, max_value=50000, allow_null=False, required=False, write_only=True
     )
     unique_cell_execution_count = serializers.IntegerField(read_only=True)
+    verified_count = serializers.IntegerField(read_only=True)
+    verify_failed_count = serializers.IntegerField(read_only=True)
     # The Trovi token of the user who initiated the event(s)
     origin = URNSerializerField(write_only=True, required=True)
 
@@ -431,6 +433,8 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
             "access_count": instance.access_count,
             "unique_access_count": instance.unique_access_count,
             "unique_cell_execution_count": instance.unique_cell_execution_count,
+            "verified_count": instance.verified_count,
+            "verify_failed_count": instance.verify_failed_count,
         }
 
     def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
@@ -468,6 +472,8 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     recent_access_count = serializers.IntegerField(read_only=True)
     recent_unique_access_count = serializers.IntegerField(read_only=True)
     recent_window_days = serializers.IntegerField(read_only=True)
+    verified_count = serializers.IntegerField(read_only=True)
+    verify_failed_count = serializers.IntegerField(read_only=True)
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         if hasattr(instance, "unique_access_count"):
@@ -508,6 +514,28 @@ class ArtifactMetricsSerializer(serializers.Serializer):
             )
             recent_access = recent["access"]
             recent_unique_access = recent["unique_access"]
+        if hasattr(instance, "verified_count"):
+            verified = instance.verified_count
+            verify_failed = instance.verify_failed_count
+        else:
+            verifications = (
+                ArtifactEvent.latest_verifications()
+                .filter(artifact=instance)
+                .aggregate(
+                    verified=Count(
+                        "event_origin",
+                        distinct=True,
+                        filter=Q(event_type=ArtifactEvent.EventType.VERIFY),
+                    ),
+                    verify_failed=Count(
+                        "event_origin",
+                        distinct=True,
+                        filter=Q(event_type=ArtifactEvent.EventType.VERIFY_FAILED),
+                    ),
+                )
+            )
+            verified = verifications["verified"]
+            verify_failed = verifications["verify_failed"]
         return {
             "access_count": instance.access_count,
             "unique_access_count": unique_access,
@@ -515,6 +543,8 @@ class ArtifactMetricsSerializer(serializers.Serializer):
             "recent_access_count": recent_access,
             "recent_unique_access_count": recent_unique_access,
             "recent_window_days": settings.ARTIFACT_RECENT_METRICS_DAYS,
+            "verified_count": verified,
+            "verify_failed_count": verify_failed,
         }
 
     def create(self, validated_data):
@@ -543,6 +573,15 @@ class ArtifactChildSerializer(serializers.ModelSerializer):
                 if any(detail.code == "does_not_exist" for detail in artifact_error):
                     raise NotFound(e.detail)
             raise e
+
+    def validate_version(self, slug: str) -> ArtifactVersion:
+        artifact_uuid = self.context["view"].kwargs.get("parent_lookup_artifact")
+        try:
+            return ArtifactVersion.objects.get(
+                artifact=artifact_uuid, slug__iexact=slug
+            )
+        except ArtifactVersion.DoesNotExist:
+            raise ValidationError(f"Unknown version {slug}")
 
 
 @extend_schema_serializer(exclude_fields=["artifact"])
@@ -713,15 +752,6 @@ class ArtifactCommentSerializer(ArtifactChildSerializer):
             )
         return self._can_moderate
 
-    def validate_version(self, slug: str) -> ArtifactVersion:
-        artifact_uuid = self.context["view"].kwargs.get("parent_lookup_artifact")
-        try:
-            return ArtifactVersion.objects.get(
-                artifact=artifact_uuid, slug__iexact=slug
-            )
-        except ArtifactVersion.DoesNotExist:
-            raise ValidationError(f"Unknown version {slug}")
-
     def validate_parent(
         self, parent: Optional[ArtifactComment]
     ) -> Optional[ArtifactComment]:
@@ -840,6 +870,58 @@ class ArtifactCommentReviewSerializer(serializers.ModelSerializer):
         return ArtifactCommentSerializer(context=self.context).to_representation(
             instance
         )
+
+
+@extend_schema_serializer(exclude_fields=["artifact"])
+@strict_schema
+class ArtifactVerificationSerializer(ArtifactChildSerializer):
+    """
+    Describes whether a user was able to verify a version of an Artifact
+    """
+
+    class Meta:
+        model = ArtifactEvent
+        fields = ["artifact", "version", "verified", "user", "timestamp"]
+
+    version = serializers.CharField(source="artifact_version")
+    verified = serializers.BooleanField()
+    user = serializers.CharField(source="event_origin", read_only=True)
+
+    def validate(self, attrs: dict) -> dict:
+        if (
+            settings.ARTIFACT_VERIFICATION_REQUIRES_LAUNCH
+            and not ArtifactEvent.objects.filter(
+                artifact=attrs["artifact"],
+                event_type=ArtifactEvent.EventType.LAUNCH,
+                event_origin=get_requesting_user_urn(self),
+            ).exists()
+        ):
+            raise PermissionDenied(
+                "Only users who have launched an artifact can verify it"
+            )
+        return attrs
+
+    def create(self, validated_data: dict) -> ArtifactEvent:
+        validated_data["event_type"] = (
+            ArtifactEvent.EventType.VERIFY
+            if validated_data.pop("verified")
+            else ArtifactEvent.EventType.VERIFY_FAILED
+        )
+        validated_data["event_origin"] = get_requesting_user_urn(self)
+        event = super(ArtifactVerificationSerializer, self).create(validated_data)
+        LOG.info(
+            f"{event.event_type} by {event.event_origin} "
+            f"on {event.artifact_id} {event.artifact_version.slug}"
+        )
+        return event
+
+    def to_representation(self, instance: ArtifactEvent) -> dict[str, JSON]:
+        return {
+            "version": instance.artifact_version.slug,
+            "verified": instance.event_type == ArtifactEvent.EventType.VERIFY,
+            "user": instance.event_origin,
+            "timestamp": instance.timestamp.strftime(settings.DATETIME_FORMAT),
+        }
 
 
 @allow_force
