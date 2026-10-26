@@ -3,10 +3,11 @@ import random
 import tarfile
 import uuid
 from typing import IO
-from unittest import skipIf
+from unittest import mock, skipIf
 from urllib.parse import urlencode
 from uuid import uuid4
 
+import keystoneauth1.exceptions
 from django.conf import settings
 from django.test import TransactionTestCase, TestCase
 from requests import Response
@@ -16,6 +17,7 @@ from rest_framework.reverse import reverse
 from trovi.api.tests import APITest
 from trovi.common.tokens import JWT
 from trovi.models import ArtifactVersionMigration, Artifact
+from trovi.storage.backends.swift import SwiftBackend
 from trovi.storage.urls import StoreContents, RetrieveContents
 from util.test import (
     TEST_USER_URN,
@@ -26,6 +28,21 @@ from util.test import (
 
 
 class StorageTest(APITest):
+    @classmethod
+    def setUpClass(cls):
+        super(StorageTest, cls).setUpClass()
+        cls.swift = mock.Mock()
+        cls.swift.head.side_effect = keystoneauth1.exceptions.NotFound
+        cls.swift.get_endpoint.return_value = "https://swift.invalid/v1/AUTH_trovi"
+        swift = mock.patch.object(
+            SwiftBackend,
+            "keystone",
+            new_callable=mock.PropertyMock,
+            return_value=cls.swift,
+        )
+        swift.start()
+        cls.addClassCleanup(swift.stop)
+
     @staticmethod
     def get_test_data_gzip(n_bytes: int) -> IO:
         tar_buf = io.BytesIO()
@@ -104,6 +121,9 @@ class TestStoreContents(TestCase, StorageTest):
 
         content_id = urn.split(":")[-1]
         self.content_uuids.add(content_id)
+
+        data.seek(0)
+        self.assertEqual(self.swift.put.call_args.kwargs["data"], data.read())
 
     def test_store_contents_small(self):
         self.store_content_test(self.test_data_small)
