@@ -46,6 +46,7 @@ from trovi.api.serializers import (
     ArtifactCommentSerializer,
     ArtifactCommentEditSerializer,
     ArtifactCommentReviewSerializer,
+    ArtifactVerificationSerializer,
 )
 from trovi.common.authenticators import TroviTokenAuthentication
 from trovi.common.permissions import (
@@ -63,6 +64,7 @@ from trovi.common.permissions import (
     ArtifactCommentEditPermission,
     ArtifactCommentDestroyPermission,
     ParentArtifactCommentsEnabledPermission,
+    ParentArtifactNonAuthorPermission,
 )
 from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
@@ -145,6 +147,7 @@ class ArtifactViewSet(
         "unique_cell_execution_count",
         "recent_access_count",
         "recent_unique_access_count",
+        "verified_count",
     ]
     authentication_classes = [TroviTokenAuthentication]
     # Individual visibility checks are handled by the visibility filter
@@ -189,6 +192,16 @@ class ArtifactViewSet(
             .order_by()
             .values("artifact")
         )
+        verified = (
+            ArtifactEvent.latest_verifications()
+            .filter(event_type=ArtifactEvent.EventType.VERIFY)
+            .order_by()
+        )
+        verify_failed = (
+            ArtifactEvent.latest_verifications()
+            .filter(event_type=ArtifactEvent.EventType.VERIFY_FAILED)
+            .order_by()
+        )
         return (
             super()
             .get_queryset()
@@ -219,6 +232,13 @@ class ArtifactViewSet(
                             ),
                         ),
                     ).prefetch_related("links", "setupSteps"),
+                ),
+                # Prefetched rather than annotated above, where a subquery would
+                # end up in the GROUP BY and run once per joined event row
+                models.Prefetch(
+                    "versions__events",
+                    queryset=ArtifactEvent.latest_verifications(),
+                    to_attr="latest_verification_events",
                 ),
                 "linked_artifacts",
                 "linked_from",
@@ -258,6 +278,24 @@ class ArtifactViewSet(
                         recent_launches.annotate(
                             c=Count("event_origin", distinct=True)
                         ).values("c")
+                    ),
+                    0,
+                ),
+                verified_count=Coalesce(
+                    Subquery(
+                        verified.filter(artifact=OuterRef("pk"))
+                        .values("artifact")
+                        .annotate(c=Count("event_origin", distinct=True))
+                        .values("c")
+                    ),
+                    0,
+                ),
+                verify_failed_count=Coalesce(
+                    Subquery(
+                        verify_failed.filter(artifact=OuterRef("pk"))
+                        .values("artifact")
+                        .annotate(c=Count("event_origin", distinct=True))
+                        .values("c")
                     ),
                     0,
                 ),
@@ -463,6 +501,44 @@ class ArtifactCommentViewSet(
     )
     def review(self, request: Request, *args, **kwargs) -> Response:
         return self.update(request, *args, **kwargs)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[sharing_key_parameter],
+        description="List each user's latest verification of each Version "
+        "of an Artifact.",
+    ),
+    create=extend_schema(
+        description="Record whether you were able to verify a Version of an "
+        "Artifact. Submitting again replaces your previous answer for that Version.",
+    ),
+)
+@method_decorator(transaction.atomic, name="create")
+class ArtifactVerificationViewSet(
+    NestedViewSetMixin,
+    TroviAPIViewSet,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+):
+    """
+    Implements all endpoints at /artifacts/<uuid>/verifications
+    """
+
+    queryset = (
+        ArtifactEvent.latest_verifications()
+        .select_related("artifact_version")
+        .order_by("pk")
+    )
+    parser_classes = [JSONParser]
+    serializer_class = ArtifactVerificationSerializer
+    authentication_classes = [TroviTokenAuthentication]
+    permission_classes = [ParentArtifactViewPermission]
+    list_permission_classes = [ArtifactReadScopePermission]
+    create_permission_classes = [
+        ArtifactWriteScopePermission,
+        ParentArtifactNonAuthorPermission,
+    ]
 
 
 @extend_schema_view(
