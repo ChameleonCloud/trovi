@@ -1,12 +1,11 @@
 import logging
 import re
-from typing import Optional, Any
+from typing import Optional, Any, Union
 from urllib.parse import urlparse
 
 import cmarkgfm as commonmark
 from django.conf import settings
 from django.db import transaction, IntegrityError
-from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
@@ -32,6 +31,13 @@ from trovi.common.serializers import (
 )
 from trovi.common.tokens import JWT
 from trovi.fields import URNField
+from trovi.metrics import (
+    ARTIFACT_METRICS,
+    VERSION_METRICS,
+    VERIFICATIONS,
+    Metric,
+    refresh_metrics,
+)
 from trovi.models import (
     Artifact,
     ArtifactLink,
@@ -361,6 +367,16 @@ class ArtifactVersionContentsSerializer(serializers.Serializer):
         return {"urn": instance.contents_urn}
 
 
+def metric_fields(metrics: tuple[Metric, ...]) -> dict[str, serializers.Field]:
+    return {m.name: serializers.IntegerField(read_only=True) for m in metrics}
+
+
+def stored_metrics(
+    instance: Union[Artifact, ArtifactVersion], metrics: tuple[Metric, ...]
+) -> dict[str, int]:
+    return {m.name: getattr(instance.metrics, m.name) for m in metrics}
+
+
 @extend_schema_serializer(exclude_fields=["origin"])
 @allow_force
 @strict_schema
@@ -373,16 +389,15 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
     access_count = serializers.IntegerField(
         min_value=1, max_value=1000, allow_null=False, required=False
     )
-    unique_access_count = serializers.IntegerField(read_only=True)
     # Translates to a cell execution event
     cell_execution_count = serializers.IntegerField(
         min_value=1, max_value=50000, allow_null=False, required=False, write_only=True
     )
-    unique_cell_execution_count = serializers.IntegerField(read_only=True)
-    verified_count = serializers.IntegerField(read_only=True)
-    verify_failed_count = serializers.IntegerField(read_only=True)
     # The Trovi token of the user who initiated the event(s)
     origin = URNSerializerField(write_only=True, required=True)
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        return {**metric_fields(VERSION_METRICS), **super().get_fields()}
 
     def update(
         self, instance: ArtifactVersion, validated_data: dict[str, Any]
@@ -413,15 +428,20 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
 
         LOG.info(f"Recording {count} {event_type} event(s) from {origin}")
 
-        # We don't call bulk_create here, because it doesn't run any save signals
-        # even though it persists the models to the database
-        with transaction.atomic():
-            for _ in range(count):
-                instance.events.create(
+        # bulk_create skips ArtifactEvent.set_artifact, which fills this from the version
+        # artifact_id=instance.artifact_id,
+        ArtifactEvent.objects.bulk_create(
+            (
+                ArtifactEvent(
                     event_type=event_type,
                     event_origin=origin,
                     artifact_version=instance,
                 )
+                for _ in range(count)
+            ),
+            batch_size=1000,
+        )
+        refresh_metrics(instance.artifact_id, instance.pk, [event_type])
 
         return instance
 
@@ -429,13 +449,7 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
         raise NotImplementedError("Initial metrics are set automatically")
 
     def to_representation(self, instance: ArtifactVersion) -> dict[str, JSON]:
-        return {
-            "access_count": instance.access_count,
-            "unique_access_count": instance.unique_access_count,
-            "unique_cell_execution_count": instance.unique_cell_execution_count,
-            "verified_count": instance.verified_count,
-            "verify_failed_count": instance.verify_failed_count,
-        }
+        return stored_metrics(instance, VERSION_METRICS)
 
     def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
         """
@@ -466,85 +480,15 @@ class ArtifactMetricsSerializer(serializers.Serializer):
     Describes an artifact level metrics, which are related to events
     """
 
-    access_count = serializers.IntegerField(read_only=True)
-    unique_access_count = serializers.IntegerField(read_only=True)
-    unique_cell_execution_count = serializers.IntegerField(read_only=True)
-    recent_access_count = serializers.IntegerField(read_only=True)
-    recent_unique_access_count = serializers.IntegerField(read_only=True)
     recent_window_days = serializers.IntegerField(read_only=True)
-    verified_count = serializers.IntegerField(read_only=True)
-    verify_failed_count = serializers.IntegerField(read_only=True)
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        return {**metric_fields(ARTIFACT_METRICS), **super().get_fields()}
 
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
-        if hasattr(instance, "unique_access_count"):
-            unique_access = instance.unique_access_count
-        else:
-            unique_access = (
-                ArtifactEvent.objects.filter(
-                    artifact=instance,
-                    event_type=ArtifactEvent.EventType.LAUNCH.value,
-                )
-                .values("event_origin")
-                .distinct()
-                .count()
-            )
-        if hasattr(instance, "unique_cell_execution_count"):
-            unique_cell = instance.unique_cell_execution_count
-        else:
-            unique_cell = (
-                ArtifactEvent.objects.filter(
-                    artifact=instance,
-                    event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
-                )
-                .values("event_origin")
-                .distinct()
-                .count()
-            )
-        if hasattr(instance, "recent_access_count"):
-            recent_access = instance.recent_access_count
-            recent_unique_access = instance.recent_unique_access_count
-        else:
-            recent = ArtifactEvent.objects.filter(
-                artifact=instance,
-                event_type=ArtifactEvent.EventType.LAUNCH.value,
-                timestamp__gte=timezone.now()
-                - timezone.timedelta(days=settings.ARTIFACT_RECENT_METRICS_DAYS),
-            ).aggregate(
-                access=Count("pk"), unique_access=Count("event_origin", distinct=True)
-            )
-            recent_access = recent["access"]
-            recent_unique_access = recent["unique_access"]
-        if hasattr(instance, "verified_count"):
-            verified = instance.verified_count
-            verify_failed = instance.verify_failed_count
-        else:
-            verifications = (
-                ArtifactEvent.latest_verifications()
-                .filter(artifact=instance)
-                .aggregate(
-                    verified=Count(
-                        "event_origin",
-                        distinct=True,
-                        filter=Q(event_type=ArtifactEvent.EventType.VERIFY),
-                    ),
-                    verify_failed=Count(
-                        "event_origin",
-                        distinct=True,
-                        filter=Q(event_type=ArtifactEvent.EventType.VERIFY_FAILED),
-                    ),
-                )
-            )
-            verified = verifications["verified"]
-            verify_failed = verifications["verify_failed"]
         return {
-            "access_count": instance.access_count,
-            "unique_access_count": unique_access,
-            "unique_cell_execution_count": unique_cell,
-            "recent_access_count": recent_access,
-            "recent_unique_access_count": recent_unique_access,
+            **stored_metrics(instance, ARTIFACT_METRICS),
             "recent_window_days": settings.ARTIFACT_RECENT_METRICS_DAYS,
-            "verified_count": verified,
-            "verify_failed_count": verify_failed,
         }
 
     def create(self, validated_data):
@@ -909,6 +853,7 @@ class ArtifactVerificationSerializer(ArtifactChildSerializer):
         )
         validated_data["event_origin"] = get_requesting_user_urn(self)
         event = super(ArtifactVerificationSerializer, self).create(validated_data)
+        refresh_metrics(event.artifact_id, event.artifact_version_id, VERIFICATIONS)
         LOG.info(
             f"{event.event_type} by {event.event_origin} "
             f"on {event.artifact_id} {event.artifact_version.slug}"
@@ -1145,6 +1090,8 @@ class ArtifactSerializer(serializers.ModelSerializer):
             tags = [t["tag"] for t in tags]
         reproducibility = validated_data.pop("reproducibility", None)
         owner_urn = validated_data.pop("owner_urn", None)
+        # Forced updates pass read-only fields through, and metrics can't be set
+        validated_data.pop("metrics", None)
 
         with transaction.atomic():
             if authors is not None:
