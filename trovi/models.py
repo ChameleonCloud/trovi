@@ -7,9 +7,9 @@ from django.conf import settings
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import F, Max
+from django.db.models import Max
 from django.db.models.functions import Lower
-from django.db.models.signals import pre_save, post_save, post_delete
+from django.db.models.signals import pre_save, post_save
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
@@ -80,7 +80,8 @@ class Artifact(models.Model):
     )
     repro_access_hours = models.IntegerField(null=True, blank=True)
 
-    # Hidden field which tracks how many times this artifact has been launched
+    # No longer updated. Launches it counted which aren't in the event log
+    # are kept in ArtifactMetrics.access_count_baseline.
     access_count = models.PositiveIntegerField(default=0)
 
     # Sharing metadata
@@ -224,78 +225,6 @@ class ArtifactVersion(models.Model):
 
     slug = models.SlugField(max_length=settings.SLUG_MAX_CHARS, editable=False)
 
-    @property
-    def access_count(self) -> int:
-        """
-        Shortcut for determining how many times an artifact version has been launched
-        :return: The number of LAUNCH events for this artifact version
-        """
-        if hasattr(self, "access_count_annotation"):
-            return self.access_count_annotation
-        return self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH).count()
-
-    @property
-    def unique_access_count(self) -> int:
-        """
-        Shortcut for determining how many unique origins an artifact version
-        has been launched by
-        :return: The number of unique urns for LAUNCH events for this artifact
-        version
-        """
-        if hasattr(self, "unique_access_count_annotation"):
-            return self.unique_access_count_annotation
-        return (
-            self.events.filter(event_type=ArtifactEvent.EventType.LAUNCH)
-            .values("event_origin")
-            .distinct()
-            .count()
-        )
-
-    @property
-    def unique_cell_execution_count(self) -> int:
-        """
-        Shortcut for determining how many unique origins an artifact version
-        has had cell executions
-        :return: The number of unique urns for CELL_EXECUTION events for this artifact
-        version
-        """
-        if hasattr(self, "unique_cell_execution_count_annotation"):
-            return self.unique_cell_execution_count_annotation
-        return (
-            self.events.filter(event_type=ArtifactEvent.EventType.CELL_EXECUTION)
-            .values("event_origin")
-            .distinct()
-            .count()
-        )
-
-    @property
-    def verified_count(self) -> int:
-        """
-        :return: The number of users whose latest verification of this artifact
-        version succeeded
-        """
-        return self.count_latest_verifications(ArtifactEvent.EventType.VERIFY)
-
-    @property
-    def verify_failed_count(self) -> int:
-        """
-        :return: The number of users whose latest verification of this artifact
-        version failed
-        """
-        return self.count_latest_verifications(ArtifactEvent.EventType.VERIFY_FAILED)
-
-    def count_latest_verifications(self, event_type: str) -> int:
-        if hasattr(self, "latest_verification_events"):
-            return sum(
-                event.event_type == event_type
-                for event in self.latest_verification_events
-            )
-        return (
-            ArtifactEvent.latest_verifications()
-            .filter(artifact_version=self, event_type=event_type)
-            .count()
-        )
-
     def has_doi(self) -> bool:
         """
         Determines if this version has a DOI (Digital Object Identifier), in which
@@ -356,22 +285,6 @@ class ArtifactVersion(models.Model):
                     time_stamp += f".{versions_today}"
                 instance.slug = time_stamp
                 instance.save(update_fields=["slug"])
-
-    @staticmethod
-    def delete_access_count(instance: "ArtifactVersion", **_):
-        """
-        Updates the parent artifact's access_count such that it no longer counts
-        accesses of the deleted version
-        """
-        try:
-            with transaction.atomic():
-                if instance.artifact:
-                    instance.artifact.access_count = (
-                        F("access_count") - instance.access_count
-                    )
-                    instance.artifact.save(update_fields=["access_count"])
-        except Artifact.DoesNotExist:
-            pass
 
     def save(self, *args, **kwargs) -> "ArtifactVersion":
         # For forced updates, the datetime is received as a string.
@@ -479,10 +392,11 @@ class ArtifactEvent(models.Model):
             instance.artifact_id = instance.artifact_version.artifact_id
 
     @staticmethod
-    def latest_verifications() -> models.QuerySet:
+    def latest_verifications(**filters) -> models.QuerySet:
         """
         Each user's most recent verification event on each artifact version.
         Users may change their answer, and only their latest one counts.
+        Filters narrow the events considered before the latest are chosen.
         """
         # Not correlated with the outer query, so MariaDB materializes it once
         # per query rather than re-running it for every row
@@ -493,6 +407,7 @@ class ArtifactEvent(models.Model):
                     ArtifactEvent.EventType.VERIFY_FAILED,
                 ],
                 artifact_version__isnull=False,
+                **filters,
             )
             .order_by()
             .values("artifact_version", "event_origin")
@@ -500,23 +415,6 @@ class ArtifactEvent(models.Model):
             .values("newest")
         )
         return ArtifactEvent.objects.filter(pk__in=newest)
-
-    @staticmethod
-    def incr_access_count(instance: "ArtifactEvent", created: bool = False, **_):
-        if created:
-            try:
-                with transaction.atomic():
-                    if (
-                        not instance.artifact_version
-                        or not instance.artifact_version.artifact
-                    ):
-                        pass
-                    if instance.event_type == ArtifactEvent.EventType.LAUNCH:
-                        artifact = instance.artifact_version.artifact
-                        artifact.access_count = F("access_count") + 1
-                        artifact.save(update_fields=["access_count"])
-            except (Artifact.DoesNotExist, ArtifactVersion.DoesNotExist):
-                pass
 
     class Meta:
         indexes = [
@@ -529,6 +427,47 @@ class ArtifactEvent(models.Model):
                 name="ae_artifact_type_origin_ts_idx",
             ),
         ]
+
+
+class ArtifactMetrics(models.Model):
+    """An artifact's metrics, precomputed from its events by trovi.metrics"""
+
+    artifact = models.OneToOneField(
+        Artifact, models.CASCADE, primary_key=True, related_name="metrics"
+    )
+    access_count = models.PositiveIntegerField(default=0)
+    unique_access_count = models.PositiveIntegerField(default=0)
+    unique_cell_execution_count = models.PositiveIntegerField(default=0)
+    recent_access_count = models.PositiveIntegerField(default=0)
+    recent_unique_access_count = models.PositiveIntegerField(default=0)
+    verified_count = models.PositiveIntegerField(default=0)
+    verify_failed_count = models.PositiveIntegerField(default=0)
+    # Launches whose events were deleted along with their version, back when
+    # deleting a version deleted its events. Included in access_count.
+    access_count_baseline = models.PositiveIntegerField(default=0)
+
+    @staticmethod
+    def create_for(instance: Artifact, created: bool = False, **_):
+        if created:
+            ArtifactMetrics.objects.create(artifact=instance)
+
+
+class ArtifactVersionMetrics(models.Model):
+    """An artifact version's metrics, precomputed from its events by trovi.metrics"""
+
+    artifact_version = models.OneToOneField(
+        ArtifactVersion, models.CASCADE, primary_key=True, related_name="metrics"
+    )
+    access_count = models.PositiveIntegerField(default=0)
+    unique_access_count = models.PositiveIntegerField(default=0)
+    unique_cell_execution_count = models.PositiveIntegerField(default=0)
+    verified_count = models.PositiveIntegerField(default=0)
+    verify_failed_count = models.PositiveIntegerField(default=0)
+
+    @staticmethod
+    def create_for(instance: ArtifactVersion, created: bool = False, **_):
+        if created:
+            ArtifactVersionMetrics.objects.create(artifact_version=instance)
 
 
 class ArtifactTag(models.Model):
@@ -800,5 +739,5 @@ class UserProfile(models.Model):
 # Signals
 pre_save.connect(ArtifactEvent.set_artifact, sender=ArtifactEvent)
 post_save.connect(ArtifactVersion.generate_slug, sender=ArtifactVersion)
-post_save.connect(ArtifactEvent.incr_access_count, sender=ArtifactEvent)
-post_delete.connect(ArtifactVersion.delete_access_count, sender=ArtifactVersion)
+post_save.connect(ArtifactMetrics.create_for, sender=Artifact)
+post_save.connect(ArtifactVersionMetrics.create_for, sender=ArtifactVersion)

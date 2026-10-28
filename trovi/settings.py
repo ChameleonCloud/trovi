@@ -17,6 +17,8 @@ from pathlib import Path
 import sys
 from urllib.parse import urlparse
 
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -438,3 +440,8 @@ CELERY_ACCEPT_CONTENT = ["application/json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+CELERY_BEAT_SCHEDULE = {
+    # Moves the recent metrics window forward, and repairs drift from edits
+    # made outside the API, such as in the admin
+    "refresh-metrics": {"task": "RefreshMetrics", "schedule": crontab(minute=0)},
+}

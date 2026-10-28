@@ -2,15 +2,20 @@ import copy
 import json
 import os
 import random
+from importlib import import_module
+from io import StringIO
 from unittest import skipIf
 from urllib.parse import urlencode
 import uuid
 
+from django.apps import apps
 from django.conf import settings
 from django.core import mail
-from django.db import models
+from django.core.management import call_command
+from django.db import connection, models
 from django.http import JsonResponse
 from django.test import TestCase, override_settings, SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
@@ -43,13 +48,21 @@ from trovi.api.urls import (
     CreateArtifactVerification,
 )
 from trovi.auth.providers import get_client_by_name
-from trovi.celery.tasks import send_comment_notification
+from trovi.celery.tasks import refresh_all_metrics, send_comment_notification
 from trovi.common.tokens import TokenTypes, JWT
+from trovi.metrics import (
+    ARTIFACT_METRICS,
+    VERSION_METRICS,
+    VERIFICATIONS,
+    refresh_metrics,
+)
 from trovi.models import (
     Artifact,
     ArtifactEvent,
+    ArtifactMetrics,
     ArtifactTag,
     ArtifactVersion,
+    ArtifactVersionMetrics,
     ArtifactAuthor,
     ArtifactVideo,
     ArtifactPublication,
@@ -369,10 +382,11 @@ class TestListArtifacts(TestCase, APITest):
                 # the same order. As such, we check against the sorted access_counts
                 # themselves
                 base = list(
-                    a.access_count for a in artifact_models.order_by("-access_count")
+                    a.metrics.access_count
+                    for a in artifact_models.order_by("-metrics__access_count")
                 )
                 test = [
-                    Artifact.objects.get(uuid=a["uuid"]).access_count
+                    Artifact.objects.get(uuid=a["uuid"]).metrics.access_count
                     for a in body["artifacts"]
                 ]
             else:
@@ -492,7 +506,6 @@ class TestArtifactFiltering(TestCase, APITest):
             short_description="An artifact for testing filters.",
             owner_urn=self.owner_1_urn,
             visibility=Artifact.Visibility.PUBLIC,
-            access_count=10,
         )
         self.artifact_1.authors.create(full_name="Dr. Jane Doe")
         self.artifact_1.tags.create(tag="Python")
@@ -504,7 +517,6 @@ class TestArtifactFiltering(TestCase, APITest):
             short_description="A tutorial for testing filters.",
             owner_urn=self.owner_2_urn,
             visibility=Artifact.Visibility.PUBLIC,
-            access_count=100,
         )
         self.artifact_2.authors.create(full_name="Dr. John Smith")
         self.artifact_2.tags.add(ArtifactTag.objects.get(tag="Jupyter"))
@@ -514,11 +526,19 @@ class TestArtifactFiltering(TestCase, APITest):
             short_description="An artifact for testing boolean logic.",
             owner_urn=self.owner_1_urn,
             visibility=Artifact.Visibility.PUBLIC,
-            access_count=50,
         )
         self.artifact_3.authors.create(full_name="Dr. Jane Doe")
         self.artifact_3.authors.create(full_name="Dr. John Smith")
         self.artifact_3.tags.add(ArtifactTag.objects.get(tag="Python"))
+
+        for artifact, access_count in (
+            (self.artifact_1, 10),
+            (self.artifact_2, 100),
+            (self.artifact_3, 50),
+        ):
+            ArtifactMetrics.objects.filter(pk=artifact.pk).update(
+                access_count=access_count
+            )
 
     def get_uuids_for_query(self, params: dict) -> set[str]:
         """Helper to fetch artifact UUIDs for a given query."""
@@ -644,6 +664,7 @@ class TestRecentArtifactMetrics(TestCase, APITest):
         self.stale = self.create_artifact_with_events(
             [(launch, user, days + 1) for user in ("e", "f", "g", "h")]
         )
+        refresh_metrics()
 
     def create_artifact_with_events(
         self, events: list[tuple[ArtifactEvent.EventType, str, int]]
@@ -690,6 +711,7 @@ class TestRecentArtifactMetrics(TestCase, APITest):
 
     def test_recent_metrics_window(self):
         with self.settings(ARTIFACT_RECENT_METRICS_DAYS=30):
+            refresh_metrics()
             response = self.client.get(self.get_artifact_path(str(self.recent.uuid)))
         metrics = response.json()["metrics"]
         self.assertEqual(metrics["recent_window_days"], 30)
@@ -703,6 +725,31 @@ class TestRecentArtifactMetrics(TestCase, APITest):
             self.assertLess(uuids.index(recent), uuids.index(stale), sort_by)
         uuids = self.get_sorted_uuids("unique_access_count")
         self.assertLess(uuids.index(stale), uuids.index(recent))
+
+
+class TestStoredArtifactMetrics(TestCase, APITest):
+    def test_reads_skip_events(self):
+        for path in (
+            self.list_artifact_path(),
+            self.get_artifact_path(str(artifact_don_quixote.uuid)),
+        ):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(path)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertFalse(
+                [q for q in queries if ArtifactEvent._meta.db_table in q["sql"]]
+            )
+
+    def test_multi_key_sort(self):
+        response = self.client.get(
+            f"{self.list_artifact_path()}&sort_by=unique_access_count,access_count"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        values = [
+            (a["metrics"]["unique_access_count"], a["metrics"]["access_count"])
+            for a in response.json()["artifacts"]
+        ]
+        self.assertListEqual(values, sorted(values, reverse=True))
 
 
 class TestGetArtifact(TestCase, APITest):
@@ -1248,6 +1295,19 @@ class TestUpdateArtifact(TestCase, APITest):
     @override_settings(ARTIFACT_ALLOW_ADMIN_FORCED_WRITES=True)
     def test_update_artifact_force(self):
         self.test_update_artifact(forced=True)
+
+    def test_update_artifact_force_metrics(self):
+        response = self.client.patch(
+            self.update_artifact_path(artifact_don_quixote.uuid) + "&force",
+            content_type="application/json",
+            data={
+                "patch": [
+                    {"op": "replace", "path": "/metrics/access_count", "value": 1605}
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertNotEqual(response.json()["metrics"]["access_count"], 1605)
 
     def disable_comments(self) -> Response:
         return self.client.put(
@@ -1900,6 +1960,28 @@ class TestDeleteArtifactVersion(TestCase, APITest):
             after["unique_cell_execution_count"],
         )
 
+    def test_delete_version_retracts_verifications(self):
+        version_don_quixote_1.events.create(
+            event_type=ArtifactEvent.EventType.VERIFY,
+            event_origin="urn:trovi:user:chameleon:sancho@rocinante.io",
+        )
+        refresh_metrics()
+        metrics = ArtifactMetrics.objects.get(pk=artifact_don_quixote.pk)
+        self.assertEqual(metrics.verified_count, 1)
+
+        response = self.client.delete(
+            self.delete_artifact_version_path(
+                str(artifact_don_quixote.uuid), version_don_quixote_1.slug
+            )
+        )
+        self.assertEqual(
+            response.status_code, status.HTTP_204_NO_CONTENT, msg=response.content
+        )
+
+        metrics.refresh_from_db()
+        self.assertEqual(metrics.verified_count, 0)
+        self.assertEqual(refresh_metrics(), 0)
+
 
 class TestDeleteArtifact(TestCase, APITest):
     def test_endpoint_works(self):
@@ -2054,8 +2136,12 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
     def do_access_count_test(self, amount: int = None):
         version_don_quixote_1.refresh_from_db()
         artifact_don_quixote.refresh_from_db()
-        target_version_access_count = version_don_quixote_1.access_count + (amount or 1)
-        target_artifact_access_count = artifact_don_quixote.access_count + (amount or 1)
+        target_version_access_count = version_don_quixote_1.metrics.access_count + (
+            amount or 1
+        )
+        target_artifact_access_count = artifact_don_quixote.metrics.access_count + (
+            amount or 1
+        )
         base_response = self.client.put(
             self.incr_artifact_version_metrics_path(
                 str(artifact_don_quixote.uuid),
@@ -2071,19 +2157,21 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
         artifact_don_quixote.refresh_from_db()
         self.assertEqual(
             target_version_access_count,
-            version_don_quixote_1.access_count,
+            version_don_quixote_1.metrics.access_count,
             msg=f"{amount=}",
         )
         self.assertEqual(
             target_artifact_access_count,
-            artifact_don_quixote.access_count,
+            artifact_don_quixote.metrics.access_count,
             msg=f"{amount=}",
         )
 
     def do_unique_access_count_test(self, amount: int = None):
         version_don_quixote_1.refresh_from_db()
         artifact_don_quixote.refresh_from_db()
-        target_version_unique_access_count = version_don_quixote_1.unique_access_count
+        target_version_unique_access_count = (
+            version_don_quixote_1.metrics.unique_access_count
+        )
         base_response = self.client.put(
             self.incr_artifact_version_metrics_path(
                 str(artifact_don_quixote.uuid),
@@ -2098,7 +2186,7 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
         version_don_quixote_1.refresh_from_db()
         self.assertEqual(
             target_version_unique_access_count,
-            version_don_quixote_1.unique_access_count,
+            version_don_quixote_1.metrics.unique_access_count,
             msg=f"{amount=}",
         )
 
@@ -2106,7 +2194,7 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
         version_don_quixote_1.refresh_from_db()
         artifact_don_quixote.refresh_from_db()
         target_version_cell_execution_count = (
-            version_don_quixote_1.unique_cell_execution_count + (amount or 1)
+            version_don_quixote_1.metrics.unique_cell_execution_count + (amount or 1)
         )
         base_response = self.client.put(
             self.incr_artifact_version_metrics_path(
@@ -2122,7 +2210,7 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
         version_don_quixote_1.refresh_from_db()
         self.assertEqual(
             target_version_cell_execution_count,
-            version_don_quixote_1.unique_cell_execution_count,
+            version_don_quixote_1.metrics.unique_cell_execution_count,
             msg=f"{amount=}",
         )
 
@@ -2134,6 +2222,37 @@ class TestIncrArtifactVersionMetrics(TestCase, APITest):
     def test_increment_cell_execution_count(self):
         self.do_unique_cell_execution_count_test()
         self.do_access_count_test(amount=5)
+
+    def test_increment_refreshes_metrics(self):
+        for metric in ("access_count", "cell_execution_count"):
+            response = self.client.put(
+                self.incr_artifact_version_metrics_path(
+                    str(artifact_don_quixote.uuid),
+                    version_don_quixote_1.slug,
+                    metric,
+                    amount=2,
+                )
+            )
+            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+            self.assertEqual(refresh_metrics(), 0, metric)
+
+    def test_increment_sets_artifact(self):
+        response = self.client.put(
+            self.incr_artifact_version_metrics_path(
+                str(artifact_don_quixote.uuid),
+                version_don_quixote_1.slug,
+                "cell_execution_count",
+                amount=1000,
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(
+            version_don_quixote_1.events.filter(
+                artifact=artifact_don_quixote,
+                event_type=ArtifactEvent.EventType.CELL_EXECUTION,
+            ).count(),
+            1000,
+        )
 
     def test_increment_metrics_no_scope(self):
         metrics_path_no_scope = self.authenticate_url(
@@ -2907,6 +3026,25 @@ class TestCreateArtifactVerification(TestCase, APITest):
                 ).exists()
             )
 
+    @override_settings(ARTIFACT_VERIFICATION_REQUIRES_LAUNCH=False)
+    def test_create_verification_updates_metrics(self):
+        artifact_don_quixote.roles.all().delete()
+        for verified, counts in ((True, (1, 0)), (False, (0, 1))):
+            response = self.verify(
+                {"version": version_don_quixote_1.slug, "verified": verified}
+            )
+            self.assertEqual(
+                response.status_code, status.HTTP_201_CREATED, response.content
+            )
+            for metrics in (
+                ArtifactMetrics.objects.get(pk=artifact_don_quixote.pk),
+                ArtifactVersionMetrics.objects.get(pk=version_don_quixote_1.pk),
+            ):
+                self.assertEqual(
+                    (metrics.verified_count, metrics.verify_failed_count), counts
+                )
+        self.assertEqual(refresh_metrics(), 0)
+
     def test_create_verification_by_author(self):
         response = self.verify(
             {"version": version_don_quixote_1.slug, "verified": True}
@@ -3026,6 +3164,7 @@ class TestArtifactVerificationMetrics(TestCase, APITest):
             version.events.create(
                 event_type=event_type, event_origin=f"urn:trovi:user:chameleon:{user}"
             )
+        refresh_metrics()
         self.expected_versions = {self.v1.slug: (1, 1), self.v2.slug: (2, 0)}
 
     def test_verification_metrics(self):
@@ -3053,7 +3192,7 @@ class TestArtifactVerificationMetrics(TestCase, APITest):
         self.assertEqual(metrics["verify_failed_count"], 1)
         self.assertDictEqual(
             {
-                v.slug: (v.verified_count, v.verify_failed_count)
+                v.slug: (v.metrics.verified_count, v.metrics.verify_failed_count)
                 for v in ArtifactVersion.objects.filter(artifact=self.artifact)
             },
             self.expected_versions,
@@ -3068,3 +3207,131 @@ class TestArtifactVerificationMetrics(TestCase, APITest):
         values = [a["metrics"]["verified_count"] for a in artifacts]
         self.assertListEqual(values, sorted(values, reverse=True))
         self.assertEqual(artifacts[0]["uuid"], str(self.artifact.uuid))
+
+
+class TestRefreshMetrics(TestCase):
+    @staticmethod
+    def count_in_python(events: list[ArtifactEvent], recent: bool) -> dict[str, int]:
+        """Counts each metric from a list of events, without the database"""
+        launch = ArtifactEvent.EventType.LAUNCH
+        cell = ArtifactEvent.EventType.CELL_EXECUTION
+        latest = {}
+        for event in sorted(events, key=lambda e: e.pk):
+            if event.event_type in VERIFICATIONS and event.artifact_version_id:
+                latest[event.artifact_version_id, event.event_origin] = event.event_type
+
+        def users(origins) -> int:
+            return len(set(origins) - {None})
+
+        counts = {
+            "access_count": sum(e.event_type == launch for e in events),
+            "unique_access_count": users(
+                e.event_origin for e in events if e.event_type == launch
+            ),
+            "unique_cell_execution_count": users(
+                e.event_origin for e in events if e.event_type == cell
+            ),
+            "verified_count": users(
+                user
+                for (_, user), event_type in latest.items()
+                if event_type == ArtifactEvent.EventType.VERIFY
+            ),
+            "verify_failed_count": users(
+                user
+                for (_, user), event_type in latest.items()
+                if event_type == ArtifactEvent.EventType.VERIFY_FAILED
+            ),
+        }
+        if recent:
+            since = timezone.now() - timezone.timedelta(
+                days=settings.ARTIFACT_RECENT_METRICS_DAYS
+            )
+            launches = [
+                e for e in events if e.event_type == launch and e.timestamp >= since
+            ]
+            counts["recent_access_count"] = len(launches)
+            counts["recent_unique_access_count"] = users(
+                e.event_origin for e in launches
+            )
+        return counts
+
+    def test_refresh_matches_events(self):
+        ArtifactMetrics.objects.update(**{m.name: 0 for m in ARTIFACT_METRICS})
+        ArtifactVersionMetrics.objects.update(**{m.name: 0 for m in VERSION_METRICS})
+        self.assertGreater(refresh_metrics(), 0)
+        for artifact in Artifact.objects.prefetch_related(
+            "events", "versions__events", "versions__metrics"
+        ).select_related("metrics"):
+            self.assertEqual(
+                {m.name: getattr(artifact.metrics, m.name) for m in ARTIFACT_METRICS},
+                self.count_in_python(list(artifact.events.all()), recent=True),
+                artifact.uuid,
+            )
+            for version in artifact.versions.all():
+                self.assertEqual(
+                    {m.name: getattr(version.metrics, m.name) for m in VERSION_METRICS},
+                    self.count_in_python(list(version.events.all()), recent=False),
+                    version.slug,
+                )
+        self.assertEqual(refresh_metrics(), 0)
+
+    def test_scoped_refresh(self):
+        version = ArtifactVersion.objects.filter(
+            events__event_type=ArtifactEvent.EventType.LAUNCH
+        ).first()
+        ArtifactMetrics.objects.filter(pk=version.artifact_id).update(
+            access_count=99, verified_count=99
+        )
+        ArtifactVersionMetrics.objects.filter(pk=version.pk).update(access_count=99)
+        launch = ArtifactEvent.EventType.LAUNCH
+        self.assertEqual(refresh_metrics(version.artifact_id, version.pk, [launch]), 2)
+        self.assertEqual(
+            ArtifactMetrics.objects.get(pk=version.artifact_id).verified_count, 99
+        )
+        self.assertEqual(refresh_metrics(version.artifact_id), 1)
+        self.assertEqual(refresh_metrics(), 0)
+
+    def test_refresh_keeps_baseline(self):
+        ArtifactMetrics.objects.filter(pk=artifact_don_quixote.pk).update(
+            access_count_baseline=5
+        )
+        self.assertEqual(refresh_metrics(), 1)
+        self.assertEqual(refresh_metrics(), 0)
+        metrics = ArtifactMetrics.objects.get(pk=artifact_don_quixote.pk)
+        self.assertEqual((metrics.access_count, metrics.access_count_baseline), (8, 5))
+
+    def test_refresh_task(self):
+        ArtifactMetrics.objects.filter(pk=artifact_don_quixote.pk).update(
+            access_count=99
+        )
+        refresh_all_metrics()
+        self.assertEqual(
+            ArtifactMetrics.objects.get(pk=artifact_don_quixote.pk).access_count, 3
+        )
+
+    def test_refresh_command(self):
+        out = StringIO()
+        call_command("refresh_metrics", stdout=out)
+        self.assertIn(" 0 row(s) changed", out.getvalue())
+
+    def test_seed_migration(self):
+        seed_metrics = import_module(
+            "trovi.migrations.0029_artifact_metrics"
+        ).seed_metrics
+        ArtifactMetrics.objects.all().delete()
+        ArtifactVersionMetrics.objects.all().delete()
+        # Don Quixote has 3 launch events, so 7 were lost with deleted versions
+        Artifact.objects.filter(pk=artifact_don_quixote.pk).update(access_count=10)
+        undercounted = Artifact.objects.filter(
+            events__event_type=ArtifactEvent.EventType.LAUNCH
+        ).exclude(pk=artifact_don_quixote.pk)[0]
+        Artifact.objects.filter(pk=undercounted.pk).update(access_count=0)
+
+        seed_metrics(apps, None)
+
+        metrics = ArtifactMetrics.objects.get(pk=artifact_don_quixote.pk)
+        self.assertEqual((metrics.access_count, metrics.access_count_baseline), (10, 7))
+        metrics = ArtifactMetrics.objects.get(pk=undercounted.pk)
+        self.assertGreater(metrics.access_count, 0)
+        self.assertEqual(metrics.access_count_baseline, 0)
+        self.assertEqual(refresh_metrics(), 0)

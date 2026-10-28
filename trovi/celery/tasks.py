@@ -12,6 +12,7 @@ from django.conf import settings
 from django.core.mail import send_mass_mail
 from django.db import transaction
 
+from trovi.metrics import refresh_metrics
 from trovi.models import (
     ArtifactComment,
     AutoCrawledArtifact,
@@ -676,3 +677,9 @@ def send_comment_notification(comment_id: int):
     )
     sent = send_mass_mail([(subject, body, None, [p.email]) for p in profiles])
     LOG.info(f"Sent {sent} notifications for comment {comment_id}")
+
+
+@shared_task(name="RefreshMetrics")
+def refresh_all_metrics():
+    """Recomputes every artifact and version metric from the event log"""
+    LOG.info(f"Refreshed metrics: {refresh_metrics()} row(s) changed")

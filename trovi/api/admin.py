@@ -108,6 +108,7 @@ class ArtifactAdmin(admin.ModelAdmin):
     search_fields = ("title", "short_description", "owner_urn", "citation")
     list_filter = ("visibility", "created_at", "updated_at")
     readonly_fields = ("sharing_key",)
+    exclude = ("access_count",)
     ordering = ("-created_at",)
     inlines = [
         ArtifactAuthorInline,

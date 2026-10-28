@@ -1,10 +1,7 @@
 import logging
 from functools import cache
 
-from django.conf import settings
 from django.db import transaction, models
-from django.db.models import Count, Q, OuterRef, Subquery
-from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from drf_spectacular.types import OpenApiTypes
@@ -69,6 +66,7 @@ from trovi.common.permissions import (
 from trovi.common.schema import ArtifactRoleViewSetAutoSchema
 from trovi.common.views import TroviAPIViewSet
 from trovi.fields import URNField
+from trovi.metrics import VERIFICATIONS, refresh_metrics
 from trovi.models import (
     Artifact,
     ArtifactVersion,
@@ -138,17 +136,7 @@ class ArtifactViewSet(
         ArtifactAccessCountFilter,
     ]
     ordering = "updated_at"
-    ordering_fields = [
-        "date",
-        "created_at",
-        "updated_at",
-        "access_count",
-        "unique_access_count",
-        "unique_cell_execution_count",
-        "recent_access_count",
-        "recent_unique_access_count",
-        "verified_count",
-    ]
+    ordering_fields = ListArtifactsOrderingFilter.ordering_fields
     authentication_classes = [TroviTokenAuthentication]
     # Individual visibility checks are handled by the visibility filter
     list_permission_classes = [ArtifactReadScopePermission]
@@ -182,27 +170,7 @@ class ArtifactViewSet(
         Optimize the queryset by prefetching all related objects needed during
         serialization to avoid N+1 queries.
         """
-        recent_launches = (
-            ArtifactEvent.objects.filter(
-                artifact=OuterRef("pk"),
-                event_type=ArtifactEvent.EventType.LAUNCH.value,
-                timestamp__gte=timezone.now()
-                - timezone.timedelta(days=settings.ARTIFACT_RECENT_METRICS_DAYS),
-            )
-            .order_by()
-            .values("artifact")
-        )
-        verified = (
-            ArtifactEvent.latest_verifications()
-            .filter(event_type=ArtifactEvent.EventType.VERIFY)
-            .order_by()
-        )
-        verify_failed = (
-            ArtifactEvent.latest_verifications()
-            .filter(event_type=ArtifactEvent.EventType.VERIFY_FAILED)
-            .order_by()
-        )
-        return (
+        queryset = (
             super()
             .get_queryset()
             .prefetch_related(
@@ -214,93 +182,18 @@ class ArtifactViewSet(
                 "roles",
                 models.Prefetch(
                     "versions",
-                    queryset=ArtifactVersion.objects.annotate(
-                        access_count_annotation=Count(
-                            "events",
-                            filter=Q(events__event_type=ArtifactEvent.EventType.LAUNCH),
-                        ),
-                        unique_access_count_annotation=Count(
-                            "events__event_origin",
-                            distinct=True,
-                            filter=Q(events__event_type=ArtifactEvent.EventType.LAUNCH),
-                        ),
-                        unique_cell_execution_count_annotation=Count(
-                            "events__event_origin",
-                            distinct=True,
-                            filter=Q(
-                                events__event_type=ArtifactEvent.EventType.CELL_EXECUTION
-                            ),
-                        ),
+                    queryset=ArtifactVersion.objects.select_related(
+                        "metrics"
                     ).prefetch_related("links", "setupSteps"),
-                ),
-                # Prefetched rather than annotated above, where a subquery would
-                # end up in the GROUP BY and run once per joined event row
-                models.Prefetch(
-                    "versions__events",
-                    queryset=ArtifactEvent.latest_verifications(),
-                    to_attr="latest_verification_events",
                 ),
                 "linked_artifacts",
                 "linked_from",
             )
-            .annotate(
-                unique_access_count=Coalesce(
-                    Subquery(
-                        ArtifactEvent.objects.filter(
-                            artifact=OuterRef("pk"),
-                            event_type=ArtifactEvent.EventType.LAUNCH.value,
-                        )
-                        .order_by()
-                        .values("artifact")
-                        .annotate(c=Count("event_origin", distinct=True))
-                        .values("c")
-                    ),
-                    0,
-                ),
-                unique_cell_execution_count=Coalesce(
-                    Subquery(
-                        ArtifactEvent.objects.filter(
-                            artifact=OuterRef("pk"),
-                            event_type=ArtifactEvent.EventType.CELL_EXECUTION.value,
-                        )
-                        .order_by()
-                        .values("artifact")
-                        .annotate(c=Count("event_origin", distinct=True))
-                        .values("c")
-                    ),
-                    0,
-                ),
-                recent_access_count=Coalesce(
-                    Subquery(recent_launches.annotate(c=Count("pk")).values("c")), 0
-                ),
-                recent_unique_access_count=Coalesce(
-                    Subquery(
-                        recent_launches.annotate(
-                            c=Count("event_origin", distinct=True)
-                        ).values("c")
-                    ),
-                    0,
-                ),
-                verified_count=Coalesce(
-                    Subquery(
-                        verified.filter(artifact=OuterRef("pk"))
-                        .values("artifact")
-                        .annotate(c=Count("event_origin", distinct=True))
-                        .values("c")
-                    ),
-                    0,
-                ),
-                verify_failed_count=Coalesce(
-                    Subquery(
-                        verify_failed.filter(artifact=OuterRef("pk"))
-                        .values("artifact")
-                        .annotate(c=Count("event_origin", distinct=True))
-                        .values("c")
-                    ),
-                    0,
-                ),
-            )
         )
+        # Updates lock the artifact, which would lock its metrics too
+        if self.action in ("list", "retrieve"):
+            queryset = queryset.select_related("metrics")
+        return queryset
 
     @transaction.atomic
     def update(self, request: Request, *args, **kwargs) -> Response:
@@ -618,6 +511,11 @@ class ArtifactVersionViewSet(
     ]
     destroy_permission_classes = [ArtifactVersionDestroyDOIPermission]
     lookup_value_regex = "[^/]+"
+
+    def perform_destroy(self, instance: ArtifactVersion):
+        super(ArtifactVersionViewSet, self).perform_destroy(instance)
+        # The version's verifications no longer count towards its artifact's
+        refresh_metrics(instance.artifact_id, event_types=VERIFICATIONS)
 
     # metrics endpoints are defined here, as they are attached to artifact versions
     # and don't represent an additional model. This also allows us to create the

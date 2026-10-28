@@ -16,6 +16,7 @@ from django.conf import settings
 from django.db import models, transaction, IntegrityError
 from django.test.runner import DiscoverRunner
 
+from trovi.metrics import refresh_metrics
 from trovi.models import (
     Artifact,
     ArtifactVersion,
@@ -432,6 +433,7 @@ class SampleDataTestRunner(DiscoverRunner):
                 generate_many_to_many(
                     Artifact.objects.exclude(uuid=artifact_don_quixote.uuid)
                 )
+                refresh_metrics()
         except IntegrityError as e:
             assert False, str(e)
         print("Finished.")

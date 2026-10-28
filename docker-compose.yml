@@ -49,7 +49,7 @@ services:
     container_name: trovi_celery
     image: trovi-dev
     entrypoint: ["celery"]
-    command: ["-A", "trovi", "worker", "-l", "info"]
+    command: ["-A", "trovi", "worker", "-B", "-l", "info"]
     volumes:
       - .:/project
     depends_on:

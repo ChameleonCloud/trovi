@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 
 from trovi.common.tokens import JWT
+from trovi.metrics import ARTIFACT_METRICS
 from trovi.models import Artifact, ArtifactRole
 from util.types import JSON
 
@@ -33,18 +34,24 @@ class ListArtifactsOrderingFilter(filters.OrderingFilter):
     """
 
     ordering_param = "sort_by"
-    ordering_fields = [
-        "date",
-        "created_at",
-        "access_count",
-        "updated_at",
-        "unique_access_count",
-        "unique_cell_execution_count",
-        "recent_access_count",
-        "recent_unique_access_count",
-        "verified_count",
+    ordering_fields = ["date", "created_at", "updated_at"] + [
+        m.name for m in ARTIFACT_METRICS
     ]
     ordering_description = _("The criteria by which to sort the Artifacts.")
+
+    def get_ordering(
+        self, request: Request, queryset: models.QuerySet, view: views.View
+    ) -> list[str]:
+        metrics = {m.name for m in ARTIFACT_METRICS}
+        ordering = []
+        for term in super(ListArtifactsOrderingFilter, self).get_ordering(
+            request, queryset, view
+        ):
+            name = term.lstrip("-")
+            if name in metrics:
+                term = term.replace(name, f"metrics__{name}")
+            ordering.append(term)
+        return ordering
 
     def filter_queryset(
         self, request: Request, queryset: models.QuerySet, view: views.View
@@ -388,12 +395,12 @@ class ArtifactAccessCountFilter(filters.BaseFilterBackend):
 
         if min_count:
             try:
-                queryset = queryset.filter(access_count__gte=int(min_count))
+                queryset = queryset.filter(metrics__access_count__gte=int(min_count))
             except ValueError:
                 raise ValidationError({self.min_access_param: "Must be an integer."})
         if max_count:
             try:
-                queryset = queryset.filter(access_count__lte=int(max_count))
+                queryset = queryset.filter(metrics__access_count__lte=int(max_count))
             except ValueError:
                 raise ValidationError({self.max_access_param: "Must be an integer."})
         return queryset
