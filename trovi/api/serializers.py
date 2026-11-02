@@ -428,13 +428,13 @@ class ArtifactVersionMetricsSerializer(serializers.Serializer):
 
         LOG.info(f"Recording {count} {event_type} event(s) from {origin}")
 
-        # bulk_create skips ArtifactEvent.set_artifact, which fills this from the version
-        # artifact_id=instance.artifact_id,
         ArtifactEvent.objects.bulk_create(
             (
                 ArtifactEvent(
                     event_type=event_type,
                     event_origin=origin,
+                    # bulk_create skips ArtifactEvent.set_artifact, which sets this
+                    artifact_id=instance.artifact_id,
                     artifact_version=instance,
                 )
                 for _ in range(count)
@@ -946,7 +946,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
     version = ArtifactVersionSerializer(required=False, write_only=True)
     metrics = ArtifactMetricsSerializer(read_only=True)
 
-    @transaction.atomic
     def to_representation(self, instance: Artifact) -> dict[str, JSON]:
         request = self.context["request"]
         token = JWT.from_request(request)
