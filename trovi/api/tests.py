@@ -2887,6 +2887,10 @@ class TestCreateArtifactVerification(TestCase, APITest):
 
     def test_create_verification(self):
         artifact_don_quixote.roles.all().delete()
+        version_don_quixote_1.events.create(
+            event_type=ArtifactEvent.EventType.LAUNCH,
+            event_origin=role_don_quixote_admin.user,
+        )
         for verified, event_type in (
             (True, ArtifactEvent.EventType.VERIFY),
             (False, ArtifactEvent.EventType.VERIFY_FAILED),
@@ -3067,4 +3071,7 @@ class TestArtifactVerificationMetrics(TestCase, APITest):
         artifacts = response.json()["artifacts"]
         values = [a["metrics"]["verified_count"] for a in artifacts]
         self.assertListEqual(values, sorted(values, reverse=True))
-        self.assertEqual(artifacts[0]["uuid"], str(self.artifact.uuid))
+        self.assertIn(
+            (str(self.artifact.uuid), 3),
+            [(a["uuid"], a["metrics"]["verified_count"]) for a in artifacts],
+        )
