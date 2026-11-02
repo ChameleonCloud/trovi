@@ -1278,6 +1278,7 @@ class TestUpdateArtifact(TestCase, APITest):
     def test_update_artifact_force(self):
         self.test_update_artifact(forced=True)
 
+    @override_settings(ARTIFACT_ALLOW_ADMIN_FORCED_WRITES=True)
     def test_update_artifact_force_metrics(self):
         response = self.client.patch(
             self.update_artifact_path(artifact_don_quixote.uuid) + "&force",
