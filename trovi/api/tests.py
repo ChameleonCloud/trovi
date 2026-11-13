@@ -4,12 +4,13 @@ import os
 import random
 from importlib import import_module
 from io import StringIO
-from unittest import skipIf
+from unittest import mock, skipIf
 from urllib.parse import urlencode
 import uuid
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.admin.sites import site
 from django.core import mail
 from django.core.management import call_command
 from django.db import connection, models
@@ -17,11 +18,13 @@ from django.http import JsonResponse
 from django.test import TestCase, override_settings, SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+import requests
 from rest_framework import serializers, status
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
+from trovi.api.admin import AutoCrawledArtifactAdmin
 from trovi.api.serializers import (
     ArtifactSerializer,
     ArtifactVersionSerializer,
@@ -62,11 +65,13 @@ from trovi.models import (
     ArtifactTag,
     ArtifactVersion,
     ArtifactVersionMetrics,
+    ArtifactVersionSetup,
     ArtifactAuthor,
     ArtifactVideo,
     ArtifactPublication,
     ArtifactRole,
     ArtifactComment,
+    AutoCrawledArtifact,
     UserProfile,
 )
 from util.decorators import timed_lru_cache
@@ -83,6 +88,7 @@ from util.test import (
     publication_don_quixote,
 )
 from util.types import DummyRequest
+from util.urn import git_contents_urn
 
 
 class APITest(SimpleTestCase):
@@ -1783,6 +1789,71 @@ class TestCreateArtifactVersion(TestCase, APITest):
             msg="Versions from the same day do not properly increment suffixes",
         )
 
+    def post_version(self, environment_setup, urn=None):
+        repo = f"https://github.com/org/{uuid.uuid4()}.git"
+        return self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={
+                "contents": {"urn": urn or f"urn:trovi:contents:git:{repo}"},
+                "environment_setup": environment_setup,
+            },
+        )
+
+    def test_create_single_node_setups_in_order(self):
+        gpu = {
+            "type": "single_node",
+            "label": "GPU node",
+            "arguments": {"site": "CHI@TACC", "lease_duration_hours": 4, "gpu": True},
+        }
+        response = self.post_version([gpu, {"type": "single_node"}])
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+        self.assertListEqual(
+            response.json()["environment_setup"],
+            [gpu, {"type": "single_node", "arguments": {}, "label": ""}],
+        )
+
+    def test_single_node_accepts_http_contents(self):
+        response = self.post_version(
+            [{"type": "single_node"}],
+            urn=f"urn:trovi:contents:http:https://example.org/{uuid.uuid4()}.zip",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+
+    def test_rejects_invalid_setups(self):
+        for setup in [
+            {"type": "unknown"},
+            {"type": "single_node", "arguments": "node_type=compute_skylake"},
+            {"type": "single_node", "arguments": {"Node Type": "compute_skylake"}},
+            {"type": "single_node", "arguments": {"node_types": ["a", "b"]}},
+            {"type": "single_node", "arguments": {"site": None}},
+            {"type": "single_node", "artifact_version": 1},
+        ]:
+            with self.subTest(setup=setup):
+                response = self.post_version([setup])
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                    msg=response.content,
+                )
+
+    def test_other_setup_types_accept_any_arguments(self):
+        # The dashboard sends the template or image as a string
+        response = self.post_version(
+            [{"type": "heat_template", "arguments": "heat_template_version: 2018"}],
+            urn=f"urn:trovi:contents:chameleon:{uuid.uuid4()}",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+
     def test_create_artifact_version_no_write_scope(self):
         # TODO
         pass
@@ -3325,3 +3396,169 @@ class TestRefreshMetrics(TestCase):
         self.assertGreater(metrics.access_count, 0)
         self.assertEqual(metrics.access_count_baseline, 0)
         self.assertEqual(refresh_metrics(), 0)
+
+
+class TestCrawledArtifacts(TestCase):
+    def approve(self, source_url):
+        crawled = AutoCrawledArtifact.objects.create(
+            source_url=source_url, origin_type="test", title="Crawled"
+        )
+        AutoCrawledArtifactAdmin(AutoCrawledArtifact, site)._create_artifact(crawled)
+        return ArtifactVersion.objects.get(artifact__auto_crawled_artifact=crawled)
+
+    def external_artifact(self, repo_url):
+        """An artifact as crawled artifacts were made before single node setups"""
+        artifact = Artifact.objects.create(
+            title="External",
+            short_description="s",
+            long_description="l",
+            owner_urn="urn:trovi:user:admin",
+        )
+        version = ArtifactVersion.objects.create(
+            artifact=artifact, contents_urn=f"urn:trovi:contents:http:{artifact.uuid}"
+        )
+        ArtifactVersionSetup.objects.create(
+            artifact_version=version,
+            type=ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE,
+            arguments={
+                "url": settings.ARTIFACT_JUPYTERHUB_DEFAULT_URL,
+                "repo_url": repo_url,
+                "protocol": "git",
+            },
+        )
+        return version
+
+    def test_git_contents_urn(self):
+        for url, urn in [
+            ("https://github.com/org/repo", "https://github.com/org/repo.git"),
+            (
+                "https://www.github.com/org/repo/tree/main/docs",
+                "https://github.com/org/repo.git",
+            ),
+            (
+                "https://gitlab.com/group/sub/repo.git",
+                "https://gitlab.com/group/sub/repo.git",
+            ),
+            ("https://zenodo.org/records/1", None),
+            ("not a url", None),
+        ]:
+            with self.subTest(url=url):
+                self.assertEqual(
+                    git_contents_urn(url), urn and f"urn:trovi:contents:git:{urn}"
+                )
+
+    def test_approved_crawls_become_single_node(self):
+        repo = f"https://github.com/org/{uuid.uuid4()}"
+        page = f"https://zenodo.org/records/{uuid.uuid4()}"
+        for source, urn in [
+            (repo, git_contents_urn(repo)),
+            (page, f"urn:trovi:contents:http:{page}"),
+        ]:
+            with self.subTest(source=source):
+                version = self.approve(source)
+
+                self.assertEqual(version.contents_urn, urn)
+                setup = version.setupSteps.get()
+                self.assertEqual(
+                    (setup.type, setup.arguments),
+                    (ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE, {}),
+                )
+                # Approving the same source again updates that artifact, even
+                # once its contents have been changed
+                ArtifactVersion.objects.filter(pk=version.pk).update(
+                    contents_urn=f"urn:trovi:contents:http:{uuid.uuid4()}"
+                )
+                crawled = AutoCrawledArtifact.objects.create(
+                    source_url=source, origin_type="test", title="Recrawled"
+                )
+                admin = AutoCrawledArtifactAdmin(AutoCrawledArtifact, site)
+                admin._create_artifact(crawled)
+                version.artifact.refresh_from_db()
+                self.assertEqual(version.artifact.title, "Recrawled")
+                self.assertEqual(version.artifact.versions.count(), 1)
+
+    @staticmethod
+    def zenodo(url, timeout):
+        files = {
+            "https://zenodo.org/api/records/1": ["repo-v1.zip", "README.md"],
+            "https://zenodo.org/api/records/2": ["a.tar.gz", "b.zip"],
+        }
+        if url not in files:
+            raise requests.ConnectionError("unreachable")
+        return mock.Mock(
+            **{"json.return_value": {"files": [{"key": key} for key in files[url]]}}
+        )
+
+    def test_convert_external_artifacts(self):
+        repo = f"https://github.com/org/{uuid.uuid4()}"
+        convertible = self.external_artifact(repo)
+        # The second artifact for a repository can't have it as contents too
+        same_repo = self.external_artifact(repo)
+        zenodo = self.external_artifact("https://zenodo.org/records/1")
+        archive = (
+            "urn:trovi:contents:http:"
+            "https://zenodo.org/records/1/files/repo-v1.zip?download=1"
+        )
+        archives = self.external_artifact("https://zenodo.org/records/2")
+        unreachable = self.external_artifact("https://zenodo.org/records/3")
+        paper = f"https://dl.acm.org/doi/10.1145/{uuid.uuid4()}"
+        not_downloadable = self.external_artifact(paper)
+        taken_repo = f"https://github.com/org/{uuid.uuid4()}"
+        taken = self.external_artifact(taken_repo)
+        ArtifactVersion.objects.create(
+            artifact=artifact_don_quixote, contents_urn=git_contents_urn(taken_repo)
+        )
+        updated_at = Artifact.objects.get(pk=convertible.artifact.pk).updated_at
+
+        out = StringIO()
+        with mock.patch(
+            "trovi.management.commands.convert_external_artifacts.requests.get",
+            side_effect=self.zenodo,
+        ):
+            call_command("convert_external_artifacts", "--dry-run", stdout=out)
+            convertible.refresh_from_db()
+            self.assertTrue(
+                convertible.contents_urn.startswith("urn:trovi:contents:http:")
+            )
+            call_command("convert_external_artifacts", stdout=StringIO())
+
+        self.assertIn(f"-> {git_contents_urn(repo)}", out.getvalue())
+        self.assertIn(f"-> {archive}", out.getvalue())
+        self.assertIn(
+            f"Skip {same_repo.artifact_id}: {git_contents_urn(repo)} is taken",
+            out.getvalue(),
+        )
+        self.assertIn(
+            "-> urn:trovi:contents:http:https://zenodo.org/records/2, with no setup",
+            out.getvalue(),
+        )
+        self.assertIn("looking up https://zenodo.org/records/3 failed", out.getvalue())
+        self.assertIn(
+            "Would convert 1 to git and 1 to HTTP contents, and 2 to listings with "
+            "no setup; skipped 3.",
+            out.getvalue(),
+        )
+        skipped = (same_repo, unreachable, taken)
+        for version in (convertible, zenodo, archives, not_downloadable, *skipped):
+            version.refresh_from_db()
+        for version, urn in [(convertible, git_contents_urn(repo)), (zenodo, archive)]:
+            self.assertEqual(version.contents_urn, urn)
+            self.assertEqual(
+                version.setupSteps.get().type,
+                ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE,
+            )
+        self.assertEqual(
+            Artifact.objects.get(pk=convertible.artifact.pk).updated_at, updated_at
+        )
+        for version, source in [
+            (archives, "https://zenodo.org/records/2"),
+            (not_downloadable, paper),
+        ]:
+            self.assertEqual(version.contents_urn, f"urn:trovi:contents:http:{source}")
+            self.assertFalse(version.setupSteps.exists())
+        for version in skipped:
+            self.assertTrue(version.contents_urn.startswith("urn:trovi:contents:http:"))
+            self.assertEqual(
+                version.setupSteps.get().type,
+                ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE,
+            )

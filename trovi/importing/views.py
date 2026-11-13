@@ -23,6 +23,7 @@ from github import Auth, Github, GithubException
 from rocrate.rocrate import ROCrate
 from rocrate.model.metadata import Metadata
 
+import json
 import jsonpatch
 import tempfile
 import base64
@@ -92,7 +93,12 @@ class ArtifactImportView(TroviAPIViewSet):
                         f.write(content)
 
                     # Load metadata from crate
-                    crate = ROCrate(temp_dir)
+                    try:
+                        crate = ROCrate(temp_dir)
+                    except ValueError as e:
+                        raise drf_exceptions.ValidationError(
+                            f"{settings.RO_CRATE_FILENAME} is not a valid RO-Crate: {e}"
+                        )
                     crate = crate.dereference("./")
                     artifact_data["title"] = crate.get("name")
                     artifact_data["short_description"] = crate.get(
@@ -112,12 +118,26 @@ class ArtifactImportView(TroviAPIViewSet):
                             }
                         )
 
-                    for obj in crate.get("actionApplication", []):
+                    applications = crate.get("actionApplication", [])
+                    if not isinstance(applications, list):
+                        applications = [applications]
+                    for obj in applications:
                         if obj.type == "SoftwareApplication" and obj.get("trovi_type"):
+                            arguments = obj.get("trovi_arguments") or {}
+                            # RO-Crate only allows entities as object values, so
+                            # the arguments are written as JSON text
+                            if isinstance(arguments, str):
+                                try:
+                                    arguments = json.loads(arguments)
+                                except ValueError:
+                                    raise drf_exceptions.ValidationError(
+                                        f"trovi_arguments of {obj.id} is not JSON."
+                                    )
                             artifact_data["version"]["environment_setup"].append(
                                 {
                                     "type": obj.get("trovi_type"),
-                                    "arguments": obj.get("trovi_arguments"),
+                                    "arguments": arguments,
+                                    "label": obj.get("name") or "",
                                 }
                             )
 

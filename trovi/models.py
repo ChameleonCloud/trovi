@@ -655,13 +655,10 @@ class ArtifactLink(models.Model):
 
 
 class ArtifactVersionSetup(models.Model):
+    """A way to launch an artifact version; a version can offer several"""
+
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["artifact_version"],
-                name="artifact_version_setup_unique_constraint",
-            )
-        ]
+        ordering = ["id"]
 
     class ArtifactVersionSetupType(models.TextChoices):
         JUPYTERHUB = "jupyterhub"
@@ -669,12 +666,18 @@ class ArtifactVersionSetup(models.Model):
         SOURCE_CODE = "source_code"
         IMAGE = "image"
         HEAT_TEMPLATE = "heat_template"
+        # Provision one node and load the contents onto it. The arguments are
+        # defaults for the platform's provisioner, which the user can change.
+        SINGLE_NODE = "single_node"
 
     artifact_version = models.ForeignKey(
         ArtifactVersion, models.CASCADE, related_name="setupSteps"
     )
     type = models.CharField(choices=ArtifactVersionSetupType.choices, max_length=255)
     arguments = models.JSONField()
+    label = models.CharField(
+        max_length=settings.ARTIFACT_SETUP_LABEL_MAX_CHARS, blank=True
+    )
 
 
 class CrawlRequest(models.Model):

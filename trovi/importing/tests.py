@@ -3,9 +3,11 @@ import json
 from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
+from rest_framework import exceptions as drf_exceptions
 
 from trovi.api.serializers import (
     ArtifactPublicationSerializer,
+    ArtifactVersionSetupSerializer,
     ArtifactVideoSerializer,
 )
 from trovi.importing.views import ArtifactImportView
@@ -172,6 +174,61 @@ class TestImportPublications(SimpleTestCase):
             [{"@id": "#p", "name": "P", "datePublished": "1999"}],
         )
         self.assertEqual(got[0]["year"], "1999")
+
+
+class TestImportEnvironmentSetup(SimpleTestCase):
+    gpu = {
+        "@id": "#gpu",
+        "@type": "SoftwareApplication",
+        "name": "GPU node",
+        "trovi_type": "single_node",
+    }
+    arguments = {"site": "CHI@TACC", "lease_duration_hours": 4}
+
+    def parse(self, applications, extra_entities):
+        crate = build_crate({"actionApplication": applications}, extra_entities)
+        return import_crate(crate)["version"]["environment_setup"]
+
+    def test_singular_application(self):
+        # RO-Crate only allows objects that are entities, so arguments are JSON text
+        self.assertListEqual(
+            self.parse(
+                {"@id": "#gpu"},
+                [self.gpu | {"trovi_arguments": json.dumps(self.arguments)}],
+            ),
+            [{"type": "single_node", "arguments": self.arguments, "label": "GPU node"}],
+        )
+
+    def test_object_arguments_are_rejected(self):
+        with self.assertRaises(drf_exceptions.ValidationError):
+            self.parse([{"@id": "#gpu"}], [self.gpu | {"trovi_arguments": {"a": 1}}])
+
+    def test_several_setups_keep_their_order(self):
+        cpu = {
+            "@id": "#cpu",
+            "@type": "SoftwareApplication",
+            "trovi_type": "jupyterhub",
+        }
+        setups = self.parse([{"@id": "#gpu"}, {"@id": "#cpu"}], [self.gpu, cpu])
+        self.assertListEqual(
+            [(s["type"], s["label"]) for s in setups],
+            [("single_node", "GPU node"), ("jupyterhub", "")],
+        )
+
+    def test_invalid_json_arguments(self):
+        with self.assertRaises(drf_exceptions.ValidationError):
+            self.parse([{"@id": "#gpu"}], [self.gpu | {"trovi_arguments": "{site"}])
+
+    def test_imported_setups_validate(self):
+        setups = self.parse(
+            [{"@id": "#gpu"}],
+            [self.gpu | {"trovi_arguments": json.dumps(self.arguments)}],
+        )
+        context = {"request": DummyRequest(data={}, auth=None, query_params={})}
+        serializer = ArtifactVersionSetupSerializer(
+            data=setups, many=True, context=context
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class TestImportedMetadataIsAccepted(TestCase):
