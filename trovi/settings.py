@@ -55,6 +55,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     TROVI_FQDN,
+    *filter(None, os.getenv("TROVI_EXTRA_ALLOWED_HOSTS", "").split(",")),
 ]
 
 # Artifact storage

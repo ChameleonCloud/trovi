@@ -56,6 +56,6 @@ def get_backend(
     if name == "git":
         return GitBackend(name, content_type, content_id=content_id)
     if name == "http":
-        return HttpBackend(name, content_type, content_id=content_id, version=version)
+        return HttpBackend(name, content_type, content_id=content_id)
     else:
         raise ValidationError(f"Unknown storage backend: {name}")

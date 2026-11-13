@@ -3,6 +3,8 @@ from django.db import transaction
 from django.conf import settings
 from django import forms
 
+from util.urn import git_contents_urn
+
 from ..models import (
     Artifact,
     ArtifactLink,
@@ -263,19 +265,14 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
             "or if you are the author and would like to claim the artifact."
         )
 
-        # Check if an artifact with this source_url already exists
-        setup = (
-            ArtifactVersionSetup.objects.filter(
-                type=ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE,
-                arguments__url=crawled_artifact.source_url,
-            )
-            .select_related("artifact_version__artifact")
-            .first()
-        )
+        # Check if an artifact was already made from this source_url
+        existing = Artifact.objects.filter(
+            auto_crawled_artifact__source_url=crawled_artifact.source_url
+        ).first()
 
-        if setup and setup.artifact_version and setup.artifact_version.artifact:
+        if existing:
             # Update existing artifact
-            artifact_to_update = setup.artifact_version.artifact
+            artifact_to_update = existing
             artifact_to_update.title = crawled_artifact.title
             artifact_to_update.short_description = long_description[:200]
             artifact_to_update.long_description = long_description
@@ -333,24 +330,18 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
                     # Tag does not exist, so we do not create it
                     pass
 
-        if not setup:
+        if not existing:
             # Create the initial version and setup only if it's a new artifact
             version = ArtifactVersion.objects.create(
                 artifact=new_artifact,
-                contents_urn=f"urn:trovi:contents:http:{new_artifact.uuid}",
+                contents_urn=git_contents_urn(crawled_artifact.source_url)
+                or f"urn:trovi:contents:http:{crawled_artifact.source_url}",
             )
-
-            # Attach our jupyterhub notebook to new artifacts
-            setup_type = ArtifactVersionSetup.ArtifactVersionSetupType.SOURCE_CODE
-            arguments = {}
-            arguments["url"] = settings.ARTIFACT_JUPYTERHUB_DEFAULT_URL
-            arguments["repo_url"] = crawled_artifact.source_url
-            arguments["protocol"] = "git"
-
+            # The contents launch onto a node; the user picks the hardware
             ArtifactVersionSetup.objects.create(
                 artifact_version=version,
-                type=setup_type,
-                arguments=arguments,
+                type=ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE,
+                arguments={},
             )
 
     @transaction.atomic
