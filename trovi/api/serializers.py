@@ -317,22 +317,48 @@ class ArtifactVersionLinkSerializer(serializers.ModelSerializer):
         }
 
 
-@extend_schema_serializer(exclude_fields=["artifact_version"])
+SETUP_ARGUMENT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
 @allow_force
 @strict_schema
 class ArtifactVersionSetupSerializer(serializers.ModelSerializer):
     """
-    Describes a setup step for integrations
+    Describes a way to launch an artifact version on an integrated platform
     """
 
     class Meta:
         model = ArtifactVersionSetup
-        exclude = ["id"]
+        fields = ["type", "arguments", "label"]
+
+    arguments = serializers.JSONField(default=dict)
 
     def to_representation(self, instance: ArtifactVersionSetup) -> dict[str, JSON]:
-        return {"type": instance.type, "arguments": instance.arguments}
+        return {
+            "type": instance.type,
+            "arguments": instance.arguments,
+            "label": instance.label,
+        }
 
-    def to_internal_value(self, data: dict[str, JSON]) -> dict[str, JSON]:
+    def validate(self, data: dict[str, JSON]) -> dict[str, JSON]:
+        """
+        Single node arguments become fields the user can edit before launching,
+        so they must be named like fields and hold plain values.
+        """
+        if data["type"] != ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE:
+            return data
+        arguments = data["arguments"]
+        if not isinstance(arguments, dict):
+            raise ValidationError({"arguments": "Must be an object."})
+        for name, value in arguments.items():
+            if not SETUP_ARGUMENT_NAME.match(name):
+                raise ValidationError(
+                    {"arguments": f"Argument names must be snake_case, not {name!r}."}
+                )
+            if not isinstance(value, (str, int, float, bool)):
+                raise ValidationError(
+                    {"arguments": f"Argument {name} must be a string, number or bool."}
+                )
         return data
 
 
@@ -579,12 +605,11 @@ class ArtifactVersionSerializer(ArtifactChildSerializer):
             contents_serializer.save()
 
             for es in environment_setup:
-                es["artifact_version"] = version
                 setup_serializer = ArtifactVersionSetupSerializer(
                     data=es, context=self.context
                 )
                 setup_serializer.is_valid(raise_exception=True)
-                version.setupSteps.add(setup_serializer.save())
+                setup_serializer.save(artifact_version=version)
 
         view = self.context["view"]
         artifact_uuid = view.kwargs.get("parent_lookup_artifact")

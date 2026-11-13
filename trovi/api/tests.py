@@ -1783,6 +1783,71 @@ class TestCreateArtifactVersion(TestCase, APITest):
             msg="Versions from the same day do not properly increment suffixes",
         )
 
+    def post_version(self, environment_setup, urn=None):
+        repo = f"https://github.com/org/{uuid.uuid4()}.git"
+        return self.client.post(
+            self.create_artifact_version_path(artifact_don_quixote.uuid),
+            content_type="application/json",
+            data={
+                "contents": {"urn": urn or f"urn:trovi:contents:git:{repo}"},
+                "environment_setup": environment_setup,
+            },
+        )
+
+    def test_create_single_node_setups_in_order(self):
+        gpu = {
+            "type": "single_node",
+            "label": "GPU node",
+            "arguments": {"site": "CHI@TACC", "lease_duration_hours": 4, "gpu": True},
+        }
+        response = self.post_version([gpu, {"type": "single_node"}])
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+        self.assertListEqual(
+            response.json()["environment_setup"],
+            [gpu, {"type": "single_node", "arguments": {}, "label": ""}],
+        )
+
+    def test_single_node_accepts_http_contents(self):
+        response = self.post_version(
+            [{"type": "single_node"}],
+            urn=f"urn:trovi:contents:http:https://example.org/{uuid.uuid4()}.zip",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+
+    def test_rejects_invalid_setups(self):
+        for setup in [
+            {"type": "unknown"},
+            {"type": "single_node", "arguments": "node_type=compute_skylake"},
+            {"type": "single_node", "arguments": {"Node Type": "compute_skylake"}},
+            {"type": "single_node", "arguments": {"node_types": ["a", "b"]}},
+            {"type": "single_node", "arguments": {"site": None}},
+            {"type": "single_node", "artifact_version": 1},
+        ]:
+            with self.subTest(setup=setup):
+                response = self.post_version([setup])
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                    msg=response.content,
+                )
+
+    def test_other_setup_types_accept_any_arguments(self):
+        # The dashboard sends the template or image as a string
+        response = self.post_version(
+            [{"type": "heat_template", "arguments": "heat_template_version: 2018"}],
+            urn=f"urn:trovi:contents:chameleon:{uuid.uuid4()}",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_201_CREATED, msg=response.content
+        )
+
     def test_create_artifact_version_no_write_scope(self):
         # TODO
         pass
