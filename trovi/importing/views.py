@@ -95,9 +95,14 @@ class ArtifactImportView(TroviAPIViewSet):
                     # Load metadata from crate
                     try:
                         crate = ROCrate(temp_dir)
-                    except ValueError as e:
+                    except ValueError:
+                        LOG.warning(
+                            "Invalid RO-Crate content encountered while importing %s.",
+                            settings.RO_CRATE_FILENAME,
+                            exc_info=True,
+                        )
                         raise drf_exceptions.ValidationError(
-                            f"{settings.RO_CRATE_FILENAME} is not a valid RO-Crate: {e}"
+                            f"{settings.RO_CRATE_FILENAME} is not a valid RO-Crate."
                         )
                     crate = crate.dereference("./")
                     artifact_data["title"] = crate.get("name")
