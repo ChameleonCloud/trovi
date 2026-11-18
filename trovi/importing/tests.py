@@ -2,7 +2,9 @@ import base64
 import json
 from unittest import mock
 
+from django.conf import settings
 from django.test import SimpleTestCase, TestCase
+from github import UnknownObjectException
 from rest_framework import exceptions as drf_exceptions
 
 from trovi.api.serializers import (
@@ -13,6 +15,8 @@ from trovi.api.serializers import (
 from trovi.importing.views import ArtifactImportView
 from trovi.models import Artifact
 from util.types import DummyRequest
+
+REPO = "https://github.com/chameleoncloud/trovi"
 
 
 def build_crate(root_properties: dict, extra_entities: list = None) -> dict:
@@ -47,19 +51,34 @@ def build_crate(root_properties: dict, extra_entities: list = None) -> dict:
     return {"@context": "https://w3id.org/ro/crate/1.1/context", "@graph": graph}
 
 
-def import_crate(crate_json: dict) -> dict:
-    """Runs the import against a crate, with GitHub stubbed out."""
-    repo = mock.Mock()
-    repo.get_commits.return_value = [mock.Mock(sha="0" * 40)]
-    repo.get_contents.return_value = mock.Mock(
-        content=base64.b64encode(json.dumps(crate_json).encode())
+def stub_github(crate_json: dict = None, files: dict = None) -> mock.MagicMock:
+    """
+    Returns a stand-in for the GitHub client, for a repository holding crate_json
+    as its trovi.json, if given, and files, by path.
+    """
+    files = (files or {}) | (
+        {settings.RO_CRATE_FILENAME: json.dumps(crate_json)} if crate_json else {}
     )
+
+    def get_contents(path, ref):
+        if path not in files:
+            raise UnknownObjectException(404)
+        return mock.Mock(content=base64.b64encode(files[path].encode()))
+
+    repo = mock.Mock(html_url=REPO)
+    repo.get_commits.return_value = [mock.Mock(sha="0" * 40)]
+    repo.get_contents.side_effect = get_contents
     client = mock.MagicMock()
     client.__enter__.return_value.get_repo.return_value = repo
-    with mock.patch("trovi.importing.views.Github", return_value=client):
-        return ArtifactImportView()._parse_git_url(
-            "https://github.com/chameleoncloud/trovi", None
-        )
+    return client
+
+
+def import_crate(crate_json: dict, files: dict = None) -> dict:
+    """Runs the import against a crate, with GitHub stubbed out."""
+    with mock.patch(
+        "trovi.importing.views.Github", return_value=stub_github(crate_json, files)
+    ):
+        return ArtifactImportView()._parse_git_url(REPO, None)
 
 
 class TestImportVideos(SimpleTestCase):
@@ -287,3 +306,50 @@ class TestImportedMetadataIsAccepted(TestCase):
         self.assertEqual(publication.title, "A Paper")
         self.assertEqual(publication.doi, "10.1145/3.4")
         self.assertEqual(publication.year, 2023)
+
+
+class TestImportRepository(SimpleTestCase):
+    def test_missing_crate(self):
+        with self.assertRaisesMessage(drf_exceptions.ValidationError, "has no trovi"):
+            import_crate(None)
+
+    def test_blank_keywords_are_skipped(self):
+        self.assertListEqual(import_crate(build_crate({"keywords": ""}))["tags"], [])
+
+
+class TestImportDescription(SimpleTestCase):
+    readme = {"@id": "README.md", "@type": "File"}
+
+    def parse(self, files):
+        crate = build_crate(
+            {"description": {"@id": "README.md"}, "hasPart": [{"@id": "README.md"}]},
+            [self.readme],
+        )
+        return import_crate(crate, files)["long_description"]
+
+    def test_text(self):
+        description = import_crate(build_crate({"description": "Some text"}))
+        self.assertEqual(description["long_description"], "Some text")
+
+    def test_readme(self):
+        self.assertEqual(
+            self.parse({"README.md": "# Title\n\nBody"}), "# Title\n\nBody"
+        )
+
+    def test_long_readme_is_cut_at_a_paragraph(self):
+        readme = "Intro\n\n```\n" + "a line of code\n\n" * 1000
+        description = self.parse({"README.md": readme})
+
+        self.assertLessEqual(
+            len(description), settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS
+        )
+        self.assertTrue(
+            description.endswith(
+                f"\n```\n\n[Read the rest]({REPO}/blob/{'0' * 40}/README.md)"
+            )
+        )
+        self.assertEqual(description.count("```") % 2, 0)
+
+    def test_missing_readme(self):
+        with self.assertRaisesMessage(drf_exceptions.ValidationError, "README.md"):
+            self.parse({})
