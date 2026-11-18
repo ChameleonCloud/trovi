@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from trovi.api.serializers import (
     ArtifactPatchSerializer,
     ArtifactSerializer,
@@ -31,6 +32,7 @@ import base64
 
 import logging
 
+from trovi.importing.export import artifact_crate
 from trovi.models import Artifact, ArtifactVersion
 
 LOG = logging.getLogger(__name__)
@@ -65,6 +67,7 @@ class ArtifactImportView(TroviAPIViewSet):
         ArtifactViewPermission,
         ArtifactEditPermission,
     ]
+    retrieve_permission_classes = [ArtifactReadScopePermission, ArtifactViewPermission]
 
     def _parse_git_url(self, url, request):
         """
@@ -218,6 +221,25 @@ class ArtifactImportView(TroviAPIViewSet):
                 raise drf_exceptions.ValidationError(
                     "Could not fetch information from GitHub."
                 )
+
+    def retrieve(self, request, pk):
+        """
+        Returns the artifact's trovi.json, with the launch options of its latest
+        version or the ?version slug. ?readme names a file in the repository to
+        use as the description.
+        """
+        artifact = get_object_or_404(Artifact, pk=pk)
+        self.check_object_permissions(request, artifact)
+        versions = artifact.versions.order_by("-created_at")
+        if slug := request.query_params.get("version"):
+            versions = versions.filter(slug=slug)
+            if not versions.exists():
+                raise drf_exceptions.NotFound(f"There is no version {slug}.")
+        return Response(
+            artifact_crate(
+                artifact, versions.first(), request.query_params.get("readme")
+            )
+        )
 
     @transaction.atomic
     def update(self, request, pk):

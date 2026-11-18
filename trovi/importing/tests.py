@@ -4,16 +4,26 @@ from unittest import mock
 
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from github import UnknownObjectException
-from rest_framework import exceptions as drf_exceptions
+from rest_framework import exceptions as drf_exceptions, status
 
 from trovi.api.serializers import (
     ArtifactPublicationSerializer,
     ArtifactVersionSetupSerializer,
     ArtifactVideoSerializer,
 )
+from trovi.importing.export import artifact_crate
 from trovi.importing.views import ArtifactImportView
-from trovi.models import Artifact
+from trovi.models import (
+    Artifact,
+    ArtifactAuthor,
+    ArtifactPublication,
+    ArtifactTag,
+    ArtifactVersion,
+    ArtifactVersionSetup,
+    ArtifactVideo,
+)
 from util.types import DummyRequest
 
 REPO = "https://github.com/chameleoncloud/trovi"
@@ -353,3 +363,132 @@ class TestImportDescription(SimpleTestCase):
     def test_missing_readme(self):
         with self.assertRaisesMessage(drf_exceptions.ValidationError, "README.md"):
             self.parse({})
+
+
+class TestExport(TestCase):
+    def setUp(self):
+        self.artifact = Artifact.objects.create(
+            title="Exported",
+            short_description="Short",
+            long_description="Long",
+            owner_urn="urn:trovi:user:chameleon:owner",
+            visibility=Artifact.Visibility.PUBLIC,
+        )
+        for tag in ["one", "two"]:
+            self.artifact.tags.add(ArtifactTag.objects.create(tag=tag))
+        ArtifactAuthor.objects.create(
+            artifact=self.artifact, full_name="Alice", affiliation="UC", email="a@b.co"
+        )
+        ArtifactVideo.objects.create(artifact=self.artifact, url="https://youtu.be/abc")
+        ArtifactPublication.objects.create(
+            artifact=self.artifact,
+            title="A Paper",
+            authors="Alice; Bob",
+            venue="SC",
+            year=2024,
+            doi="10.1145/3.4",
+            url="https://example.org/p.pdf",
+        )
+        self.version = ArtifactVersion.objects.create(
+            artifact=self.artifact,
+            contents_urn=f"urn:trovi:contents:git:{REPO}.git@main",
+        )
+        self.setups = [
+            {"type": "jupyterhub", "arguments": {}, "label": ""},
+            {
+                "type": "single_node",
+                "arguments": {"site": "CHI@UC", "lease_duration_hours": 4},
+                "label": "GPU node",
+            },
+        ]
+        for setup in self.setups:
+            ArtifactVersionSetup.objects.create(artifact_version=self.version, **setup)
+
+    def test_round_trip(self):
+        data = import_crate(artifact_crate(self.artifact, self.version, None))
+
+        self.assertEqual(
+            (data["title"], data["short_description"], data["long_description"]),
+            ("Exported", "Short", "Long"),
+        )
+        self.assertCountEqual(data["tags"], ["one", "two"])
+        self.assertListEqual(
+            data["authors"],
+            [{"full_name": "Alice", "email": "a@b.co", "affiliation": "UC"}],
+        )
+        self.assertListEqual(data["videos"], [{"url": "https://youtu.be/abc"}])
+        self.assertListEqual(
+            data["publications"],
+            [
+                {
+                    "title": "A Paper",
+                    "authors": "Alice; Bob",
+                    "venue": "SC",
+                    "year": "2024",
+                    "doi": "10.1145/3.4",
+                    "url": "https://example.org/p.pdf",
+                }
+            ],
+        )
+        self.assertListEqual(data["version"]["environment_setup"], self.setups)
+
+    def test_round_trip_without_authors_or_tags(self):
+        self.artifact.tags.clear()
+        self.artifact.authors.all().delete()
+
+        data = import_crate(artifact_crate(self.artifact, None, None))
+
+        self.assertEqual((data["tags"], data["authors"]), ([], []))
+        self.assertListEqual(data["version"]["environment_setup"], [])
+
+    def test_readme_as_description(self):
+        crate = artifact_crate(self.artifact, self.version, "README.md")
+
+        data = import_crate(crate, {"README.md": "From the README"})
+
+        self.assertEqual(data["long_description"], "From the README")
+
+    def export(self, query="", **kwargs):
+        return self.client.get(
+            reverse("import-detail", args=[self.artifact.uuid]) + query, **kwargs
+        )
+
+    def test_endpoint(self):
+        response = self.export("?readme=README.md")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        root = next(e for e in response.json()["@graph"] if e["@id"] == "./")
+        self.assertEqual(root["description"], {"@id": "README.md"})
+        self.assertEqual(len(root["actionApplication"]), 2)
+
+    def test_endpoint_version(self):
+        older = ArtifactVersion.objects.create(
+            artifact=self.artifact, contents_urn=f"urn:trovi:contents:git:{REPO}.git@v0"
+        )
+        # Versions made in the same instant would tie for the latest
+        ArtifactVersion.objects.filter(pk=older.pk).update(
+            created_at=self.version.created_at.replace(year=2000)
+        )
+        older.refresh_from_db()
+
+        latest = self.export().json()
+        chosen = self.export(f"?version={older.slug}").json()
+
+        def setups(crate):
+            root = next(e for e in crate["@graph"] if e["@id"] == "./")
+            return root.get("actionApplication", [])
+
+        self.assertEqual(len(setups(latest)), 2)
+        self.assertEqual(setups(chosen), [])
+        self.assertEqual(
+            self.export("?version=missing").status_code, status.HTTP_404_NOT_FOUND
+        )
+
+    def test_endpoint_hides_private_artifacts(self):
+        self.artifact.visibility = Artifact.Visibility.PRIVATE
+        self.artifact.save()
+
+        self.assertIn(
+            self.export().status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+        )
