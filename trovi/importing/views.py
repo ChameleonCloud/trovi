@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from trovi.api.serializers import (
     ArtifactPatchSerializer,
     ArtifactSerializer,
@@ -18,23 +19,42 @@ from trovi.importing.serializers import ArtifactImportSerializer
 from rest_framework.response import Response
 from rest_framework import exceptions as drf_exceptions
 from giturlparse import parse
-from github import Auth, Github, GithubException
+from github import Auth, Github, GithubException, UnknownObjectException
 
 from rocrate.rocrate import ROCrate
+from rocrate.model.entity import Entity
 from rocrate.model.metadata import Metadata
 
+import json
 import jsonpatch
 import tempfile
 import base64
 
 import logging
 
+from trovi.importing.export import artifact_crate
 from trovi.models import Artifact, ArtifactVersion
 
 LOG = logging.getLogger(__name__)
 
 # Overwrite the ro-crate filename
 Metadata.BASENAME = settings.RO_CRATE_FILENAME
+
+
+def fit_description(text: str, url: str) -> str:
+    """
+    Cuts text from a file to the long description limit, at a paragraph, and links
+    to the file at url for the rest.
+    """
+    if len(text) <= settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS:
+        return text
+    more = f"\n\n[Read the rest]({url})"
+    # Leaves room to close a code block that the cut leaves open
+    cut = text[: settings.ARTIFACT_LONG_DESCRIPTION_MAX_CHARS - len(more) - 4]
+    cut = cut[: cut.rfind("\n\n")] if "\n\n" in cut else cut
+    if cut.count("```") % 2:
+        cut += "\n```"
+    return cut + more
 
 
 class ArtifactImportView(TroviAPIViewSet):
@@ -47,6 +67,7 @@ class ArtifactImportView(TroviAPIViewSet):
         ArtifactViewPermission,
         ArtifactEditPermission,
     ]
+    retrieve_permission_classes = [ArtifactReadScopePermission, ArtifactViewPermission]
 
     def _parse_git_url(self, url, request):
         """
@@ -85,23 +106,55 @@ class ArtifactImportView(TroviAPIViewSet):
                 artifact_data["publications"] = []
 
                 # Save the github file to a temp file
-                contents = repo.get_contents(settings.RO_CRATE_FILENAME)
+                try:
+                    contents = repo.get_contents(
+                        settings.RO_CRATE_FILENAME, ref=git_version
+                    )
+                except UnknownObjectException:
+                    raise drf_exceptions.ValidationError(
+                        f"{repo_name} has no {settings.RO_CRATE_FILENAME}."
+                    )
                 content = base64.b64decode(contents.content).decode("utf-8")
                 with tempfile.TemporaryDirectory() as temp_dir:
                     with open(f"{temp_dir}/{settings.RO_CRATE_FILENAME}", "w") as f:
                         f.write(content)
 
                     # Load metadata from crate
-                    crate = ROCrate(temp_dir)
+                    try:
+                        crate = ROCrate(temp_dir)
+                    except ValueError:
+                        LOG.warning(
+                            "Invalid RO-Crate content encountered while importing %s.",
+                            settings.RO_CRATE_FILENAME,
+                            exc_info=True,
+                        )
+                        raise drf_exceptions.ValidationError(
+                            f"{settings.RO_CRATE_FILENAME} is not a valid RO-Crate."
+                        )
                     crate = crate.dereference("./")
                     artifact_data["title"] = crate.get("name")
                     artifact_data["short_description"] = crate.get(
                         "disambiguatingDescription"
                     )
-                    artifact_data["long_description"] = crate.get("description")
+                    description = crate.get("description")
+                    # The description can be a file in the repository, like its README
+                    if isinstance(description, Entity):
+                        try:
+                            readme = repo.get_contents(description.id, ref=git_version)
+                        except UnknownObjectException:
+                            raise drf_exceptions.ValidationError(
+                                f"{repo_name} has no {description.id}, which "
+                                f"{settings.RO_CRATE_FILENAME} uses as the description."
+                            )
+                        description = fit_description(
+                            base64.b64decode(readme.content).decode("utf-8"),
+                            f"{repo.html_url}/blob/{git_version}/{description.id}",
+                        )
+                    artifact_data["long_description"] = description
                     artifact_data["owner_urn"] = get_user_urn_from_request(request)
                     for t in crate.get("keywords").split(","):
-                        artifact_data["tags"].append(t.strip())
+                        if t.strip():
+                            artifact_data["tags"].append(t.strip())
 
                     for a in crate.get("author"):
                         artifact_data["authors"].append(
@@ -112,12 +165,26 @@ class ArtifactImportView(TroviAPIViewSet):
                             }
                         )
 
-                    for obj in crate.get("actionApplication", []):
+                    applications = crate.get("actionApplication", [])
+                    if not isinstance(applications, list):
+                        applications = [applications]
+                    for obj in applications:
                         if obj.type == "SoftwareApplication" and obj.get("trovi_type"):
+                            arguments = obj.get("trovi_arguments") or {}
+                            # RO-Crate only allows entities as object values, so
+                            # the arguments are written as JSON text
+                            if isinstance(arguments, str):
+                                try:
+                                    arguments = json.loads(arguments)
+                                except ValueError:
+                                    raise drf_exceptions.ValidationError(
+                                        f"trovi_arguments of {obj.id} is not JSON."
+                                    )
                             artifact_data["version"]["environment_setup"].append(
                                 {
                                     "type": obj.get("trovi_type"),
-                                    "arguments": obj.get("trovi_arguments"),
+                                    "arguments": arguments,
+                                    "label": obj.get("name") or "",
                                 }
                             )
 
@@ -154,6 +221,25 @@ class ArtifactImportView(TroviAPIViewSet):
                 raise drf_exceptions.ValidationError(
                     "Could not fetch information from GitHub."
                 )
+
+    def retrieve(self, request, pk):
+        """
+        Returns the artifact's trovi.json, with the launch options of its latest
+        version or the ?version slug. ?readme names a file in the repository to
+        use as the description.
+        """
+        artifact = get_object_or_404(Artifact, pk=pk)
+        self.check_object_permissions(request, artifact)
+        versions = artifact.versions.order_by("-created_at")
+        if slug := request.query_params.get("version"):
+            versions = versions.filter(slug=slug)
+            if not versions.exists():
+                raise drf_exceptions.NotFound(f"There is no version {slug}.")
+        return Response(
+            artifact_crate(
+                artifact, versions.first(), request.query_params.get("readme")
+            )
+        )
 
     @transaction.atomic
     def update(self, request, pk):

@@ -1,5 +1,6 @@
 from trovi.api.tests import APITest
 from trovi.storage.backends.git import GitBackend
+from trovi.storage.backends.http import HttpBackend
 
 
 class TestGitBackend(APITest):
@@ -61,6 +62,17 @@ class TestGitBackend(APITest):
                 "remote": "https://gitlab.com/gitlab-org/gitlab",
             },
         ]
+        for link in actual:
+            del link["exp"]
+        self.assertEqual(actual, expected)
+
+
+class TestHttpBackend(APITest):
+    def test_get_links(self):
+        url = "https://zenodo.org/records/1/files/repo.zip?download=1"
+        backend = HttpBackend("http", "http", url)
+        actual = backend.get_links()
+        expected = [{"headers": {}, "method": "GET", "protocol": "http", "url": url}]
         for link in actual:
             del link["exp"]
         self.assertEqual(actual, expected)
