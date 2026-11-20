@@ -3399,6 +3399,18 @@ class TestRefreshMetrics(TestCase):
 
 
 class TestCrawledArtifacts(TestCase):
+    commit = "0123456789abcdef0123456789abcdef01234567"
+
+    def setUp(self):
+        # Stand-ins for git repositories and Zenodo, so nothing reaches the network
+        self.patch("util.urn.latest_commit", return_value=self.commit)
+        self.patch("util.urn.requests.get", side_effect=self.zenodo)
+
+    def patch(self, target, **kwargs):
+        patcher = mock.patch(target, **kwargs)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
     def approve(self, source_url):
         crawled = AutoCrawledArtifact.objects.create(
             source_url=source_url, origin_type="test", title="Crawled"
@@ -3444,24 +3456,39 @@ class TestCrawledArtifacts(TestCase):
         ]:
             with self.subTest(url=url):
                 self.assertEqual(
-                    git_contents_urn(url), urn and f"urn:trovi:contents:git:{urn}"
+                    git_contents_urn(url),
+                    urn and f"urn:trovi:contents:git:{urn}@{self.commit}",
                 )
 
-    def test_approved_crawls_become_single_node(self):
+    def test_approved_crawls_launch_on_a_node(self):
         repo = f"https://github.com/org/{uuid.uuid4()}"
-        page = f"https://zenodo.org/records/{uuid.uuid4()}"
-        for source, urn in [
-            (repo, git_contents_urn(repo)),
-            (page, f"urn:trovi:contents:http:{page}"),
+        archive = (
+            "urn:trovi:contents:http:"
+            "https://zenodo.org/records/1/files/repo-v1.zip?download=1"
+        )
+        page = f"https://dl.acm.org/doi/10.1145/{uuid.uuid4()}"
+        for source, urn, launchable in [
+            (repo, git_contents_urn(repo), True),
+            ("https://zenodo.org/records/1", archive, True),
+            # Only listed, as there's nothing to launch
+            (page, f"urn:trovi:contents:http:{page}", False),
         ]:
             with self.subTest(source=source):
                 version = self.approve(source)
 
                 self.assertEqual(version.contents_urn, urn)
-                setup = version.setupSteps.get()
                 self.assertEqual(
-                    (setup.type, setup.arguments),
-                    (ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE, {}),
+                    [(s.type, s.arguments) for s in version.setupSteps.all()],
+                    (
+                        [
+                            (
+                                ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE,
+                                {},
+                            )
+                        ]
+                        if launchable
+                        else []
+                    ),
                 )
                 # Approving the same source again updates that artifact, even
                 # once its contents have been changed
@@ -3476,6 +3503,24 @@ class TestCrawledArtifacts(TestCase):
                 version.artifact.refresh_from_db()
                 self.assertEqual(version.artifact.title, "Recrawled")
                 self.assertEqual(version.artifact.versions.count(), 1)
+
+    def test_approval_waits_for_contents(self):
+        crawled = AutoCrawledArtifact.objects.create(
+            source_url="https://zenodo.org/records/3", origin_type="test", title="Down"
+        )
+        admin = AutoCrawledArtifactAdmin(AutoCrawledArtifact, site)
+
+        with mock.patch.object(admin, "message_user") as message_user:
+            admin.approve_artifacts(
+                None, AutoCrawledArtifact.objects.filter(pk=crawled.pk)
+            )
+
+        crawled.refresh_from_db()
+        self.assertFalse(crawled.approved)
+        self.assertFalse(
+            Artifact.objects.filter(auto_crawled_artifact=crawled).exists()
+        )
+        self.assertIn("records/3 failed", message_user.call_args.args[1])
 
     @staticmethod
     def zenodo(url, timeout):
@@ -3511,16 +3556,10 @@ class TestCrawledArtifacts(TestCase):
         updated_at = Artifact.objects.get(pk=convertible.artifact.pk).updated_at
 
         out = StringIO()
-        with mock.patch(
-            "trovi.management.commands.convert_external_artifacts.requests.get",
-            side_effect=self.zenodo,
-        ):
-            call_command("convert_external_artifacts", "--dry-run", stdout=out)
-            convertible.refresh_from_db()
-            self.assertTrue(
-                convertible.contents_urn.startswith("urn:trovi:contents:http:")
-            )
-            call_command("convert_external_artifacts", stdout=StringIO())
+        call_command("convert_external_artifacts", "--dry-run", stdout=out)
+        convertible.refresh_from_db()
+        self.assertTrue(convertible.contents_urn.startswith("urn:trovi:contents:http:"))
+        call_command("convert_external_artifacts", stdout=StringIO())
 
         self.assertIn(f"-> {git_contents_urn(repo)}", out.getvalue())
         self.assertIn(f"-> {archive}", out.getvalue())

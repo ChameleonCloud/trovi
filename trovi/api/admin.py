@@ -1,9 +1,9 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db import transaction
 from django.conf import settings
 from django import forms
 
-from util.urn import git_contents_urn
+from util.urn import ContentsUnavailable, launch_contents_urn
 
 from ..models import (
     Artifact,
@@ -269,6 +269,10 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
         existing = Artifact.objects.filter(
             auto_crawled_artifact__source_url=crawled_artifact.source_url
         ).first()
+        # Looked up before anything is saved, so a lookup that fails saves nothing
+        contents_urn = (
+            None if existing else launch_contents_urn(crawled_artifact.source_url)
+        )
 
         if existing:
             # Update existing artifact
@@ -332,22 +336,33 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
 
         if not existing:
             # Create the initial version and setup only if it's a new artifact
+            # Without contents to launch, it's only listed, with its source as the
+            # contents
             version = ArtifactVersion.objects.create(
                 artifact=new_artifact,
-                contents_urn=git_contents_urn(crawled_artifact.source_url)
+                contents_urn=contents_urn
                 or f"urn:trovi:contents:http:{crawled_artifact.source_url}",
             )
-            # The contents launch onto a node; the user picks the hardware
-            ArtifactVersionSetup.objects.create(
-                artifact_version=version,
-                type=ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE,
-                arguments={},
-            )
+            if contents_urn:
+                # The contents launch onto a node; the user picks the hardware
+                ArtifactVersionSetup.objects.create(
+                    artifact_version=version,
+                    type=ArtifactVersionSetup.ArtifactVersionSetupType.SINGLE_NODE,
+                    arguments={},
+                )
 
     @transaction.atomic
     def approve_artifacts(self, request, queryset):
         for crawled_artifact in queryset.filter(approved=False):
-            self._create_artifact(crawled_artifact)
+            try:
+                self._create_artifact(crawled_artifact)
+            except ContentsUnavailable as e:
+                self.message_user(
+                    request,
+                    f"Didn't approve {crawled_artifact.title}: {e}",
+                    messages.ERROR,
+                )
+                continue
             crawled_artifact.approved = True
             crawled_artifact.save()
 
@@ -362,7 +377,11 @@ class AutoCrawledArtifactAdmin(admin.ModelAdmin):
     @transaction.atomic
     def save_model(self, request, obj, form, change):
         if obj.approved and (not change or "approved" in form.changed_data):
-            self._create_artifact(obj)
+            try:
+                self._create_artifact(obj)
+            except ContentsUnavailable as e:
+                obj.approved = False
+                self.message_user(request, f"Didn't approve it: {e}", messages.ERROR)
         super().save_model(request, obj, form, change)
 
     approve_artifacts.short_description = "Approve and promote selected artifacts"
